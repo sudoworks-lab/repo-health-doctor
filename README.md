@@ -33,6 +33,8 @@ repo-health-doctor . --strict --secrets-ignore artifacts/ --secrets-ignore tmp/
 
 `--strict` なしでは warning のみなら成功扱いなので、ローカル確認や段階導入に向いています。CIで warning も失敗扱いにしたい場合は `--strict` を指定します。
 
+GitHub Actions workflow も同梱しており、`push` と `pull_request` で Python `3.11` / `3.12` の matrix を回せます。workflow badge は GitHub URL が確定してから追加する想定です。
+
 ## Output Example
 
 Text output:
