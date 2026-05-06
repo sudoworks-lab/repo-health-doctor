@@ -18,6 +18,16 @@ GITIGNORE_NAMES = (".gitignore", ".git/info/exclude")
 TEST_DIR_NAMES = ("tests", "test")
 DOCS_DIR_NAMES = ("docs", "doc")
 SCRIPT_DIR_NAMES = ("scripts", "script", "bin")
+DEFAULT_SECRETS_IGNORES = (
+    ".git/",
+    ".venv/",
+    "venv/",
+    "node_modules/",
+    "__pycache__/",
+    ".pytest_cache/",
+    "dist/",
+    "build/",
+)
 
 SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("aws_access_key", re.compile(r"AKIA[0-9A-Z]{16}")),
@@ -33,6 +43,7 @@ TEXT_EXTENSIONS = {
     ".cfg", ".env", ".sh", ".bash", ".zsh", ".js", ".ts", ".tsx", ".jsx",
     ".java", ".go", ".rs", ".rb", ".php", ".c", ".cc", ".cpp", ".h", ".hpp",
 }
+NULL_BYTE = b"\x00"
 
 
 @dataclass
@@ -69,14 +80,47 @@ def _has_dir(root: Path, names: tuple[str, ...]) -> list[str]:
     return found
 
 
-def _scan_secrets(root: Path) -> tuple[list[dict], int]:
+def _normalize_ignore_pattern(pattern: str) -> str:
+    normalized = pattern.replace("\\", "/").strip()
+    if not normalized:
+        return normalized
+    return normalized if normalized.endswith("/") else f"{normalized}/"
+
+
+def _is_ignored_for_secrets(relative_path: Path, ignore_patterns: tuple[str, ...]) -> bool:
+    relative_text = relative_path.as_posix()
+    path_with_sep = f"{relative_text}/"
+    for pattern in ignore_patterns:
+        normalized_pattern = _normalize_ignore_pattern(pattern)
+        if not normalized_pattern:
+            continue
+        if path_with_sep.startswith(normalized_pattern) or f"/{normalized_pattern}" in path_with_sep:
+            return True
+    return False
+
+
+def _is_binary_file(path: Path) -> bool:
+    try:
+        with path.open("rb") as handle:
+            sample = handle.read(1024)
+    except OSError:
+        return True
+    return NULL_BYTE in sample
+
+
+def _scan_secrets(root: Path, ignore_patterns: tuple[str, ...]) -> tuple[list[dict], int]:
     findings: list[dict] = []
     scanned_files = 0
 
     for path in _iter_files(root):
         if scanned_files >= MAX_SCANNED_FILES:
             break
+        relative_path = path.relative_to(root)
+        if _is_ignored_for_secrets(relative_path, ignore_patterns):
+            continue
         if path.suffix.lower() not in TEXT_EXTENSIONS and path.name not in {".env", ".env.local"}:
+            continue
+        if _is_binary_file(path):
             continue
         try:
             if path.stat().st_size > TEXT_FILE_SCAN_LIMIT_BYTES:
@@ -118,9 +162,14 @@ def _scan_large_files(root: Path, threshold_bytes: int) -> list[dict]:
     return findings
 
 
-def diagnose_repo(repo_path: str | Path, large_file_threshold_mb: int = DEFAULT_LARGE_FILE_THRESHOLD_MB) -> dict:
+def diagnose_repo(
+    repo_path: str | Path,
+    large_file_threshold_mb: int = DEFAULT_LARGE_FILE_THRESHOLD_MB,
+    secrets_ignores: tuple[str, ...] = (),
+) -> dict:
     root = Path(repo_path).resolve()
     threshold_bytes = large_file_threshold_mb * 1024 * 1024
+    combined_secrets_ignores = DEFAULT_SECRETS_IGNORES + tuple(secrets_ignores)
     checks: list[CheckResult] = []
 
     readmes = _has_any(root, README_NAMES)
@@ -183,13 +232,17 @@ def diagnose_repo(repo_path: str | Path, large_file_threshold_mb: int = DEFAULT_
         )
     )
 
-    secret_findings, scanned_files = _scan_secrets(root)
+    secret_findings, scanned_files = _scan_secrets(root, combined_secrets_ignores)
     checks.append(
         CheckResult(
             name="secrets_scan",
             status="fail" if secret_findings else "pass",
             summary="Potential secrets detected." if secret_findings else "No obvious secrets detected.",
-            details={"findings": secret_findings, "scanned_files": scanned_files},
+            details={
+                "findings": secret_findings,
+                "scanned_files": scanned_files,
+                "ignored_paths": list(combined_secrets_ignores),
+            },
         )
     )
 

@@ -159,6 +159,69 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertEqual(result.stdout, output_path.read_text(encoding="utf-8"))
         self.assertIn("Repo Health Doctor:", output_path.read_text(encoding="utf-8"))
 
+    def test_default_ignored_directory_is_not_scanned_for_secrets(self) -> None:
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        (self.tmp_path / ".pytest_cache").mkdir()
+        secret_line = 'to' + 'ken = "' + ("a" * 20) + '"\n'
+        (self.tmp_path / ".pytest_cache" / "cache.py").write_text(secret_line, encoding="utf-8")
+
+        report = diagnose_repo(self.tmp_path)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["secrets_scan"]["status"], "pass")
+
+    def test_normal_file_secret_is_detected(self) -> None:
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        secret_line = 'to' + 'ken = "' + ("a" * 20) + '"\n'
+        (self.tmp_path / "app.py").write_text(secret_line, encoding="utf-8")
+
+        report = diagnose_repo(self.tmp_path)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["secrets_scan"]["status"], "fail")
+        self.assertEqual(checks["secrets_scan"]["details"]["findings"][0]["file"], "app.py")
+
+    def test_cli_secrets_ignore_skips_matching_path(self) -> None:
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        (self.tmp_path / "artifacts").mkdir()
+        secret_line = 'to' + 'ken = "' + ("a" * 20) + '"\n'
+        (self.tmp_path / "artifacts" / "sample.py").write_text(secret_line, encoding="utf-8")
+
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor.cli",
+                str(self.tmp_path),
+                "--format",
+                "json",
+                "--secrets-ignore",
+                "artifacts/",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        payload = json.loads(result.stdout)
+        checks = {check["name"]: check for check in payload["checks"]}
+
+        self.assertEqual(checks["secrets_scan"]["status"], "pass")
+
+    def test_binary_file_is_skipped_by_secrets_scan(self) -> None:
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        binary_secret = b"\x00\x01\x02" + b"to" + b"ken=" + (b"a" * 20)
+        (self.tmp_path / "blob.bin").write_bytes(binary_secret)
+
+        report = diagnose_repo(self.tmp_path)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["secrets_scan"]["status"], "pass")
+        self.assertEqual(checks["secrets_scan"]["details"]["scanned_files"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

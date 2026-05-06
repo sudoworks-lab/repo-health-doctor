@@ -17,6 +17,7 @@ repo-health-doctor . --format json
 repo-health-doctor . --strict
 repo-health-doctor . --large-file-threshold-mb 5
 repo-health-doctor . --format json --output /tmp/repo-health-doctor-result.json
+repo-health-doctor . --secrets-ignore artifacts/ --secrets-ignore tmp/
 ```
 
 `--output` を指定した場合は、指定ファイルへ保存しつつ同じ内容を標準出力にも出します。
@@ -27,6 +28,7 @@ repo-health-doctor . --format json --output /tmp/repo-health-doctor-result.json
 repo-health-doctor .
 repo-health-doctor . --strict
 repo-health-doctor . --format json --output /tmp/repo-health-doctor-result.json
+repo-health-doctor . --strict --secrets-ignore artifacts/ --secrets-ignore tmp/
 ```
 
 `--strict` なしでは warning のみなら成功扱いなので、ローカル確認や段階導入に向いています。CIで warning も失敗扱いにしたい場合は `--strict` を指定します。
@@ -72,6 +74,28 @@ JSON output:
 - `--strict`: warn 以上で exit code 1 を返します
 - `--large-file-threshold-mb <int>`: large files 判定の閾値を MB 単位で指定します。デフォルトは `10`
 - `--output <file>`: text / json の描画結果を指定ファイルへ保存し、同時に標準出力にも出します
+- `--secrets-ignore <pattern>`: secrets scan から path prefix を除外します。複数回指定できます
+
+## Secrets Scan
+
+Secrets scan はテキスト系ファイルだけを対象に、シンプルなパターンで明らかな秘密情報らしき文字列を探します。large files 判定とは独立しており、バイナリファイルは secrets scan の対象外です。
+
+デフォルトで次のパス配下は secrets scan 対象外です。
+
+- `.git/`
+- `.venv/`
+- `venv/`
+- `node_modules/`
+- `__pycache__/`
+- `.pytest_cache/`
+- `dist/`
+- `build/`
+
+追加で除外したい場合は `--secrets-ignore` を複数回指定できます。
+
+```bash
+repo-health-doctor . --secrets-ignore artifacts/ --secrets-ignore tmp/
+```
 
 ## Checks
 
