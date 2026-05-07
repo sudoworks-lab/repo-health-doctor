@@ -1,4 +1,6 @@
 # Docs
 
-This directory is reserved for future detailed documentation.
-The root README is the primary source of truth, including local usage and GitHub Actions CI notes.
+詳細ドキュメントを置く directory です。
+
+- `architecture.md`: 設計方針、対象範囲、AI preflight としての位置づけ
+- ルート `README.md`: install、usage、CI 向け quickstart

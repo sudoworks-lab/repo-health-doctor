@@ -5,3 +5,10 @@ __pycache__/
 .venv/
 dist/
 build/
+artifacts/
+outputs/
+logs/
+screenshots/
+snapshots/
+cache/
+.env
