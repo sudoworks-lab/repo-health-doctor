@@ -63,7 +63,7 @@ PYTHONPATH=src python3 -m repo_health_doctor.cli .
 
 ```text
 Repo Health Doctor: PASS
-Target: /home/itkhyt/projects/repo-health-doctor
+Target: /path/to/repo
 Summary: 8 pass, 0 warn, 0 fail
 
 [PASS] readme: README found.
@@ -97,7 +97,7 @@ JSON 出力の先頭は次のようになります。
 {
   "tool": "repo-health-doctor",
   "version": "0.1.0",
-  "repo_path": "/home/itkhyt/projects/repo-health-doctor",
+  "repo_path": "/path/to/repo",
   "overall_status": "pass"
 }
 ```
