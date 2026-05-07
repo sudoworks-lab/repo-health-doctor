@@ -19,6 +19,15 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmp_dir.cleanup()
 
+    def _init_git_repo(self) -> None:
+        subprocess.run(
+            ["git", "init"],
+            cwd=self.tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
     def test_diagnose_repo_detects_expected_checks(self) -> None:
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
         (self.tmp_path / "LICENSE").write_text("MIT\n", encoding="utf-8")
@@ -221,6 +230,90 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
 
         self.assertEqual(checks["secrets_scan"]["status"], "pass")
         self.assertEqual(checks["secrets_scan"]["details"]["scanned_files"], 1)
+
+    def test_public_safety_is_opt_in(self) -> None:
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+
+        report = diagnose_repo(self.tmp_path)
+        check_names = {check["name"] for check in report["checks"]}
+
+        self.assertNotIn("public_text_safety", check_names)
+        self.assertNotIn("tracked_artifacts", check_names)
+
+    def test_public_safety_detects_restricted_term(self) -> None:
+        self._init_git_repo()
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        restricted_text = "public note: " + "Fi" + "nd" + "y" + "\n"
+        (self.tmp_path / "notes.txt").write_text(restricted_text, encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "README.md", "notes.txt"],
+            cwd=self.tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        report = diagnose_repo(self.tmp_path, public_safety=True)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["public_text_safety"]["status"], "fail")
+        self.assertEqual(checks["public_text_safety"]["details"]["findings"][0]["pattern"], "restricted_term")
+        self.assertEqual(checks["public_text_safety"]["details"]["scan_scope"], "tracked")
+
+    def test_public_safety_detects_private_path(self) -> None:
+        self._init_git_repo()
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        private_path = "/" + "ho" + "me" + "/" + "user" + "/" + "work" + "\n"
+        (self.tmp_path / "notes.txt").write_text(private_path, encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "README.md", "notes.txt"],
+            cwd=self.tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        report = diagnose_repo(self.tmp_path, public_safety=True)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["public_text_safety"]["status"], "fail")
+        self.assertEqual(checks["public_text_safety"]["details"]["findings"][0]["pattern"], "private_path")
+
+    def test_public_safety_detects_tracked_artifact_candidate(self) -> None:
+        self._init_git_repo()
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        (self.tmp_path / "artifacts").mkdir()
+        (self.tmp_path / "artifacts" / "build.log").write_text("log\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "README.md", "artifacts/build.log"],
+            cwd=self.tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        report = diagnose_repo(self.tmp_path, public_safety=True)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["tracked_artifacts"]["status"], "fail")
+        self.assertEqual(checks["tracked_artifacts"]["details"]["findings"][0]["pattern"], "generated_dir")
+
+    def test_public_safety_allows_env_template(self) -> None:
+        self._init_git_repo()
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        (self.tmp_path / ".env.example").write_text("NAME=value\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "README.md", ".env.example"],
+            cwd=self.tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        report = diagnose_repo(self.tmp_path, public_safety=True)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["tracked_artifacts"]["status"], "pass")
 
 
 if __name__ == "__main__":

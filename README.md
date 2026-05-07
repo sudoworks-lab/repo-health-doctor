@@ -26,6 +26,11 @@
 - テキスト系ファイルに対する簡易 secrets scan
 - 閾値以上の large file 検知
 
+`--public-safety` を付けた場合は、次の公開前チェックも追加します。
+
+- 公開本文に不向きな語や個人 path、local IP の混入検知
+- tracked な生成物 / log / cache / 環境 file 候補の検知
+
 ## Install
 
 開発中の checkout をそのまま使う前提なら、editable install で十分です。
@@ -45,6 +50,7 @@ repo-health-doctor .
 repo-health-doctor . --format json
 repo-health-doctor . --strict
 repo-health-doctor . --large-file-threshold-mb 5
+repo-health-doctor . --public-safety
 repo-health-doctor . --format json --output /tmp/repo-health-doctor-result.json
 repo-health-doctor . --secrets-ignore artifacts/ --secrets-ignore tmp/
 ```
@@ -116,6 +122,7 @@ JSON 出力の先頭は次のようになります。
 - `--large-file-threshold-mb <int>`: large file 判定の閾値を MB 単位で指定します。デフォルトは `10`
 - `--output <file>`: text / json の描画結果をファイルへ保存しつつ標準出力にも出します
 - `--secrets-ignore <pattern>`: secrets scan から path prefix を除外します。複数回指定できます
+- `--public-safety`: 公開前の追加チェックを有効にします
 
 ## CI / Tests
 
@@ -141,6 +148,7 @@ test -s /tmp/repo-health-doctor-result.json
 - binary file は secrets scan の対象外です
 - `node_modules/`, `.venv/`, `.pytest_cache/`, `dist/`, `build/` などは既定で scan 対象外です
 - `artifacts/` や AI 実行ログのような生成物を除外したい場合は `--secrets-ignore` を追加してください
+- `--public-safety` は report 上に生の検知文字列を出さず、中立的なカテゴリ名だけを返します
 
 ## 設計意図
 

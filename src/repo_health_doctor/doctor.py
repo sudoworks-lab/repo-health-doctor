@@ -4,6 +4,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 import json
 import re
+import subprocess
 from typing import Iterable
 
 
@@ -28,6 +29,36 @@ DEFAULT_SECRETS_IGNORES = (
     "dist/",
     "build/",
 )
+TRACKED_ARTIFACT_TOP_LEVEL_DIRS = {
+    "artifacts",
+    "logs",
+    "log",
+    "tmp",
+    "temp",
+    "cache",
+}
+TRACKED_ARTIFACT_CACHE_DIRS = {
+    ".cache",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "htmlcov",
+}
+TRACKED_ARTIFACT_FILE_NAMES = {
+    ".coverage",
+    "coverage.xml",
+}
+TRACKED_ARTIFACT_SUFFIXES = {
+    ".log",
+    ".tmp",
+    ".cache",
+}
+TRACKED_ENV_ALLOWED_NAMES = {
+    ".env.example",
+    ".env.sample",
+    ".env.template",
+}
+TRACKED_ENV_PREFIX = ".env."
 
 SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("aws_access_key", re.compile(r"AKIA[0-9A-Z]{16}")),
@@ -46,6 +77,58 @@ TEXT_EXTENSIONS = {
 NULL_BYTE = b"\x00"
 
 
+def _join_fragments(*parts: str) -> str:
+    return "".join(parts)
+
+
+RESTRICTED_PUBLIC_TERMS = (
+    _join_fragments("Fi", "nd", "y"),
+    _join_fragments("fi", "nd", "y"),
+    _join_fragments("フ", "ァ", "イ", "ン", "デ", "ィ"),
+    _join_fragments("転", "職"),
+    _join_fragments("採", "用"),
+    _join_fragments("採", "用", "担", "当"),
+    _join_fragments("評", "価", "さ", "れ", "る"),
+    _join_fragments("評", "価", "し", "て", "も", "ら", "う"),
+    _join_fragments("評", "価", "向", "け"),
+    _join_fragments("求", "人"),
+    _join_fragments("ポ", "ー", "ト", "フ", "ォ", "リ", "オ", "向", "け"),
+)
+PUBLIC_TEXT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "restricted_term",
+        re.compile("|".join(re.escape(term) for term in RESTRICTED_PUBLIC_TERMS)),
+    ),
+    (
+        "private_path",
+        re.compile(
+            "|".join(
+                (
+                    re.escape(_join_fragments("/", "ho", "me", "/")) + r"[^/\s]+/",
+                    re.escape(_join_fragments("/", "Users", "/")) + r"[^/\s]+/",
+                    re.escape(_join_fragments("/", "mnt", "/", "c", "/", "Users", "/")) + r"[^/\s]+/",
+                    re.escape(_join_fragments("C", ":", "\\", "Users", "\\")) + r"[^\\\s]+\\",
+                )
+            )
+        ),
+    ),
+    (
+        "local_ip",
+        re.compile(
+            "|".join(
+                (
+                    rf"{_join_fragments('1', '0')}\.\d{{1,3}}\.\d{{1,3}}\.\d{{1,3}}",
+                    rf"{_join_fragments('1', '2', '7')}\.\d{{1,3}}\.\d{{1,3}}\.\d{{1,3}}",
+                    rf"{_join_fragments('1', '7', '2')}\.(1[6-9]|2[0-9]|3[0-1])\.\d{{1,3}}\.\d{{1,3}}",
+                    rf"{_join_fragments('1', '9', '2')}\.{_join_fragments('1', '6', '8')}\.\d{{1,3}}\.\d{{1,3}}",
+                    rf"{_join_fragments('1', '0', '0')}\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\.\d{{1,3}}\.\d{{1,3}}",
+                )
+            )
+        ),
+    ),
+)
+
+
 @dataclass
 class CheckResult:
     name: str
@@ -57,6 +140,30 @@ class CheckResult:
 def _iter_files(root: Path) -> Iterable[Path]:
     for path in root.rglob("*"):
         if any(part in IGNORED_DIRS for part in path.parts):
+            continue
+        if path.is_file():
+            yield path
+
+
+def _iter_candidate_files(
+    root: Path,
+    tracked_files: tuple[Path, ...] | None = None,
+    include_ignored: bool = False,
+) -> Iterable[Path]:
+    if tracked_files is not None:
+        for path in sorted(tracked_files, key=lambda item: item.as_posix()):
+            try:
+                relative_parts = path.relative_to(root).parts
+            except ValueError:
+                continue
+            if not include_ignored and any(part in IGNORED_DIRS for part in relative_parts):
+                continue
+            if path.is_file():
+                yield path
+        return
+
+    for path in root.rglob("*"):
+        if not include_ignored and any(part in IGNORED_DIRS for part in path.parts):
             continue
         if path.is_file():
             yield path
@@ -106,6 +213,32 @@ def _is_binary_file(path: Path) -> bool:
     except OSError:
         return True
     return NULL_BYTE in sample
+
+
+def _list_tracked_files(root: Path) -> tuple[Path, ...] | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z"],
+            check=False,
+            capture_output=True,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+
+    tracked_files: list[Path] = []
+    for raw_path in result.stdout.split(NULL_BYTE):
+        if not raw_path:
+            continue
+        try:
+            relative_path = Path(raw_path.decode("utf-8"))
+        except UnicodeDecodeError:
+            continue
+        candidate = root / relative_path
+        if candidate.is_file():
+            tracked_files.append(candidate)
+    return tuple(tracked_files)
 
 
 def _scan_secrets(root: Path, ignore_patterns: tuple[str, ...]) -> tuple[list[dict], int]:
@@ -162,10 +295,79 @@ def _scan_large_files(root: Path, threshold_bytes: int) -> list[dict]:
     return findings
 
 
+def _scan_public_text_safety(
+    root: Path,
+    tracked_files: tuple[Path, ...] | None,
+) -> tuple[list[dict], int, str]:
+    findings: list[dict] = []
+    scanned_files = 0
+    scope = "tracked" if tracked_files is not None else "all"
+
+    for path in _iter_candidate_files(root, tracked_files=tracked_files, include_ignored=True):
+        if path.suffix.lower() not in TEXT_EXTENSIONS and path.name not in {".env", ".env.local", ".envrc"}:
+            continue
+        if _is_binary_file(path):
+            continue
+        try:
+            if path.stat().st_size > TEXT_FILE_SCAN_LIMIT_BYTES:
+                continue
+            content = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+
+        scanned_files += 1
+        for label, pattern in PUBLIC_TEXT_PATTERNS:
+            match = pattern.search(content)
+            if not match:
+                continue
+            findings.append(
+                {
+                    "file": str(path.relative_to(root)),
+                    "pattern": label,
+                    "line": content.count("\n", 0, match.start()) + 1,
+                }
+            )
+
+    return findings, scanned_files, scope
+
+
+def _classify_tracked_artifact(relative_path: Path) -> str | None:
+    lowered_parts = [part.lower() for part in relative_path.parts]
+    if lowered_parts and lowered_parts[0] in TRACKED_ARTIFACT_TOP_LEVEL_DIRS:
+        return "generated_dir"
+    if any(part in TRACKED_ARTIFACT_CACHE_DIRS for part in lowered_parts[:-1]):
+        return "cache_dir"
+
+    name = relative_path.name.lower()
+    if name in TRACKED_ARTIFACT_FILE_NAMES:
+        return "generated_file"
+    if name == ".env":
+        return "env_file"
+    if name.startswith(TRACKED_ENV_PREFIX) and name not in TRACKED_ENV_ALLOWED_NAMES:
+        return "env_file"
+    if relative_path.suffix.lower() in TRACKED_ARTIFACT_SUFFIXES:
+        return "generated_file"
+    return None
+
+
+def _scan_tracked_artifacts(root: Path, tracked_files: tuple[Path, ...] | None) -> tuple[list[dict], str]:
+    if tracked_files is None:
+        return [], "unavailable"
+
+    findings: list[dict] = []
+    for path in sorted(tracked_files, key=lambda item: item.as_posix()):
+        relative_path = path.relative_to(root)
+        category = _classify_tracked_artifact(relative_path)
+        if category:
+            findings.append({"file": str(relative_path), "pattern": category})
+    return findings, "tracked"
+
+
 def diagnose_repo(
     repo_path: str | Path,
     large_file_threshold_mb: int = DEFAULT_LARGE_FILE_THRESHOLD_MB,
     secrets_ignores: tuple[str, ...] = (),
+    public_safety: bool = False,
 ) -> dict:
     root = Path(repo_path).resolve()
     threshold_bytes = large_file_threshold_mb * 1024 * 1024
@@ -260,6 +462,52 @@ def diagnose_repo(
         )
     )
 
+    if public_safety:
+        tracked_files = _list_tracked_files(root)
+        public_text_findings, scanned_files, scope = _scan_public_text_safety(root, tracked_files)
+        checks.append(
+            CheckResult(
+                name="public_text_safety",
+                status="fail" if public_text_findings else "pass",
+                summary=(
+                    "Public-facing text should be reviewed before release."
+                    if public_text_findings
+                    else "No obvious public-facing text issues detected."
+                ),
+                details={
+                    "findings": public_text_findings,
+                    "scanned_files": scanned_files,
+                    "scan_scope": scope,
+                },
+            )
+        )
+
+        tracked_artifacts, tracked_scope = _scan_tracked_artifacts(root, tracked_files)
+        tracked_artifact_status = "fail" if tracked_artifacts else "pass"
+        tracked_artifact_summary = (
+            "Tracked generated or environment files should be reviewed before release."
+            if tracked_artifacts
+            else (
+                "Tracked generated or environment files were not detected."
+                if tracked_scope == "tracked"
+                else "Tracked file scan was unavailable."
+            )
+        )
+        if tracked_scope == "unavailable":
+            tracked_artifact_status = "warn"
+
+        checks.append(
+            CheckResult(
+                name="tracked_artifacts",
+                status=tracked_artifact_status,
+                summary=tracked_artifact_summary,
+                details={
+                    "findings": tracked_artifacts,
+                    "scan_scope": tracked_scope,
+                },
+            )
+        )
+
     counts = {
         "pass": sum(1 for check in checks if check.status == "pass"),
         "warn": sum(1 for check in checks if check.status == "warn"),
@@ -303,6 +551,18 @@ def format_text(report: dict) -> str:
             lines.append(f"  threshold_bytes: {details['threshold_bytes']}")
             for finding in details["findings"][:5]:
                 lines.append(f"  large file: {finding['file']} ({finding['size_bytes']} bytes)")
+        if check["name"] == "public_text_safety":
+            lines.append(f"  scanned_files: {details['scanned_files']}")
+            lines.append(f"  scan_scope: {details['scan_scope']}")
+            for finding in details["findings"][:5]:
+                lines.append(
+                    "  public text issue: "
+                    f"{finding['file']} ({finding['pattern']} line {finding['line']})"
+                )
+        if check["name"] == "tracked_artifacts":
+            lines.append(f"  scan_scope: {details['scan_scope']}")
+            for finding in details["findings"][:5]:
+                lines.append(f"  tracked file issue: {finding['file']} ({finding['pattern']})")
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"

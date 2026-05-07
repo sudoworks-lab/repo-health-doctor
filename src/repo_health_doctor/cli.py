@@ -46,6 +46,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Ignore a path prefix during secrets scanning. Can be passed multiple times.",
     )
+    parser.add_argument(
+        "--public-safety",
+        action="store_true",
+        help="Enable extra checks for public release safety.",
+    )
     return parser
 
 
@@ -63,6 +68,7 @@ def main(argv: list[str] | None = None) -> int:
         target,
         large_file_threshold_mb=args.large_file_threshold_mb,
         secrets_ignores=tuple(args.secrets_ignore),
+        public_safety=args.public_safety,
     )
     output = format_json(report) if args.format == "json" else format_text(report)
     if args.output:
