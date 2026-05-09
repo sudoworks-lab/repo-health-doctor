@@ -66,6 +66,14 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             text=True,
         )
 
+    def _write_complete_repo_baseline(self) -> None:
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        (self.tmp_path / "LICENSE").write_text("MIT\n", encoding="utf-8")
+        (self.tmp_path / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
+        (self.tmp_path / "tests").mkdir(exist_ok=True)
+        (self.tmp_path / "docs").mkdir(exist_ok=True)
+        (self.tmp_path / "scripts").mkdir(exist_ok=True)
+
     def test_diagnose_repo_detects_expected_checks(self) -> None:
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
         (self.tmp_path / "LICENSE").write_text("MIT\n", encoding="utf-8")
@@ -110,7 +118,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
 
         payload = json.loads(result.stdout)
         self.assertEqual(payload["tool"], "repo-health-doctor")
-        self.assertEqual(payload["schema_version"], "1.0")
+        self.assertEqual(payload["schema_version"], "1.1")
         self.assertFalse(Path(payload["repo_path"]).is_absolute())
 
     def test_block_exit_code_when_secret_detected(self) -> None:
@@ -477,6 +485,214 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             self.assertFalse(Path(finding["file"]).is_absolute())
             self.assertIn("pattern", finding)
             self.assertIsInstance(finding["redacted"], bool)
+
+    def test_policy_ignore_paths_exclude_scan_targets(self) -> None:
+        self._init_git_repo()
+        self._write_complete_repo_baseline()
+        (self.tmp_path / "artifacts").mkdir()
+        secret_line = 'to' + 'ken = "' + ("a" * 20) + '"\n'
+        (self.tmp_path / "artifacts" / "sample.py").write_text(secret_line, encoding="utf-8")
+        (self.tmp_path / "artifacts" / "build.log").write_text("log\n", encoding="utf-8")
+        (self.tmp_path / "repo-health-doctor.yml").write_text(
+            "ignore_paths:\n"
+            "  - artifacts/\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["git", "add", "README.md", "artifacts/build.log"],
+            cwd=self.tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        report = diagnose_repo(self.tmp_path, public_safety=True)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["secrets_scan"]["status"], "pass")
+        self.assertEqual(checks["tracked_artifacts"]["status"], "pass")
+        self.assertEqual(checks["policy"]["status"], "pass")
+        self.assertEqual(checks["policy"]["details"]["ignore_path_count"], 1)
+
+    def test_policy_allows_matching_large_file_finding(self) -> None:
+        self._write_complete_repo_baseline()
+        (self.tmp_path / "large.bin").write_bytes(b"x" * (2 * 1024 * 1024))
+        (self.tmp_path / "repo-health-doctor.yml").write_text(
+            "allow_findings:\n"
+            "  - rule_id: rhd.repository.large_file\n"
+            "    path: large.bin\n"
+            "    reason: reviewed category\n"
+            "    owner: release-team\n"
+            "    expires: 2999-01-01\n",
+            encoding="utf-8",
+        )
+
+        report = diagnose_repo(self.tmp_path, large_file_threshold_mb=1)
+        checks = {check["name"]: check for check in report["checks"]}
+        finding = checks["large_files"]["details"]["findings"][0]
+
+        self.assertEqual(report["overall_status"], "pass")
+        self.assertEqual(checks["large_files"]["status"], "pass")
+        self.assertTrue(finding["allowed"])
+        self.assertEqual(finding["matched_policy_id"], "repo:allow:1")
+        self.assertEqual(finding["policy_source"], "repo")
+
+    def test_policy_allow_requires_reason_owner_and_expires(self) -> None:
+        self._write_complete_repo_baseline()
+        (self.tmp_path / "repo-health-doctor.yml").write_text(
+            "allow_findings:\n"
+            "  - rule_id: rhd.repository.large_file\n"
+            "    path: large.bin\n",
+            encoding="utf-8",
+        )
+
+        report = diagnose_repo(self.tmp_path)
+        checks = {check["name"]: check for check in report["checks"]}
+        finding = checks["policy"]["details"]["findings"][0]
+
+        self.assertEqual(checks["policy"]["status"], "block")
+        self.assertEqual(finding["rule_id"], "rhd.policy.invalid_allow")
+        self.assertEqual(finding["matched_policy_id"], "repo:allow:1")
+
+    def test_expired_policy_allow_blocks(self) -> None:
+        self._write_complete_repo_baseline()
+        (self.tmp_path / "repo-health-doctor.yml").write_text(
+            "allow_findings:\n"
+            "  - rule_id: rhd.repository.large_file\n"
+            "    path: large.bin\n"
+            "    reason: reviewed category\n"
+            "    owner: release-team\n"
+            "    expires: 2000-01-01\n",
+            encoding="utf-8",
+        )
+
+        report = diagnose_repo(self.tmp_path)
+        checks = {check["name"]: check for check in report["checks"]}
+        finding = checks["policy"]["details"]["findings"][0]
+
+        self.assertEqual(report["overall_status"], "block")
+        self.assertEqual(finding["rule_id"], "rhd.policy.expired_allow")
+
+    def test_unknown_policy_rule_id_blocks_without_echoing_value(self) -> None:
+        self._write_complete_repo_baseline()
+        unknown_rule_id = "rhd.example.unknown"
+        (self.tmp_path / "repo-health-doctor.yml").write_text(
+            "allow_findings:\n"
+            f"  - rule_id: {unknown_rule_id}\n"
+            "    path: docs/generated.bin\n"
+            "    reason: reviewed category\n"
+            "    owner: release-team\n"
+            "    expires: 2999-01-01\n",
+            encoding="utf-8",
+        )
+
+        report = diagnose_repo(self.tmp_path)
+        rendered_json = format_json(report)
+        rendered_text = format_text(report)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["policy"]["status"], "block")
+        self.assertEqual(checks["policy"]["details"]["findings"][0]["rule_id"], "rhd.policy.unknown_rule_id")
+        self.assertNotIn(unknown_rule_id, rendered_json)
+        self.assertNotIn(unknown_rule_id, rendered_text)
+
+    def test_secret_policy_allow_is_restricted_outside_fixtures(self) -> None:
+        self._write_complete_repo_baseline()
+        secret_value = "s" * 24
+        (self.tmp_path / "app.py").write_text('api_' + 'key = "' + secret_value + '"\n', encoding="utf-8")
+        (self.tmp_path / "repo-health-doctor.yml").write_text(
+            "allow_findings:\n"
+            "  - rule_id: rhd.secret.generic_api_key\n"
+            "    path: app.py\n"
+            "    reason: reviewed category\n"
+            "    owner: release-team\n"
+            "    expires: 2999-01-01\n",
+            encoding="utf-8",
+        )
+
+        report = diagnose_repo(self.tmp_path)
+        rendered_json = format_json(report)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["policy"]["status"], "block")
+        self.assertEqual(
+            checks["policy"]["details"]["findings"][0]["rule_id"],
+            "rhd.policy.restricted_secret_allow",
+        )
+        self.assertEqual(checks["secrets_scan"]["status"], "block")
+        self.assertNotIn(secret_value, rendered_json)
+
+    def test_secret_policy_allow_can_match_fixture_path(self) -> None:
+        self._write_complete_repo_baseline()
+        fixture_dir = self.tmp_path / "tests" / "fixtures"
+        fixture_dir.mkdir()
+        secret_value = "s" * 24
+        (fixture_dir / "app.py").write_text('api_' + 'key = "' + secret_value + '"\n', encoding="utf-8")
+        (self.tmp_path / "repo-health-doctor.yml").write_text(
+            "allow_findings:\n"
+            "  - rule_id: rhd.secret.generic_api_key\n"
+            "    path: tests/fixtures/app.py\n"
+            "    reason: reviewed test fixture\n"
+            "    owner: release-team\n"
+            "    expires: 2999-01-01\n",
+            encoding="utf-8",
+        )
+
+        report = diagnose_repo(self.tmp_path)
+        rendered_json = format_json(report)
+        checks = {check["name"]: check for check in report["checks"]}
+        finding = checks["secrets_scan"]["details"]["findings"][0]
+
+        self.assertEqual(report["overall_status"], "pass")
+        self.assertEqual(checks["secrets_scan"]["status"], "pass")
+        self.assertTrue(finding["allowed"])
+        self.assertEqual(finding["matched_policy_id"], "repo:allow:1")
+        self.assertNotIn(secret_value, rendered_json)
+
+    def test_local_config_values_are_not_rendered(self) -> None:
+        self._write_complete_repo_baseline()
+        marker = "DO_NOT_LEAK_LOCAL_POLICY_VALUE"
+        private_dir = self.tmp_path / "private-policy-area"
+        private_dir.mkdir()
+        (private_dir / "large.bin").write_bytes(b"x" * (2 * 1024 * 1024))
+        local_config = self.tmp_path / ".repo-health-doctor.local.yml"
+        local_config.write_text(
+            "ignore_paths:\n"
+            "  - private-policy-area/\n"
+            "allow_findings:\n"
+            "  - rule_id: rhd.repository.large_file\n"
+            "    path: private-policy-area/large.bin\n"
+            f"    reason: {marker}\n"
+            f"    owner: {marker}\n"
+            "    expires: 2999-01-01\n",
+            encoding="utf-8",
+        )
+
+        report = diagnose_repo(self.tmp_path, large_file_threshold_mb=1)
+        rendered_json = format_json(report)
+        rendered_text = format_text(report)
+
+        self.assertNotIn(marker, rendered_json)
+        self.assertNotIn(marker, rendered_text)
+        self.assertNotIn("private-policy-area", rendered_json)
+        self.assertNotIn("private-policy-area", rendered_text)
+        self.assertIn('"policy_sources"', rendered_json)
+        self.assertIn('"local"', rendered_json)
+
+    def test_no_local_config_skips_local_policy(self) -> None:
+        self._write_complete_repo_baseline()
+        (self.tmp_path / ".repo-health-doctor.local.yml").write_text(
+            "allow_findings:\n"
+            "  - rule_id: rhd.repository.large_file\n"
+            "    path: large.bin\n",
+            encoding="utf-8",
+        )
+
+        report = diagnose_repo(self.tmp_path, load_local_config=False)
+        check_names = {check["name"] for check in report["checks"]}
+
+        self.assertEqual(report["overall_status"], "pass")
+        self.assertNotIn("policy", check_names)
 
     def test_package_module_help_runs(self) -> None:
         env = os.environ.copy()

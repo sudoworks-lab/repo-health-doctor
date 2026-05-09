@@ -12,3 +12,4 @@ screenshots/
 snapshots/
 cache/
 .env
+.repo-health-doctor.local.yml

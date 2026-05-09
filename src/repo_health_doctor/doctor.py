@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
+from datetime import date
+import fnmatch
 from pathlib import Path
 import json
 import re
@@ -12,7 +14,7 @@ DEFAULT_LARGE_FILE_THRESHOLD_MB = 10
 LARGE_FILE_THRESHOLD_BYTES = DEFAULT_LARGE_FILE_THRESHOLD_MB * 1024 * 1024
 TEXT_FILE_SCAN_LIMIT_BYTES = 1 * 1024 * 1024
 MAX_SCANNED_FILES = 200
-REPORT_SCHEMA_VERSION = "1.0"
+REPORT_SCHEMA_VERSION = "1.1"
 
 README_NAMES = ("README", "README.md", "README.rst", "README.txt")
 LICENSE_NAMES = ("LICENSE", "LICENSE.txt", "LICENSE.md", "COPYING")
@@ -98,6 +100,22 @@ TRACKED_ARTIFACT_RULE_IDS = {
     "generated_file": "rhd.tracked_artifact.generated_file",
     "env_file": "rhd.tracked_artifact.env_file",
 }
+POLICY_RULE_IDS = {
+    "invalid_config": "rhd.policy.invalid_config",
+    "invalid_ignore": "rhd.policy.invalid_ignore",
+    "invalid_allow": "rhd.policy.invalid_allow",
+    "expired_allow": "rhd.policy.expired_allow",
+    "unknown_rule_id": "rhd.policy.unknown_rule_id",
+    "restricted_secret_allow": "rhd.policy.restricted_secret_allow",
+}
+KNOWN_FINDING_RULE_IDS = (
+    set(SECRET_RULE_IDS.values())
+    | set(PUBLIC_TEXT_RULE_IDS.values())
+    | set(TRACKED_ARTIFACT_RULE_IDS.values())
+    | {RULE_ID_LARGE_FILE}
+)
+SECRET_RULE_ID_VALUES = set(SECRET_RULE_IDS.values())
+SECRET_ALLOW_FIXTURE_PREFIXES = ("tests/fixtures/", "test/fixtures/")
 
 
 def _join_fragments(*parts: str) -> str:
@@ -160,11 +178,31 @@ class CheckResult:
     details: dict
 
 
-def _iter_files(root: Path) -> Iterable[Path]:
+@dataclass(frozen=True)
+class AllowFindingPolicy:
+    policy_id: str
+    source: str
+    rule_id: str
+    path_pattern: str
+
+
+@dataclass
+class PolicyConfig:
+    ignore_paths: tuple[str, ...]
+    allow_findings: tuple[AllowFindingPolicy, ...]
+    issues: list[dict]
+    sources: tuple[str, ...]
+    ignore_path_count: int
+    allow_finding_count: int
+
+
+def _iter_files(root: Path, ignore_patterns: tuple[str, ...] = ()) -> Iterable[Path]:
     for path in root.rglob("*"):
         if any(part in IGNORED_DIRS for part in path.parts):
             continue
         if path.is_file():
+            if _is_ignored_path(path.relative_to(root), ignore_patterns):
+                continue
             yield path
 
 
@@ -172,6 +210,7 @@ def _iter_candidate_files(
     root: Path,
     tracked_files: tuple[Path, ...] | None = None,
     include_ignored: bool = False,
+    ignore_patterns: tuple[str, ...] = (),
 ) -> Iterable[Path]:
     if tracked_files is not None:
         for path in sorted(tracked_files, key=lambda item: item.as_posix()):
@@ -182,6 +221,8 @@ def _iter_candidate_files(
             if not include_ignored and any(part in IGNORED_DIRS for part in relative_parts):
                 continue
             if path.is_file():
+                if _is_ignored_path(path.relative_to(root), ignore_patterns):
+                    continue
                 yield path
         return
 
@@ -189,6 +230,8 @@ def _iter_candidate_files(
         if not include_ignored and any(part in IGNORED_DIRS for part in path.parts):
             continue
         if path.is_file():
+            if _is_ignored_path(path.relative_to(root), ignore_patterns):
+                continue
             yield path
 
 
@@ -218,13 +261,22 @@ def _normalize_ignore_pattern(pattern: str) -> str:
 
 
 def _is_ignored_for_secrets(relative_path: Path, ignore_patterns: tuple[str, ...]) -> bool:
+    return _is_ignored_path(relative_path, ignore_patterns)
+
+
+def _is_ignored_path(relative_path: Path, ignore_patterns: tuple[str, ...]) -> bool:
     relative_text = relative_path.as_posix()
     path_with_sep = f"{relative_text}/"
     for pattern in ignore_patterns:
-        normalized_pattern = _normalize_ignore_pattern(pattern)
+        normalized_pattern = pattern.replace("\\", "/").strip()
         if not normalized_pattern:
             continue
-        if path_with_sep.startswith(normalized_pattern) or f"/{normalized_pattern}" in path_with_sep:
+        if any(char in normalized_pattern for char in "*?[]"):
+            if fnmatch.fnmatch(relative_text, normalized_pattern):
+                return True
+            continue
+        normalized_pattern = _normalize_ignore_pattern(normalized_pattern)
+        if path_with_sep.startswith(normalized_pattern):
             return True
     return False
 
@@ -277,6 +329,67 @@ def _safe_repo_path(root: Path) -> str:
         return f"<repo:{root.name}>"
 
 
+def _parse_scalar(value: str) -> str:
+    stripped = value.strip()
+    if len(stripped) >= 2 and stripped[0] == stripped[-1] and stripped[0] in {"'", '"'}:
+        return stripped[1:-1]
+    return stripped
+
+
+def _parse_simple_policy_yaml(content: str) -> dict:
+    parsed: dict[str, list] = {}
+    current_key: str | None = None
+    current_item: dict | None = None
+    for raw_line in content.splitlines():
+        line = raw_line.split("#", 1)[0].rstrip()
+        if not line.strip():
+            continue
+        stripped = line.strip()
+        if not line.startswith(" "):
+            key, separator, value = stripped.partition(":")
+            if not separator:
+                raise ValueError("invalid top-level entry")
+            current_key = key.strip()
+            current_item = None
+            if value.strip():
+                parsed[current_key] = [_parse_scalar(value)]
+            else:
+                parsed[current_key] = []
+            continue
+        if current_key is None:
+            raise ValueError("nested entry without top-level key")
+        if stripped.startswith("- "):
+            rest = stripped[2:].strip()
+            if not rest:
+                raise ValueError("empty list item")
+            if ":" in rest:
+                key, _, value = rest.partition(":")
+                current_item = {key.strip(): _parse_scalar(value)}
+                parsed[current_key].append(current_item)
+            else:
+                current_item = None
+                parsed[current_key].append(_parse_scalar(rest))
+            continue
+        if current_item is None or ":" not in stripped:
+            raise ValueError("invalid nested entry")
+        key, _, value = stripped.partition(":")
+        current_item[key.strip()] = _parse_scalar(value)
+    return parsed
+
+
+def _load_policy_document(path: Path) -> dict:
+    content = path.read_text(encoding="utf-8")
+    if not content.strip():
+        return {}
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError:
+        payload = _parse_simple_policy_yaml(content)
+    if not isinstance(payload, dict):
+        raise ValueError("policy document must be an object")
+    return payload
+
+
 def _finding(
     *,
     rule_id: str,
@@ -286,6 +399,9 @@ def _finding(
     redacted: bool,
     line: int | None = None,
     size_bytes: int | None = None,
+    allowed: bool | None = None,
+    matched_policy_id: str | None = None,
+    policy_source: str | None = None,
 ) -> dict:
     finding = {
         "rule_id": rule_id,
@@ -298,7 +414,175 @@ def _finding(
         finding["line"] = line
     if size_bytes is not None:
         finding["size_bytes"] = size_bytes
+    if allowed is not None:
+        finding["allowed"] = allowed
+    if matched_policy_id is not None:
+        finding["matched_policy_id"] = matched_policy_id
+    if policy_source is not None:
+        finding["policy_source"] = policy_source
     return finding
+
+
+def _policy_issue(pattern: str, source: str, policy_id: str) -> dict:
+    return _finding(
+        rule_id=POLICY_RULE_IDS[pattern],
+        severity=STATUS_BLOCK,
+        file="<policy>",
+        pattern=pattern,
+        redacted=True,
+        policy_source=source,
+        matched_policy_id=policy_id,
+    )
+
+
+def _is_secret_fixture_path(path_pattern: str) -> bool:
+    normalized = path_pattern.replace("\\", "/").strip().lstrip("/")
+    return any(normalized.startswith(prefix) for prefix in SECRET_ALLOW_FIXTURE_PREFIXES)
+
+
+def _load_policy_config(
+    root: Path,
+    config_path: str | Path | None = None,
+    local_config_path: str | Path | None = None,
+    load_local_config: bool = True,
+) -> PolicyConfig:
+    sources: list[tuple[str, Path, bool]] = []
+    default_config_path = root / "repo-health-doctor.yml"
+    if config_path is None:
+        sources.append(("repo", default_config_path, False))
+    else:
+        sources.append(("repo", Path(config_path), True))
+    if load_local_config:
+        source_path = root / ".repo-health-doctor.local.yml" if local_config_path is None else Path(local_config_path)
+        sources.append(("local", source_path, local_config_path is not None))
+
+    ignore_paths: list[str] = []
+    allow_findings: list[AllowFindingPolicy] = []
+    issues: list[dict] = []
+    loaded_sources: list[str] = []
+    ignore_count = 0
+    allow_count = 0
+
+    for source, path, required in sources:
+        if not path.is_absolute():
+            path = root / path
+        if not path.exists():
+            if required:
+                issues.append(_policy_issue("invalid_config", source, f"{source}:config"))
+                loaded_sources.append(source)
+            continue
+        loaded_sources.append(source)
+        try:
+            payload = _load_policy_document(path)
+        except (OSError, ValueError, json.JSONDecodeError):
+            issues.append(_policy_issue("invalid_config", source, f"{source}:config"))
+            continue
+
+        raw_ignore_paths = payload.get("ignore_paths", [])
+        if not isinstance(raw_ignore_paths, list):
+            issues.append(_policy_issue("invalid_ignore", source, f"{source}:ignore"))
+        else:
+            for index, item in enumerate(raw_ignore_paths, start=1):
+                policy_id = f"{source}:ignore:{index}"
+                if not isinstance(item, str) or not item.strip():
+                    issues.append(_policy_issue("invalid_ignore", source, policy_id))
+                    continue
+                ignore_count += 1
+                ignore_paths.append(item)
+
+        raw_allow_findings = payload.get("allow_findings", [])
+        if not isinstance(raw_allow_findings, list):
+            issues.append(_policy_issue("invalid_allow", source, f"{source}:allow"))
+            continue
+
+        for index, item in enumerate(raw_allow_findings, start=1):
+            policy_id = f"{source}:allow:{index}"
+            allow_count += 1
+            if not isinstance(item, dict):
+                issues.append(_policy_issue("invalid_allow", source, policy_id))
+                continue
+            missing_required = [
+                key
+                for key in ("rule_id", "path", "reason", "owner", "expires")
+                if not isinstance(item.get(key), str) or not item.get(key, "").strip()
+            ]
+            if missing_required:
+                issues.append(_policy_issue("invalid_allow", source, policy_id))
+                continue
+
+            rule_id = item["rule_id"].strip()
+            path_pattern = item["path"].strip()
+            if rule_id not in KNOWN_FINDING_RULE_IDS:
+                issues.append(_policy_issue("unknown_rule_id", source, policy_id))
+                continue
+
+            try:
+                expires = date.fromisoformat(item["expires"].strip())
+            except ValueError:
+                issues.append(_policy_issue("invalid_allow", source, policy_id))
+                continue
+            if expires < date.today():
+                issues.append(_policy_issue("expired_allow", source, policy_id))
+                continue
+
+            if rule_id in SECRET_RULE_ID_VALUES and not _is_secret_fixture_path(path_pattern):
+                issues.append(_policy_issue("restricted_secret_allow", source, policy_id))
+                continue
+
+            allow_findings.append(
+                AllowFindingPolicy(
+                    policy_id=policy_id,
+                    source=source,
+                    rule_id=rule_id,
+                    path_pattern=path_pattern,
+                )
+            )
+
+    return PolicyConfig(
+        ignore_paths=tuple(ignore_paths),
+        allow_findings=tuple(allow_findings),
+        issues=issues,
+        sources=tuple(dict.fromkeys(loaded_sources)),
+        ignore_path_count=ignore_count,
+        allow_finding_count=allow_count,
+    )
+
+
+def _matches_path_pattern(relative_path: str, pattern: str) -> bool:
+    normalized_path = relative_path.replace("\\", "/").strip().lstrip("/")
+    normalized_pattern = pattern.replace("\\", "/").strip().lstrip("/")
+    if not normalized_pattern:
+        return False
+    if any(char in normalized_pattern for char in "*?[]"):
+        return fnmatch.fnmatch(normalized_path, normalized_pattern)
+    if normalized_pattern.endswith("/"):
+        return normalized_path.startswith(normalized_pattern)
+    return normalized_path == normalized_pattern or normalized_path.startswith(f"{normalized_pattern}/")
+
+
+def _apply_allow_findings(findings: list[dict], policy: PolicyConfig) -> list[dict]:
+    allowed_findings: list[dict] = []
+    for finding in findings:
+        matched_allow = None
+        for allow in policy.allow_findings:
+            if allow.rule_id != finding["rule_id"]:
+                continue
+            if _matches_path_pattern(finding["file"], allow.path_pattern):
+                matched_allow = allow
+                break
+        normalized = dict(finding)
+        if matched_allow is None:
+            normalized["allowed"] = False
+        else:
+            normalized["allowed"] = True
+            normalized["matched_policy_id"] = matched_allow.policy_id
+            normalized["policy_source"] = matched_allow.source
+        allowed_findings.append(normalized)
+    return allowed_findings
+
+
+def _has_unallowed_findings(findings: list[dict]) -> bool:
+    return any(not finding.get("allowed", False) for finding in findings)
 
 
 def _scan_secrets(root: Path, ignore_patterns: tuple[str, ...]) -> tuple[list[dict], int]:
@@ -340,9 +624,9 @@ def _scan_secrets(root: Path, ignore_patterns: tuple[str, ...]) -> tuple[list[di
     return findings, scanned_files
 
 
-def _scan_large_files(root: Path, threshold_bytes: int) -> list[dict]:
+def _scan_large_files(root: Path, threshold_bytes: int, ignore_patterns: tuple[str, ...]) -> list[dict]:
     findings: list[dict] = []
-    for path in _iter_files(root):
+    for path in _iter_files(root, ignore_patterns=ignore_patterns):
         try:
             size = path.stat().st_size
         except OSError:
@@ -365,12 +649,18 @@ def _scan_large_files(root: Path, threshold_bytes: int) -> list[dict]:
 def _scan_public_text_safety(
     root: Path,
     tracked_files: tuple[Path, ...] | None,
+    ignore_patterns: tuple[str, ...],
 ) -> tuple[list[dict], int, str]:
     findings: list[dict] = []
     scanned_files = 0
     scope = "tracked" if tracked_files is not None else "all"
 
-    for path in _iter_candidate_files(root, tracked_files=tracked_files, include_ignored=True):
+    for path in _iter_candidate_files(
+        root,
+        tracked_files=tracked_files,
+        include_ignored=True,
+        ignore_patterns=ignore_patterns,
+    ):
         if path.suffix.lower() not in TEXT_EXTENSIONS and path.name not in {".env", ".env.local", ".envrc"}:
             continue
         if _is_binary_file(path):
@@ -420,13 +710,19 @@ def _classify_tracked_artifact(relative_path: Path) -> str | None:
     return None
 
 
-def _scan_tracked_artifacts(root: Path, tracked_files: tuple[Path, ...] | None) -> tuple[list[dict], str]:
+def _scan_tracked_artifacts(
+    root: Path,
+    tracked_files: tuple[Path, ...] | None,
+    ignore_patterns: tuple[str, ...],
+) -> tuple[list[dict], str]:
     if tracked_files is None:
         return [], "unavailable"
 
     findings: list[dict] = []
     for path in sorted(tracked_files, key=lambda item: item.as_posix()):
         relative_path = path.relative_to(root)
+        if _is_ignored_path(relative_path, ignore_patterns):
+            continue
         category = _classify_tracked_artifact(relative_path)
         if category:
             findings.append(
@@ -446,10 +742,20 @@ def diagnose_repo(
     large_file_threshold_mb: int = DEFAULT_LARGE_FILE_THRESHOLD_MB,
     secrets_ignores: tuple[str, ...] = (),
     public_safety: bool = False,
+    config_path: str | Path | None = None,
+    local_config_path: str | Path | None = None,
+    load_local_config: bool = True,
 ) -> dict:
     root = Path(repo_path).resolve()
     threshold_bytes = large_file_threshold_mb * 1024 * 1024
-    combined_secrets_ignores = DEFAULT_SECRETS_IGNORES + tuple(secrets_ignores)
+    policy = _load_policy_config(
+        root,
+        config_path=config_path,
+        local_config_path=local_config_path,
+        load_local_config=load_local_config,
+    )
+    policy_ignore_paths = policy.ignore_paths
+    combined_secrets_ignores = DEFAULT_SECRETS_IGNORES + tuple(secrets_ignores) + policy_ignore_paths
     checks: list[CheckResult] = []
 
     readmes = _has_any(root, README_NAMES)
@@ -513,25 +819,30 @@ def diagnose_repo(
     )
 
     secret_findings, scanned_files = _scan_secrets(root, combined_secrets_ignores)
+    secret_findings = _apply_allow_findings(secret_findings, policy)
     checks.append(
         CheckResult(
             name="secrets_scan",
-            status=STATUS_BLOCK if secret_findings else STATUS_PASS,
-            summary="Potential secrets detected." if secret_findings else "No obvious secrets detected.",
+            status=STATUS_BLOCK if _has_unallowed_findings(secret_findings) else STATUS_PASS,
+            summary=(
+                "Potential secrets detected."
+                if _has_unallowed_findings(secret_findings)
+                else "No obvious unallowed secrets detected."
+            ),
             details={
                 "findings": secret_findings,
                 "scanned_files": scanned_files,
-                "ignored_paths": list(combined_secrets_ignores),
+                "ignored_path_count": len(combined_secrets_ignores),
             },
         )
     )
 
-    large_files = _scan_large_files(root, threshold_bytes)
+    large_files = _apply_allow_findings(_scan_large_files(root, threshold_bytes, policy_ignore_paths), policy)
     checks.append(
         CheckResult(
             name="large_files",
-            status=STATUS_WARN if large_files else STATUS_PASS,
-            summary="Large files detected." if large_files else "No large files detected.",
+            status=STATUS_WARN if _has_unallowed_findings(large_files) else STATUS_PASS,
+            summary="Large files detected." if _has_unallowed_findings(large_files) else "No unallowed large files detected.",
             details={
                 "threshold_mb": large_file_threshold_mb,
                 "threshold_bytes": threshold_bytes,
@@ -542,14 +853,19 @@ def diagnose_repo(
 
     if public_safety:
         tracked_files = _list_tracked_files(root)
-        public_text_findings, scanned_files, scope = _scan_public_text_safety(root, tracked_files)
+        public_text_findings, scanned_files, scope = _scan_public_text_safety(
+            root,
+            tracked_files,
+            policy_ignore_paths,
+        )
+        public_text_findings = _apply_allow_findings(public_text_findings, policy)
         checks.append(
             CheckResult(
                 name="public_text_safety",
-                status=STATUS_BLOCK if public_text_findings else STATUS_PASS,
+                status=STATUS_BLOCK if _has_unallowed_findings(public_text_findings) else STATUS_PASS,
                 summary=(
                     "Public-facing text should be reviewed before release."
-                    if public_text_findings
+                    if _has_unallowed_findings(public_text_findings)
                     else "No obvious public-facing text issues detected."
                 ),
                 details={
@@ -560,11 +876,12 @@ def diagnose_repo(
             )
         )
 
-        tracked_artifacts, tracked_scope = _scan_tracked_artifacts(root, tracked_files)
-        tracked_artifact_status = STATUS_BLOCK if tracked_artifacts else STATUS_PASS
+        tracked_artifacts, tracked_scope = _scan_tracked_artifacts(root, tracked_files, policy_ignore_paths)
+        tracked_artifacts = _apply_allow_findings(tracked_artifacts, policy)
+        tracked_artifact_status = STATUS_BLOCK if _has_unallowed_findings(tracked_artifacts) else STATUS_PASS
         tracked_artifact_summary = (
             "Tracked generated or environment files should be reviewed before release."
-            if tracked_artifacts
+            if _has_unallowed_findings(tracked_artifacts)
             else (
                 "Tracked generated or environment files were not detected."
                 if tracked_scope == "tracked"
@@ -582,6 +899,21 @@ def diagnose_repo(
                 details={
                     "findings": tracked_artifacts,
                     "scan_scope": tracked_scope,
+                },
+            )
+        )
+
+    if policy.sources or policy.issues:
+        checks.append(
+            CheckResult(
+                name="policy",
+                status=STATUS_BLOCK if policy.issues else STATUS_PASS,
+                summary="Policy configuration has blocking issues." if policy.issues else "Policy configuration loaded.",
+                details={
+                    "findings": policy.issues,
+                    "policy_sources": list(policy.sources),
+                    "ignore_path_count": policy.ignore_path_count,
+                    "allow_finding_count": policy.allow_finding_count,
                 },
             )
         )
@@ -631,23 +963,36 @@ def format_text(report: dict) -> str:
         if check["name"] == "secrets_scan":
             lines.append(f"  scanned_files: {details['scanned_files']}")
             for finding in details["findings"][:5]:
-                lines.append(f"  possible secret: {finding['file']} ({finding['pattern']})")
+                prefix = "allowed possible secret" if finding.get("allowed") else "possible secret"
+                lines.append(f"  {prefix}: {finding['file']} ({finding['pattern']})")
         if check["name"] == "large_files":
             lines.append(f"  threshold_bytes: {details['threshold_bytes']}")
             for finding in details["findings"][:5]:
-                lines.append(f"  large file: {finding['file']} ({finding['size_bytes']} bytes)")
+                prefix = "allowed large file" if finding.get("allowed") else "large file"
+                lines.append(f"  {prefix}: {finding['file']} ({finding['size_bytes']} bytes)")
         if check["name"] == "public_text_safety":
             lines.append(f"  scanned_files: {details['scanned_files']}")
             lines.append(f"  scan_scope: {details['scan_scope']}")
             for finding in details["findings"][:5]:
+                prefix = "allowed public text issue" if finding.get("allowed") else "public text issue"
                 lines.append(
-                    "  public text issue: "
+                    f"  {prefix}: "
                     f"{finding['file']} ({finding['pattern']} line {finding['line']})"
                 )
         if check["name"] == "tracked_artifacts":
             lines.append(f"  scan_scope: {details['scan_scope']}")
             for finding in details["findings"][:5]:
-                lines.append(f"  tracked file issue: {finding['file']} ({finding['pattern']})")
+                prefix = "allowed tracked file issue" if finding.get("allowed") else "tracked file issue"
+                lines.append(f"  {prefix}: {finding['file']} ({finding['pattern']})")
+        if check["name"] == "policy":
+            lines.append(f"  policy_sources: {', '.join(details['policy_sources'])}")
+            lines.append(f"  ignore_path_count: {details['ignore_path_count']}")
+            lines.append(f"  allow_finding_count: {details['allow_finding_count']}")
+            for finding in details["findings"][:5]:
+                lines.append(
+                    "  policy issue: "
+                    f"{finding['matched_policy_id']} ({finding['pattern']})"
+                )
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"

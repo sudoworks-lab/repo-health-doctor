@@ -51,6 +51,8 @@ repo-health-doctor . --format json
 repo-health-doctor . --strict
 repo-health-doctor . --large-file-threshold-mb 5
 repo-health-doctor . --public-safety
+repo-health-doctor . --public-safety --config repo-health-doctor.yml
+repo-health-doctor . --public-safety --no-local-config
 repo-health-doctor . --format json --output /tmp/repo-health-doctor-result.json
 repo-health-doctor . --secrets-ignore artifacts/ --secrets-ignore tmp/
 ```
@@ -103,7 +105,7 @@ JSON 出力の先頭は次のようになります。
 {
   "tool": "repo-health-doctor",
   "version": "0.1.0",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "repo_path": ".",
   "overall_status": "pass"
 }
@@ -111,6 +113,8 @@ JSON 出力の先頭は次のようになります。
 
 JSON report の契約は `schema_version` で管理します。finding が出る場合は `rule_id`, `severity`, `file`, `pattern`, `redacted` を含み、検知値そのものは出力しません。
 機械処理する場合は [schemas/public-safety-report.schema.json](schemas/public-safety-report.schema.json) を参照してください。rule の一覧は [docs/rules.md](docs/rules.md) にまとめています。
+
+Policy は `repo-health-doctor.yml` と `.repo-health-doctor.local.yml` から読み込めます。local policy は git 管理外に置く前提です。`ignore_paths` は scan 除外、`allow_findings` は理由・owner・期限付きの finding 例外です。詳細は [docs/policy.md](docs/policy.md) にまとめています。
 
 ## Exit Codes
 
@@ -127,6 +131,9 @@ JSON report の契約は `schema_version` で管理します。finding が出る
 - `--output <file>`: text / json の描画結果をファイルへ保存しつつ標準出力にも出します
 - `--secrets-ignore <pattern>`: secrets scan から path prefix を除外します。複数回指定できます
 - `--public-safety`: 公開前の追加チェックを有効にします
+- `--config <file>`: 公開用 policy config を指定します
+- `--local-config <file>`: local policy config を指定します
+- `--no-local-config`: local policy config を読み込みません
 
 ## CI / Tests
 

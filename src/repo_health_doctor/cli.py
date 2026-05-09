@@ -51,6 +51,19 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enable extra checks for public release safety.",
     )
+    parser.add_argument(
+        "--config",
+        help="Read policy from this file. Defaults to repo-health-doctor.yml when present.",
+    )
+    parser.add_argument(
+        "--local-config",
+        help="Read local policy from this file. Defaults to .repo-health-doctor.local.yml when present.",
+    )
+    parser.add_argument(
+        "--no-local-config",
+        action="store_true",
+        help="Do not read the local policy config.",
+    )
     return parser
 
 
@@ -69,6 +82,9 @@ def main(argv: list[str] | None = None) -> int:
         large_file_threshold_mb=args.large_file_threshold_mb,
         secrets_ignores=tuple(args.secrets_ignore),
         public_safety=args.public_safety,
+        config_path=args.config,
+        local_config_path=args.local_config,
+        load_local_config=not args.no_local_config,
     )
     output = format_json(report) if args.format == "json" else format_text(report)
     if args.output:
