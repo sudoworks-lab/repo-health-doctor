@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repo-health-doctor://schemas/policy-config.schema.json",
+  "title": "repo-health-doctor policy config",
+  "type": "object",
+  "properties": {
+    "ignore_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "allow_findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "rule_id",
+          "path",
+          "reason",
+          "owner",
+          "expires"
+        ],
+        "properties": {
+          "rule_id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "expires": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          }
+        }
+      }
+    }
+  }
+}

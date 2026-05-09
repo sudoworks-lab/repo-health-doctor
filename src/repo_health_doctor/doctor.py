@@ -585,6 +585,51 @@ def _has_unallowed_findings(findings: list[dict]) -> bool:
     return any(not finding.get("allowed", False) for finding in findings)
 
 
+def _policy_check(policy: PolicyConfig) -> CheckResult:
+    if policy.issues:
+        summary = "Policy configuration has blocking issues."
+    elif policy.sources:
+        summary = "Policy configuration loaded."
+    else:
+        summary = "No policy configuration found."
+    return CheckResult(
+        name="policy",
+        status=STATUS_BLOCK if policy.issues else STATUS_PASS,
+        summary=summary,
+        details={
+            "findings": policy.issues,
+            "policy_sources": list(policy.sources),
+            "ignore_path_count": policy.ignore_path_count,
+            "allow_finding_count": policy.allow_finding_count,
+        },
+    )
+
+
+def _build_report(root: Path, checks: list[CheckResult]) -> dict:
+    counts = {
+        STATUS_PASS: sum(1 for check in checks if check.status == STATUS_PASS),
+        STATUS_WARN: sum(1 for check in checks if check.status == STATUS_WARN),
+        STATUS_BLOCK: sum(1 for check in checks if check.status == STATUS_BLOCK),
+    }
+
+    overall_status = (
+        STATUS_BLOCK
+        if counts[STATUS_BLOCK]
+        else STATUS_WARN
+        if counts[STATUS_WARN]
+        else STATUS_PASS
+    )
+    return {
+        "tool": "repo-health-doctor",
+        "version": "0.1.0",
+        "schema_version": REPORT_SCHEMA_VERSION,
+        "repo_path": _safe_repo_path(root),
+        "overall_status": overall_status,
+        "summary": counts,
+        "checks": [asdict(check) for check in checks],
+    }
+
+
 def _scan_secrets(root: Path, ignore_patterns: tuple[str, ...]) -> tuple[list[dict], int]:
     findings: list[dict] = []
     scanned_files = 0
@@ -904,42 +949,25 @@ def diagnose_repo(
         )
 
     if policy.sources or policy.issues:
-        checks.append(
-            CheckResult(
-                name="policy",
-                status=STATUS_BLOCK if policy.issues else STATUS_PASS,
-                summary="Policy configuration has blocking issues." if policy.issues else "Policy configuration loaded.",
-                details={
-                    "findings": policy.issues,
-                    "policy_sources": list(policy.sources),
-                    "ignore_path_count": policy.ignore_path_count,
-                    "allow_finding_count": policy.allow_finding_count,
-                },
-            )
-        )
+        checks.append(_policy_check(policy))
 
-    counts = {
-        STATUS_PASS: sum(1 for check in checks if check.status == STATUS_PASS),
-        STATUS_WARN: sum(1 for check in checks if check.status == STATUS_WARN),
-        STATUS_BLOCK: sum(1 for check in checks if check.status == STATUS_BLOCK),
-    }
+    return _build_report(root, checks)
 
-    overall_status = (
-        STATUS_BLOCK
-        if counts[STATUS_BLOCK]
-        else STATUS_WARN
-        if counts[STATUS_WARN]
-        else STATUS_PASS
+
+def validate_policy(
+    repo_path: str | Path,
+    config_path: str | Path | None = None,
+    local_config_path: str | Path | None = None,
+    load_local_config: bool = True,
+) -> dict:
+    root = Path(repo_path).resolve()
+    policy = _load_policy_config(
+        root,
+        config_path=config_path,
+        local_config_path=local_config_path,
+        load_local_config=load_local_config,
     )
-    return {
-        "tool": "repo-health-doctor",
-        "version": "0.1.0",
-        "schema_version": REPORT_SCHEMA_VERSION,
-        "repo_path": _safe_repo_path(root),
-        "overall_status": overall_status,
-        "summary": counts,
-        "checks": [asdict(check) for check in checks],
-    }
+    return _build_report(root, [_policy_check(policy)])
 
 
 def format_text(report: dict) -> str:

@@ -1,0 +1,14 @@
+{
+  "ignore_paths": [
+    "generated-output/"
+  ],
+  "allow_findings": [
+    {
+      "rule_id": "rhd.repository.large_file",
+      "path": "fixtures/large.bin",
+      "reason": "reviewed-category",
+      "owner": "release-team",
+      "expires": "2999-01-01"
+    }
+  ]
+}

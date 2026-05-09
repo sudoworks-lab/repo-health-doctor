@@ -37,3 +37,7 @@ jobs:
           repo-health-doctor . --strict --public-safety --format json --output /tmp/repo-health-doctor-result.json
           test -s /tmp/repo-health-doctor-result.json
           python -m json.tool /tmp/repo-health-doctor-result.json >/dev/null
+          repo-health-doctor validate-policy .
+          repo-health-doctor validate-policy . --format json --output /tmp/repo-health-doctor-policy.json
+          test -s /tmp/repo-health-doctor-policy.json
+          python -m json.tool /tmp/repo-health-doctor-policy.json >/dev/null

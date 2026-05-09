@@ -8,10 +8,15 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from repo_health_doctor.doctor import determine_exit_code, diagnose_repo, format_json, format_text
+from repo_health_doctor.doctor import determine_exit_code, diagnose_repo, format_json, format_text, validate_policy
 
 
 SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "public-safety-report.schema.json"
+POLICY_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "policy-config.schema.json"
+FIXTURES_PATH = Path(__file__).resolve().parent / "fixtures"
+POLICY_FIXTURES_PATH = FIXTURES_PATH / "policies"
+VALID_POLICY_REPO_PATH = FIXTURES_PATH / "policy-valid-repo"
+GOLDEN_POLICY_REPORT_PATH = FIXTURES_PATH / "golden" / "valid-policy-report.json"
 
 
 def _assert_matches_schema(testcase: unittest.TestCase, value: object, schema: dict, path: str = "$") -> None:
@@ -693,6 +698,235 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
 
         self.assertEqual(report["overall_status"], "pass")
         self.assertNotIn("policy", check_names)
+
+    def test_policy_config_schema_matches_valid_fixture(self) -> None:
+        schema = json.loads(POLICY_SCHEMA_PATH.read_text(encoding="utf-8"))
+        payload = json.loads((POLICY_FIXTURES_PATH / "valid-policy.json").read_text(encoding="utf-8"))
+
+        _assert_matches_schema(self, payload, schema)
+
+    def test_validate_policy_valid_policy_passes_without_scanning(self) -> None:
+        report = validate_policy(self.tmp_path, config_path=POLICY_FIXTURES_PATH / "valid-policy.yml")
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(report["overall_status"], "pass")
+        self.assertEqual(list(checks), ["policy"])
+        self.assertEqual(checks["policy"]["details"]["policy_sources"], ["repo"])
+        self.assertEqual(checks["policy"]["details"]["ignore_path_count"], 1)
+        self.assertEqual(checks["policy"]["details"]["allow_finding_count"], 1)
+
+    def test_validate_policy_blocks_missing_required_field(self) -> None:
+        report = validate_policy(self.tmp_path, config_path=POLICY_FIXTURES_PATH / "missing-required.yml")
+        checks = {check["name"]: check for check in report["checks"]}
+        finding = checks["policy"]["details"]["findings"][0]
+
+        self.assertEqual(report["overall_status"], "block")
+        self.assertEqual(finding["rule_id"], "rhd.policy.invalid_allow")
+        self.assertEqual(finding["matched_policy_id"], "repo:allow:1")
+
+    def test_validate_policy_blocks_invalid_ignore_paths(self) -> None:
+        report = validate_policy(self.tmp_path, config_path=POLICY_FIXTURES_PATH / "invalid-ignore.json")
+        checks = {check["name"]: check for check in report["checks"]}
+        finding = checks["policy"]["details"]["findings"][0]
+
+        self.assertEqual(report["overall_status"], "block")
+        self.assertEqual(finding["rule_id"], "rhd.policy.invalid_ignore")
+        self.assertEqual(finding["matched_policy_id"], "repo:ignore:1")
+
+    def test_validate_policy_blocks_invalid_expiration_date(self) -> None:
+        report = validate_policy(self.tmp_path, config_path=POLICY_FIXTURES_PATH / "invalid-date.yml")
+        checks = {check["name"]: check for check in report["checks"]}
+        finding = checks["policy"]["details"]["findings"][0]
+
+        self.assertEqual(report["overall_status"], "block")
+        self.assertEqual(finding["rule_id"], "rhd.policy.invalid_allow")
+        self.assertEqual(finding["matched_policy_id"], "repo:allow:1")
+
+    def test_validate_policy_blocks_expired_allow(self) -> None:
+        report = validate_policy(self.tmp_path, config_path=POLICY_FIXTURES_PATH / "expired-allow.yml")
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(report["overall_status"], "block")
+        self.assertEqual(
+            checks["policy"]["details"]["findings"][0]["rule_id"],
+            "rhd.policy.expired_allow",
+        )
+
+    def test_validate_policy_blocks_unknown_rule_id_without_echoing_value(self) -> None:
+        unknown_rule_id = "rhd.example.unknown"
+        report = validate_policy(self.tmp_path, config_path=POLICY_FIXTURES_PATH / "unknown-rule-id.yml")
+        rendered_json = format_json(report)
+        rendered_text = format_text(report)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(report["overall_status"], "block")
+        self.assertEqual(
+            checks["policy"]["details"]["findings"][0]["rule_id"],
+            "rhd.policy.unknown_rule_id",
+        )
+        self.assertNotIn(unknown_rule_id, rendered_json)
+        self.assertNotIn(unknown_rule_id, rendered_text)
+
+    def test_validate_policy_restricts_secret_rule_outside_fixture(self) -> None:
+        report = validate_policy(self.tmp_path, config_path=POLICY_FIXTURES_PATH / "secret-outside-fixture.yml")
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(report["overall_status"], "block")
+        self.assertEqual(
+            checks["policy"]["details"]["findings"][0]["rule_id"],
+            "rhd.policy.restricted_secret_allow",
+        )
+
+    def test_validate_policy_no_local_config_skips_local_policy(self) -> None:
+        local_policy = (POLICY_FIXTURES_PATH / "local-invalid.yml").read_text(encoding="utf-8")
+        (self.tmp_path / ".repo-health-doctor.local.yml").write_text(local_policy, encoding="utf-8")
+
+        default_report = validate_policy(self.tmp_path)
+        no_local_report = validate_policy(self.tmp_path, load_local_config=False)
+
+        self.assertEqual(default_report["overall_status"], "block")
+        self.assertEqual(no_local_report["overall_status"], "pass")
+        self.assertEqual(no_local_report["checks"][0]["details"]["policy_sources"], [])
+
+    def test_validate_policy_json_redacts_policy_values(self) -> None:
+        marker = "POLICY_MARKER_VALUE"
+        raw_path = "private-policy-area/generated.bin"
+        unknown_rule_id = "rhd.example.unknown"
+        (self.tmp_path / "repo-health-doctor.yml").write_text(
+            "allow_findings:\n"
+            f"  - rule_id: {unknown_rule_id}\n"
+            f"    path: {raw_path}\n"
+            f"    reason: {marker}\n"
+            f"    owner: {marker}\n"
+            "    expires: 2999-01-01\n",
+            encoding="utf-8",
+        )
+
+        report = validate_policy(self.tmp_path)
+        rendered_json = format_json(report)
+        rendered_text = format_text(report)
+
+        self.assertEqual(report["overall_status"], "block")
+        self.assertNotIn(marker, rendered_json)
+        self.assertNotIn(marker, rendered_text)
+        self.assertNotIn(raw_path, rendered_json)
+        self.assertNotIn(raw_path, rendered_text)
+        self.assertNotIn(unknown_rule_id, rendered_json)
+        self.assertNotIn(unknown_rule_id, rendered_text)
+
+    def test_validate_policy_report_matches_public_report_schema(self) -> None:
+        report = validate_policy(self.tmp_path, config_path=POLICY_FIXTURES_PATH / "missing-required.yml")
+        payload = json.loads(format_json(report))
+        schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+        _assert_matches_schema(self, payload, schema)
+
+    def test_validate_policy_golden_json_fixture_is_stable(self) -> None:
+        report = validate_policy(VALID_POLICY_REPO_PATH)
+        payload = json.loads(format_json(report))
+        payload["repo_path"] = "<repo>"
+        golden = json.loads(GOLDEN_POLICY_REPORT_PATH.read_text(encoding="utf-8"))
+
+        self.assertEqual(payload, golden)
+
+    def test_validate_policy_cli_outputs_json(self) -> None:
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "validate-policy",
+                str(self.tmp_path),
+                "--format",
+                "json",
+                "--config",
+                str(POLICY_FIXTURES_PATH / "valid-policy.yml"),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["overall_status"], "pass")
+        self.assertEqual([check["name"] for check in payload["checks"]], ["policy"])
+
+    def test_validate_policy_help_is_policy_focused(self) -> None:
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "validate-policy",
+                "--help",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        self.assertIn("validate-policy", result.stdout)
+        self.assertIn("--no-local-config", result.stdout)
+        self.assertNotIn("--public-safety", result.stdout)
+
+    def test_validate_policy_cli_blocks_invalid_policy_without_scanning(self) -> None:
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "validate-policy",
+                str(self.tmp_path),
+                "--format",
+                "json",
+                "--config",
+                str(POLICY_FIXTURES_PATH / "missing-required.yml"),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(payload["overall_status"], "block")
+        self.assertEqual([check["name"] for check in payload["checks"]], ["policy"])
+
+    def test_validate_policy_cli_no_local_config_skips_local_policy(self) -> None:
+        local_policy = (POLICY_FIXTURES_PATH / "local-invalid.yml").read_text(encoding="utf-8")
+        (self.tmp_path / ".repo-health-doctor.local.yml").write_text(local_policy, encoding="utf-8")
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "validate-policy",
+                str(self.tmp_path),
+                "--format",
+                "json",
+                "--no-local-config",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["overall_status"], "pass")
+        self.assertEqual(payload["checks"][0]["details"]["policy_sources"], [])
 
     def test_package_module_help_runs(self) -> None:
         env = os.environ.copy()

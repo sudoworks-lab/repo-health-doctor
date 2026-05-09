@@ -14,6 +14,21 @@
 - `--local-config <file>`: local policy path を明示する
 - `--no-local-config`: local policy を読み込まない
 
+## Validation
+
+scan を実行せず policy だけを検証するには `validate-policy` mode を使います。
+
+```bash
+repo-health-doctor validate-policy .
+repo-health-doctor validate-policy . --format json
+repo-health-doctor validate-policy . --no-local-config
+```
+
+`validate-policy` は policy file の読み込み、`ignore_paths` の形式、`allow_findings` の必須 field、期限、rule_id、secret 系 rule の allow 制約を検証します。
+block 条件がある場合は通常の report と同じ JSON 契約で `overall_status: block` を返します。
+
+config format の schema は [../schemas/policy-config.schema.json](../schemas/policy-config.schema.json) にあります。
+
 ## ignore_paths
 
 `ignore_paths` は scan 前に path pattern で対象を除外します。

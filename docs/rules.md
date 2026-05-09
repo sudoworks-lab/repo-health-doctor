@@ -46,7 +46,7 @@ raw の検知文字列、secret 候補、個人環境由来の値、local networ
 | `rhd.policy.unknown_rule_id` | 未定義 rule_id を参照する allow policy を検知する | `block` | policy source, policy id, category | raw config value は出さない |
 | `rhd.policy.restricted_secret_allow` | fixture 以外で secret 系 rule を allow しようとする policy を検知する | `block` | policy source, policy id, category | raw config value は出さない |
 
-## Phase2-B Note
+## Phase2-C Note
 
-Phase2-B では allowlist / ignore 設定ファイルを追加し、rule_id 単位で理由・期限・対象 path を管理します。
-次の段階では policy の運用補助、より詳細な validation、CI 向けの出力確認を強化します。
+Phase2-C では `validate-policy` mode を追加し、scan を実行せずに policy の破損を検出できるようにします。
+policy validation の finding も通常の JSON report と同じ `rule_id`, `severity`, `redacted` 契約に従います。
