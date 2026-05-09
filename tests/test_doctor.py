@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -29,6 +30,7 @@ POLICY_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "policy-c
 FIXTURES_PATH = Path(__file__).resolve().parent / "fixtures"
 POLICY_FIXTURES_PATH = FIXTURES_PATH / "policies"
 VALID_POLICY_REPO_PATH = FIXTURES_PATH / "policy-valid-repo"
+DEMO_FIXTURE_PATH = FIXTURES_PATH / "demo-repo"
 GOLDEN_POLICY_REPORT_PATH = FIXTURES_PATH / "golden" / "valid-policy-report.json"
 
 
@@ -1173,6 +1175,98 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             "rhd.repository.missing_tests",
         ):
             self.assertIn(rule_id, rules_doc)
+
+    def test_demo_fixture_supports_documented_commands(self) -> None:
+        demo_repo = self.tmp_path / "demo-repo"
+        shutil.copytree(DEMO_FIXTURE_PATH, demo_repo)
+        repo_root = Path(__file__).resolve().parents[1]
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(repo_root / "src")
+
+        subprocess.run(
+            ["git", "-C", str(demo_repo), "init"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(demo_repo), "add", "."],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        public_result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                str(demo_repo),
+                "--public-safety",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+            env=env,
+        )
+        policy_result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "validate-policy",
+                str(demo_repo),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+            env=env,
+        )
+        public_json_path = self.tmp_path / "demo-public-safety.json"
+        policy_json_path = self.tmp_path / "demo-policy.json"
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                str(demo_repo),
+                "--public-safety",
+                "--format",
+                "json",
+                "--output",
+                str(public_json_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+            env=env,
+        )
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "validate-policy",
+                str(demo_repo),
+                "--format",
+                "json",
+                "--output",
+                str(policy_json_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+            env=env,
+        )
+
+        self.assertIn("Repo Health Doctor: PASS", public_result.stdout)
+        self.assertIn("Repo Health Doctor: PASS", policy_result.stdout)
+        self.assertEqual(json.loads(public_json_path.read_text(encoding="utf-8"))["overall_status"], "pass")
+        self.assertEqual(json.loads(policy_json_path.read_text(encoding="utf-8"))["overall_status"], "pass")
 
     def test_validate_policy_cli_outputs_json(self) -> None:
         env = os.environ.copy()
