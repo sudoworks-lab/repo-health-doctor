@@ -142,7 +142,7 @@ JSON 出力の先頭は次のようになります。
 JSON report の契約は `schema_version` で管理します。finding が出る場合は `rule_id`, `severity`, `file`, `pattern`, `redacted` を含み、検知値そのものは出力しません。
 機械処理する場合は [schemas/public-safety-report.schema.json](schemas/public-safety-report.schema.json) を参照してください。rule の一覧は [docs/rules.md](docs/rules.md) にまとめています。
 
-Policy は `repo-health-doctor.yml` と `.repo-health-doctor.local.yml` から読み込めます。local policy は git 管理外に置く前提です。`ignore_paths` は scan 除外、`allow_findings` は理由・owner・期限付きの finding 例外です。`validate-policy` mode では scan を実行せず policy だけを検証できます。詳細は [docs/policy.md](docs/policy.md) にまとめています。
+Policy は `repo-health-doctor.yml` と `.repo-health-doctor.local.yml` から読み込めます。local policy は git 管理外に置く前提です。`ignore_paths` は repository hygiene 系 check の scan 除外、`allow_findings` は理由・owner・期限付きの finding 例外です。security / public-safety / tracked-artifact 系 rule には `ignore_paths` を適用しません。`validate-policy` mode では scan を実行せず policy だけを検証できます。詳細は [docs/policy.md](docs/policy.md) にまとめています。
 
 ## Exit Codes
 

@@ -518,13 +518,14 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             self.assertIn("pattern", finding)
             self.assertIsInstance(finding["redacted"], bool)
 
-    def test_policy_ignore_paths_exclude_scan_targets(self) -> None:
+    def test_policy_ignore_paths_only_exclude_non_security_checks(self) -> None:
         self._init_git_repo()
         self._write_complete_repo_baseline()
         (self.tmp_path / "artifacts").mkdir()
         secret_line = 'to' + 'ken = "' + ("a" * 20) + '"\n'
         (self.tmp_path / "artifacts" / "sample.py").write_text(secret_line, encoding="utf-8")
         (self.tmp_path / "artifacts" / "build.log").write_text("log\n", encoding="utf-8")
+        (self.tmp_path / "artifacts" / "large.bin").write_bytes(b"x" * (2 * 1024 * 1024))
         (self.tmp_path / "repo-health-doctor.yml").write_text(
             "ignore_paths:\n"
             "  - artifacts/\n",
@@ -538,13 +539,131 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             text=True,
         )
 
+        report = diagnose_repo(self.tmp_path, public_safety=True, large_file_threshold_mb=1)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["secrets_scan"]["status"], "block")
+        self.assertEqual(checks["tracked_artifacts"]["status"], "block")
+        self.assertEqual(checks["large_files"]["status"], "pass")
+        self.assertEqual(checks["policy"]["status"], "pass")
+        self.assertEqual(checks["policy"]["details"]["ignore_path_count"], 1)
+
+    def test_policy_ignore_paths_wildcard_does_not_hide_secret_finding(self) -> None:
+        self._write_complete_repo_baseline()
+        secret_value = "s" * 24
+        (self.tmp_path / "app.py").write_text('api_' + 'key = "' + secret_value + '"\n', encoding="utf-8")
+        (self.tmp_path / "repo-health-doctor.yml").write_text(
+            "ignore_paths:\n"
+            "  - '*'\n",
+            encoding="utf-8",
+        )
+
+        report = diagnose_repo(self.tmp_path)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["secrets_scan"]["status"], "block")
+        self.assertEqual(
+            checks["secrets_scan"]["details"]["findings"][0]["rule_id"],
+            "rhd.secret.generic_api_key",
+        )
+
+    def test_policy_ignore_paths_wildcard_does_not_hide_public_text_findings(self) -> None:
+        self._init_git_repo()
+        self._write_complete_repo_baseline()
+        private_path = "/ho" + "me/" + "demo/private/project"
+        local_ip = "192." + "168.1.20"
+        (self.tmp_path / "docs" / "public.md").write_text(
+            f"path={private_path}\nip={local_ip}\n",
+            encoding="utf-8",
+        )
+        (self.tmp_path / "repo-health-doctor.yml").write_text(
+            "ignore_paths:\n"
+            "  - '*'\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["git", "add", "README.md", "docs/public.md"],
+            cwd=self.tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        report = diagnose_repo(self.tmp_path, public_safety=True)
+        checks = {check["name"]: check for check in report["checks"]}
+        rule_ids = {finding["rule_id"] for finding in checks["public_text_safety"]["details"]["findings"]}
+
+        self.assertEqual(checks["public_text_safety"]["status"], "block")
+        self.assertIn("rhd.public_text.private_path", rule_ids)
+        self.assertIn("rhd.public_text.local_ip", rule_ids)
+
+    def test_policy_ignore_paths_wildcard_does_not_hide_tracked_artifact_finding(self) -> None:
+        self._init_git_repo()
+        self._write_complete_repo_baseline()
+        (self.tmp_path / "artifacts").mkdir()
+        (self.tmp_path / "artifacts" / "build.log").write_text("log\n", encoding="utf-8")
+        (self.tmp_path / "repo-health-doctor.yml").write_text(
+            "ignore_paths:\n"
+            "  - '*'\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["git", "add", "README.md", "artifacts/build.log"],
+            cwd=self.tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
         report = diagnose_repo(self.tmp_path, public_safety=True)
         checks = {check["name"]: check for check in report["checks"]}
 
-        self.assertEqual(checks["secrets_scan"]["status"], "pass")
-        self.assertEqual(checks["tracked_artifacts"]["status"], "pass")
-        self.assertEqual(checks["policy"]["status"], "pass")
-        self.assertEqual(checks["policy"]["details"]["ignore_path_count"], 1)
+        self.assertEqual(checks["tracked_artifacts"]["status"], "block")
+        self.assertEqual(
+            checks["tracked_artifacts"]["details"]["findings"][0]["rule_id"],
+            "rhd.tracked_artifact.generated_dir",
+        )
+
+    def test_policy_ignore_paths_wildcard_cannot_disable_security_checks_in_reports(self) -> None:
+        self._init_git_repo()
+        self._write_complete_repo_baseline()
+        secret_value = "s" * 24
+        private_path = "/ho" + "me/" + "demo/private/project"
+        local_ip = "192." + "168.1.20"
+        (self.tmp_path / "app.py").write_text('api_' + 'key = "' + secret_value + '"\n', encoding="utf-8")
+        (self.tmp_path / "docs" / "public.md").write_text(
+            f"path={private_path}\nip={local_ip}\n",
+            encoding="utf-8",
+        )
+        (self.tmp_path / "repo-health-doctor.yml").write_text(
+            "ignore_paths:\n"
+            "  - '*'\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["git", "add", "README.md", "app.py", "docs/public.md"],
+            cwd=self.tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        report = diagnose_repo(self.tmp_path, public_safety=True)
+        rendered_json = format_json(report)
+        rendered_text = format_text(report)
+
+        self.assertIn("rhd.secret.generic_api_key", rendered_json)
+        self.assertIn("rhd.public_text.private_path", rendered_json)
+        self.assertIn("rhd.public_text.local_ip", rendered_json)
+        self.assertIn("rhd.secret.generic_api_key", rendered_text)
+        self.assertIn("rhd.public_text.private_path", rendered_text)
+        self.assertIn("rhd.public_text.local_ip", rendered_text)
+        self.assertNotIn(secret_value, rendered_json)
+        self.assertNotIn(secret_value, rendered_text)
+        self.assertNotIn(private_path, rendered_json)
+        self.assertNotIn(private_path, rendered_text)
+        self.assertNotIn(local_ip, rendered_json)
+        self.assertNotIn(local_ip, rendered_text)
 
     def test_policy_allows_matching_large_file_finding(self) -> None:
         self._write_complete_repo_baseline()
@@ -803,6 +922,30 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             checks["policy"]["details"]["findings"][0]["rule_id"],
             "rhd.policy.restricted_secret_allow",
         )
+
+    def test_validate_policy_blocks_unknown_top_level_key_without_echoing_value(self) -> None:
+        unknown_key = "ignore_pathz"
+        raw_value = "private-policy-area/"
+        (self.tmp_path / "repo-health-doctor.yml").write_text(
+            f"{unknown_key}:\n"
+            f"  - {raw_value}\n",
+            encoding="utf-8",
+        )
+
+        report = validate_policy(self.tmp_path)
+        rendered_json = format_json(report)
+        rendered_text = format_text(report)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(report["overall_status"], "block")
+        self.assertEqual(
+            checks["policy"]["details"]["findings"][0]["rule_id"],
+            "rhd.policy.unknown_top_level_key",
+        )
+        self.assertNotIn(unknown_key, rendered_json)
+        self.assertNotIn(unknown_key, rendered_text)
+        self.assertNotIn(raw_value, rendered_json)
+        self.assertNotIn(raw_value, rendered_text)
 
     def test_validate_policy_no_local_config_skips_local_policy(self) -> None:
         local_policy = (POLICY_FIXTURES_PATH / "local-invalid.yml").read_text(encoding="utf-8")

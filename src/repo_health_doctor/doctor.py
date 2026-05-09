@@ -107,6 +107,7 @@ POLICY_RULE_IDS = {
     "invalid_allow": "rhd.policy.invalid_allow",
     "expired_allow": "rhd.policy.expired_allow",
     "unknown_rule_id": "rhd.policy.unknown_rule_id",
+    "unknown_top_level_key": "rhd.policy.unknown_top_level_key",
     "restricted_secret_allow": "rhd.policy.restricted_secret_allow",
 }
 KNOWN_FINDING_RULE_IDS = (
@@ -117,6 +118,7 @@ KNOWN_FINDING_RULE_IDS = (
 )
 SECRET_RULE_ID_VALUES = set(SECRET_RULE_IDS.values())
 SECRET_ALLOW_FIXTURE_PREFIXES = ("tests/fixtures/", "test/fixtures/")
+POLICY_TOP_LEVEL_KEYS = frozenset({"ignore_paths", "allow_findings"})
 
 
 def _join_fragments(*parts: str) -> str:
@@ -479,6 +481,10 @@ def _load_policy_config(
             issues.append(_policy_issue("invalid_config", source, f"{source}:config"))
             continue
 
+        unknown_top_level_keys = [key for key in payload if key not in POLICY_TOP_LEVEL_KEYS]
+        for index, _ in enumerate(unknown_top_level_keys, start=1):
+            issues.append(_policy_issue("unknown_top_level_key", source, f"{source}:top-level:{index}"))
+
         raw_ignore_paths = payload.get("ignore_paths", [])
         if not isinstance(raw_ignore_paths, list):
             issues.append(_policy_issue("invalid_ignore", source, f"{source}:ignore"))
@@ -801,7 +807,7 @@ def diagnose_repo(
         load_local_config=load_local_config,
     )
     policy_ignore_paths = policy.ignore_paths
-    combined_secrets_ignores = DEFAULT_SECRETS_IGNORES + tuple(secrets_ignores) + policy_ignore_paths
+    combined_secrets_ignores = DEFAULT_SECRETS_IGNORES + tuple(secrets_ignores)
     checks: list[CheckResult] = []
 
     readmes = _has_any(root, README_NAMES)
@@ -902,7 +908,7 @@ def diagnose_repo(
         public_text_findings, scanned_files, scope = _scan_public_text_safety(
             root,
             tracked_files,
-            policy_ignore_paths,
+            (),
         )
         public_text_findings = _apply_allow_findings(public_text_findings, policy)
         checks.append(
@@ -922,7 +928,7 @@ def diagnose_repo(
             )
         )
 
-        tracked_artifacts, tracked_scope = _scan_tracked_artifacts(root, tracked_files, policy_ignore_paths)
+        tracked_artifacts, tracked_scope = _scan_tracked_artifacts(root, tracked_files, ())
         tracked_artifacts = _apply_allow_findings(tracked_artifacts, policy)
         tracked_artifact_status = STATUS_BLOCK if _has_unallowed_findings(tracked_artifacts) else STATUS_PASS
         tracked_artifact_summary = (

@@ -53,6 +53,7 @@ raw の検知文字列、secret 候補、個人環境由来の値、local networ
 | `rhd.policy.invalid_allow` | allow policy の必須 field 不足や形式不備を検知する | `block` | policy source, policy id, category | raw config value は出さない |
 | `rhd.policy.expired_allow` | 期限切れ allow policy を検知する | `block` | policy source, policy id, category | raw config value は出さない |
 | `rhd.policy.unknown_rule_id` | 未定義 rule_id を参照する allow policy を検知する | `block` | policy source, policy id, category | raw config value は出さない |
+| `rhd.policy.unknown_top_level_key` | 未知の top-level key を含む policy を検知する | `block` | policy source, policy id, category | raw config value は出さない |
 | `rhd.policy.restricted_secret_allow` | fixture 以外で secret 系 rule を allow しようとする policy を検知する | `block` | policy source, policy id, category | raw config value は出さない |
 
 ## CLI UX Note
