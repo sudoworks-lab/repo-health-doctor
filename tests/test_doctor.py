@@ -82,6 +82,8 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
         (self.tmp_path / "LICENSE").write_text("MIT\n", encoding="utf-8")
         (self.tmp_path / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
+        (self.tmp_path / ".github" / "workflows").mkdir(parents=True, exist_ok=True)
+        (self.tmp_path / ".github" / "workflows" / "ci.yml").write_text("name: CI\n", encoding="utf-8")
         (self.tmp_path / "tests").mkdir(exist_ok=True)
         (self.tmp_path / "docs").mkdir(exist_ok=True)
         (self.tmp_path / "scripts").mkdir(exist_ok=True)
@@ -90,6 +92,8 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
         (self.tmp_path / "LICENSE").write_text("MIT\n", encoding="utf-8")
         (self.tmp_path / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
+        (self.tmp_path / ".github" / "workflows").mkdir(parents=True)
+        (self.tmp_path / ".github" / "workflows" / "ci.yml").write_text("name: CI\n", encoding="utf-8")
         (self.tmp_path / "tests").mkdir()
         (self.tmp_path / "docs").mkdir()
         (self.tmp_path / "scripts").mkdir()
@@ -101,12 +105,51 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertEqual(checks["readme"]["status"], "pass")
         self.assertEqual(checks["license"]["status"], "pass")
         self.assertEqual(checks["gitignore"]["status"], "pass")
+        self.assertEqual(checks["ci"]["status"], "pass")
         self.assertEqual(checks["tests"]["status"], "pass")
         self.assertEqual(checks["docs"]["status"], "pass")
         self.assertEqual(checks["scripts"]["status"], "pass")
         self.assertEqual(checks["secrets_scan"]["status"], "pass")
         self.assertEqual(checks["large_files"]["status"], "pass")
         self.assertIn("Repo Health Doctor: PASS", format_text(report))
+
+    def test_missing_readme_emits_warn_finding(self) -> None:
+        report = diagnose_repo(self.tmp_path)
+        rendered_text = format_text(report)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["readme"]["status"], "warn")
+        self.assertEqual(checks["readme"]["details"]["findings"][0]["rule_id"], "rhd.repository.missing_readme")
+        self.assertIn("rule=rhd.repository.missing_readme", rendered_text)
+
+    def test_missing_license_emits_warn_finding(self) -> None:
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+
+        report = diagnose_repo(self.tmp_path)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["license"]["status"], "warn")
+        self.assertEqual(checks["license"]["details"]["findings"][0]["rule_id"], "rhd.repository.missing_license")
+
+    def test_missing_ci_emits_warn_finding(self) -> None:
+        self._write_complete_repo_baseline()
+        (self.tmp_path / ".github" / "workflows" / "ci.yml").unlink()
+
+        report = diagnose_repo(self.tmp_path)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["ci"]["status"], "warn")
+        self.assertEqual(checks["ci"]["details"]["findings"][0]["rule_id"], "rhd.repository.missing_ci")
+
+    def test_missing_tests_emits_warn_finding(self) -> None:
+        self._write_complete_repo_baseline()
+        (self.tmp_path / "tests").rmdir()
+
+        report = diagnose_repo(self.tmp_path)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["tests"]["status"], "warn")
+        self.assertEqual(checks["tests"]["details"]["findings"][0]["rule_id"], "rhd.repository.missing_tests")
 
     def test_cli_outputs_json(self) -> None:
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
@@ -167,6 +210,8 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
         (self.tmp_path / "LICENSE").write_text("MIT\n", encoding="utf-8")
         (self.tmp_path / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
+        (self.tmp_path / ".github" / "workflows").mkdir(parents=True)
+        (self.tmp_path / ".github" / "workflows" / "ci.yml").write_text("name: CI\n", encoding="utf-8")
         (self.tmp_path / "tests").mkdir()
         (self.tmp_path / "docs").mkdir()
         (self.tmp_path / "scripts").mkdir()
@@ -443,6 +488,31 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             "rhd.tracked_artifact.generated_dir",
         )
         self.assertEqual(checks["tracked_artifacts"]["details"]["findings"][0]["severity"], "block")
+
+    def test_public_safety_detects_build_and_generated_tracked_artifacts(self) -> None:
+        self._init_git_repo()
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        for directory in ("build", "generated"):
+            target_dir = self.tmp_path / directory
+            target_dir.mkdir()
+            (target_dir / "output.txt").write_text("artifact\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "README.md", "build/output.txt", "generated/output.txt"],
+            cwd=self.tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        report = diagnose_repo(self.tmp_path, public_safety=True)
+        checks = {check["name"]: check for check in report["checks"]}
+        findings = checks["tracked_artifacts"]["details"]["findings"]
+        files = {finding["file"] for finding in findings}
+
+        self.assertEqual(checks["tracked_artifacts"]["status"], "block")
+        self.assertIn("build/output.txt", files)
+        self.assertIn("generated/output.txt", files)
+        self.assertTrue(all(finding["rule_id"] == "rhd.tracked_artifact.generated_dir" for finding in findings))
 
     def test_public_safety_allows_env_template(self) -> None:
         self._init_git_repo()
@@ -998,6 +1068,17 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         golden = json.loads(GOLDEN_POLICY_REPORT_PATH.read_text(encoding="utf-8"))
 
         self.assertEqual(payload, golden)
+
+    def test_rules_document_lists_phase3b_rule_ids(self) -> None:
+        rules_doc = (Path(__file__).resolve().parents[1] / "docs" / "rules.md").read_text(encoding="utf-8")
+
+        for rule_id in (
+            "rhd.repository.missing_readme",
+            "rhd.repository.missing_license",
+            "rhd.repository.missing_ci",
+            "rhd.repository.missing_tests",
+        ):
+            self.assertIn(rule_id, rules_doc)
 
     def test_validate_policy_cli_outputs_json(self) -> None:
         env = os.environ.copy()

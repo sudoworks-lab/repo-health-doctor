@@ -43,6 +43,10 @@ raw の検知文字列、secret 候補、個人環境由来の値、local networ
 | `rhd.public_text.restricted_term` | 公開本文に不向きな語句カテゴリを検知する | `block` | file, line, category | raw value は出さない |
 | `rhd.public_text.private_path` | 個人環境由来の path カテゴリを検知する | `block` | file, line, category | raw value は出さない |
 | `rhd.public_text.local_ip` | local network 値カテゴリを検知する | `block` | file, line, category | raw value は出さない |
+| `rhd.repository.missing_readme` | README が見当たらない状態を検知する | `warn` | file, category | raw value は出さない |
+| `rhd.repository.missing_license` | LICENSE が見当たらない状態を検知する | `warn` | file, category | raw value は出さない |
+| `rhd.repository.missing_ci` | workflow file が見当たらない状態を検知する | `warn` | file, category | raw value は出さない |
+| `rhd.repository.missing_tests` | tests または test directory が見当たらない状態を検知する | `warn` | file, category | raw value は出さない |
 | `rhd.repository.large_file` | repository に大きい file が含まれる状態を検知する | `warn` | file, size_bytes, category | file content は読まない |
 | `rhd.tracked_artifact.generated_dir` | tracked された生成物 directory 候補を検知する | `block` | file, category | content は出さない |
 | `rhd.tracked_artifact.cache_dir` | tracked された cache directory 候補を検知する | `block` | file, category | content は出さない |

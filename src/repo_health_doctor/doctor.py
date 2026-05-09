@@ -23,6 +23,7 @@ GITIGNORE_NAMES = (".gitignore", ".git/info/exclude")
 TEST_DIR_NAMES = ("tests", "test")
 DOCS_DIR_NAMES = ("docs", "doc")
 SCRIPT_DIR_NAMES = ("scripts", "script", "bin")
+WORKFLOW_FILE_SUFFIXES = (".yml", ".yaml")
 DEFAULT_SECRETS_IGNORES = (
     ".git/",
     ".venv/",
@@ -40,6 +41,10 @@ TRACKED_ARTIFACT_TOP_LEVEL_DIRS = {
     "tmp",
     "temp",
     "cache",
+    "build",
+    "dist",
+    "coverage",
+    "generated",
 }
 TRACKED_ARTIFACT_CACHE_DIRS = {
     ".cache",
@@ -83,6 +88,10 @@ STATUS_PASS = "pass"
 STATUS_WARN = "warn"
 STATUS_BLOCK = "block"
 RULE_ID_LARGE_FILE = "rhd.repository.large_file"
+RULE_ID_MISSING_README = "rhd.repository.missing_readme"
+RULE_ID_MISSING_LICENSE = "rhd.repository.missing_license"
+RULE_ID_MISSING_CI = "rhd.repository.missing_ci"
+RULE_ID_MISSING_TESTS = "rhd.repository.missing_tests"
 SECRET_RULE_IDS = {
     "aws_access_key": "rhd.secret.aws_access_key",
     "github_token": "rhd.secret.github_token",
@@ -114,7 +123,13 @@ KNOWN_FINDING_RULE_IDS = (
     set(SECRET_RULE_IDS.values())
     | set(PUBLIC_TEXT_RULE_IDS.values())
     | set(TRACKED_ARTIFACT_RULE_IDS.values())
-    | {RULE_ID_LARGE_FILE}
+    | {
+        RULE_ID_LARGE_FILE,
+        RULE_ID_MISSING_README,
+        RULE_ID_MISSING_LICENSE,
+        RULE_ID_MISSING_CI,
+        RULE_ID_MISSING_TESTS,
+    }
 )
 SECRET_RULE_ID_VALUES = set(SECRET_RULE_IDS.values())
 SECRET_ALLOW_FIXTURE_PREFIXES = ("tests/fixtures/", "test/fixtures/")
@@ -253,6 +268,18 @@ def _has_dir(root: Path, names: tuple[str, ...]) -> list[str]:
         candidate = root / name
         if candidate.is_dir():
             found.append(name)
+    return found
+
+
+def _list_workflow_files(root: Path) -> list[str]:
+    workflow_dir = root / ".github" / "workflows"
+    if not workflow_dir.is_dir():
+        return []
+
+    found: list[str] = []
+    for path in sorted(workflow_dir.iterdir(), key=lambda item: item.name):
+        if path.is_file() and path.suffix.lower() in WORKFLOW_FILE_SUFFIXES:
+            found.append(path.relative_to(root).as_posix())
     return found
 
 
@@ -612,6 +639,37 @@ def _policy_check(policy: PolicyConfig) -> CheckResult:
     )
 
 
+def _repository_presence_check(
+    *,
+    name: str,
+    found: list[str],
+    missing_rule_id: str,
+    missing_pattern: str,
+    pass_summary: str,
+    warn_summary: str,
+) -> CheckResult:
+    findings: list[dict] = []
+    if not found:
+        findings.append(
+            _finding(
+                rule_id=missing_rule_id,
+                severity=STATUS_WARN,
+                file=".",
+                pattern=missing_pattern,
+                redacted=False,
+            )
+        )
+    return CheckResult(
+        name=name,
+        status=STATUS_PASS if found else STATUS_WARN,
+        summary=pass_summary if found else warn_summary,
+        details={
+            "found": found,
+            "findings": findings,
+        },
+    )
+
+
 def _build_report(root: Path, checks: list[CheckResult]) -> dict:
     counts = {
         STATUS_PASS: sum(1 for check in checks if check.status == STATUS_PASS),
@@ -812,21 +870,25 @@ def diagnose_repo(
 
     readmes = _has_any(root, README_NAMES)
     checks.append(
-        CheckResult(
+        _repository_presence_check(
             name="readme",
-            status=STATUS_PASS if readmes else STATUS_WARN,
-            summary="README found." if readmes else "README is missing.",
-            details={"found": readmes},
+            found=readmes,
+            missing_rule_id=RULE_ID_MISSING_README,
+            missing_pattern="missing_readme",
+            pass_summary="README found.",
+            warn_summary="README is missing.",
         )
     )
 
     licenses = _has_any(root, LICENSE_NAMES)
     checks.append(
-        CheckResult(
+        _repository_presence_check(
             name="license",
-            status=STATUS_PASS if licenses else STATUS_WARN,
-            summary="License file found." if licenses else "License file is missing.",
-            details={"found": licenses},
+            found=licenses,
+            missing_rule_id=RULE_ID_MISSING_LICENSE,
+            missing_pattern="missing_license",
+            pass_summary="License file found.",
+            warn_summary="License file is missing.",
         )
     )
 
@@ -840,13 +902,27 @@ def diagnose_repo(
         )
     )
 
+    workflow_files = _list_workflow_files(root)
+    checks.append(
+        _repository_presence_check(
+            name="ci",
+            found=workflow_files,
+            missing_rule_id=RULE_ID_MISSING_CI,
+            missing_pattern="missing_ci",
+            pass_summary="Workflow file found.",
+            warn_summary="Workflow file is missing.",
+        )
+    )
+
     test_dirs = _has_dir(root, TEST_DIR_NAMES)
     checks.append(
-        CheckResult(
+        _repository_presence_check(
             name="tests",
-            status=STATUS_PASS if test_dirs else STATUS_WARN,
-            summary="Test directory found." if test_dirs else "Test directory is missing.",
-            details={"found": test_dirs},
+            found=test_dirs,
+            missing_rule_id=RULE_ID_MISSING_TESTS,
+            missing_pattern="missing_tests",
+            pass_summary="Test directory found.",
+            warn_summary="Test directory is missing.",
         )
     )
 
@@ -1039,6 +1115,13 @@ def format_text(report: dict) -> str:
             for finding in details["findings"][:5]:
                 lines.append(
                     f"    policy issue: policy_id={finding['matched_policy_id']} "
+                    f"rule={finding['rule_id']} category={finding['pattern']}"
+                )
+        if check["name"] not in {"secrets_scan", "large_files", "public_text_safety", "tracked_artifacts", "policy"}:
+            for finding in details.get("findings", [])[:5]:
+                prefix = "allowed finding" if finding.get("allowed") else "finding"
+                lines.append(
+                    f"    {prefix}: file={finding['file']} "
                     f"rule={finding['rule_id']} category={finding['pattern']}"
                 )
         lines.append("")

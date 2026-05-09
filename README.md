@@ -15,10 +15,11 @@
 
 ## 主なチェック項目
 
-現在の実装が確認するのは次の 8 項目です。
+現在の実装が確認するのは次の 9 項目です。
 
 - `README` の存在
 - `LICENSE` の存在
+- `.github/workflows` 配下の workflow file の存在
 - `.gitignore` の存在
 - `tests` または `test` directory の存在
 - `docs` または `doc` directory の存在
@@ -91,7 +92,7 @@ PYTHONPATH=src python3 -m repo_health_doctor .
 Repo Health Doctor: PASS
 Target: .
 Schema: 1.1
-Summary: 10 pass, 0 warn, 0 block
+Summary: 11 pass, 0 warn, 0 block
 Status: PASS ok, WARN review, BLOCK release blocker
 
 Checks:
@@ -103,6 +104,9 @@ Checks:
 
 - [PASS] gitignore: .gitignore found.
     found: .gitignore, .git/info/exclude
+
+- [PASS] ci: Workflow file found.
+    found: .github/workflows/ci.yml
 
 - [PASS] tests: Test directory found.
     found: tests
