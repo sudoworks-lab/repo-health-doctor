@@ -11,6 +11,44 @@ import unittest
 from repo_health_doctor.doctor import determine_exit_code, diagnose_repo, format_json, format_text
 
 
+SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "public-safety-report.schema.json"
+
+
+def _assert_matches_schema(testcase: unittest.TestCase, value: object, schema: dict, path: str = "$") -> None:
+    expected_type = schema.get("type")
+    if expected_type == "object":
+        testcase.assertIsInstance(value, dict, f"{path} should be an object")
+        assert isinstance(value, dict)
+        for key in schema.get("required", []):
+            testcase.assertIn(key, value, f"{path} missing required key: {key}")
+        properties = schema.get("properties", {})
+        for key, child_schema in properties.items():
+            if key in value:
+                _assert_matches_schema(testcase, value[key], child_schema, f"{path}.{key}")
+        if schema.get("additionalProperties") is False:
+            extra_keys = sorted(set(value) - set(properties))
+            testcase.assertEqual(extra_keys, [], f"{path} has unexpected keys")
+    elif expected_type == "array":
+        testcase.assertIsInstance(value, list, f"{path} should be an array")
+        assert isinstance(value, list)
+        item_schema = schema.get("items")
+        if item_schema:
+            for index, item in enumerate(value):
+                _assert_matches_schema(testcase, item, item_schema, f"{path}[{index}]")
+    elif expected_type == "string":
+        testcase.assertIsInstance(value, str, f"{path} should be a string")
+    elif expected_type == "integer":
+        testcase.assertIsInstance(value, int, f"{path} should be an integer")
+        testcase.assertNotIsInstance(value, bool, f"{path} should be an integer, not boolean")
+    elif expected_type == "boolean":
+        testcase.assertIsInstance(value, bool, f"{path} should be a boolean")
+
+    if "enum" in schema:
+        testcase.assertIn(value, schema["enum"], f"{path} has invalid enum value")
+    if "minimum" in schema:
+        testcase.assertGreaterEqual(value, schema["minimum"], f"{path} is below minimum")
+
+
 class RepoHealthDoctorBehaviorTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp_dir = tempfile.TemporaryDirectory()
@@ -72,6 +110,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
 
         payload = json.loads(result.stdout)
         self.assertEqual(payload["tool"], "repo-health-doctor")
+        self.assertEqual(payload["schema_version"], "1.0")
         self.assertFalse(Path(payload["repo_path"]).is_absolute())
 
     def test_block_exit_code_when_secret_detected(self) -> None:
@@ -189,6 +228,11 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
 
         self.assertEqual(checks["secrets_scan"]["status"], "block")
         self.assertEqual(checks["secrets_scan"]["details"]["findings"][0]["file"], "app.py")
+        self.assertEqual(
+            checks["secrets_scan"]["details"]["findings"][0]["rule_id"],
+            "rhd.secret.generic_api_key",
+        )
+        self.assertEqual(checks["secrets_scan"]["details"]["findings"][0]["severity"], "block")
         self.assertNotIn("excerpt", checks["secrets_scan"]["details"]["findings"][0])
 
     def test_secret_findings_are_redacted_in_json_and_text(self) -> None:
@@ -276,6 +320,11 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
 
         self.assertEqual(checks["public_text_safety"]["status"], "block")
         self.assertEqual(checks["public_text_safety"]["details"]["findings"][0]["pattern"], "restricted_term")
+        self.assertEqual(
+            checks["public_text_safety"]["details"]["findings"][0]["rule_id"],
+            "rhd.public_text.restricted_term",
+        )
+        self.assertEqual(checks["public_text_safety"]["details"]["findings"][0]["severity"], "block")
         self.assertEqual(checks["public_text_safety"]["details"]["scan_scope"], "tracked")
 
     def test_public_safety_detects_private_path(self) -> None:
@@ -296,6 +345,10 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
 
         self.assertEqual(checks["public_text_safety"]["status"], "block")
         self.assertEqual(checks["public_text_safety"]["details"]["findings"][0]["pattern"], "private_path")
+        self.assertEqual(
+            checks["public_text_safety"]["details"]["findings"][0]["rule_id"],
+            "rhd.public_text.private_path",
+        )
         self.assertNotIn(private_path.strip(), format_json(report))
         self.assertNotIn(private_path.strip(), format_text(report))
 
@@ -319,6 +372,11 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
 
         self.assertEqual(checks["public_text_safety"]["status"], "block")
         self.assertEqual(checks["public_text_safety"]["details"]["findings"][0]["pattern"], "local_ip")
+        self.assertEqual(
+            checks["public_text_safety"]["details"]["findings"][0]["rule_id"],
+            "rhd.public_text.local_ip",
+        )
+        self.assertEqual(checks["public_text_safety"]["details"]["findings"][0]["severity"], "block")
         self.assertNotIn(local_ip, rendered_json)
         self.assertNotIn(local_ip, rendered_text)
 
@@ -340,6 +398,11 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
 
         self.assertEqual(checks["tracked_artifacts"]["status"], "block")
         self.assertEqual(checks["tracked_artifacts"]["details"]["findings"][0]["pattern"], "generated_dir")
+        self.assertEqual(
+            checks["tracked_artifacts"]["details"]["findings"][0]["rule_id"],
+            "rhd.tracked_artifact.generated_dir",
+        )
+        self.assertEqual(checks["tracked_artifacts"]["details"]["findings"][0]["severity"], "block")
 
     def test_public_safety_allows_env_template(self) -> None:
         self._init_git_repo()
@@ -357,6 +420,63 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         checks = {check["name"]: check for check in report["checks"]}
 
         self.assertEqual(checks["tracked_artifacts"]["status"], "pass")
+
+    def test_large_file_finding_has_rule_id_and_warn_severity(self) -> None:
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        (self.tmp_path / "large.bin").write_bytes(b"x" * (2 * 1024 * 1024))
+
+        report = diagnose_repo(self.tmp_path, large_file_threshold_mb=1)
+        checks = {check["name"]: check for check in report["checks"]}
+        finding = checks["large_files"]["details"]["findings"][0]
+
+        self.assertEqual(checks["large_files"]["status"], "warn")
+        self.assertEqual(finding["rule_id"], "rhd.repository.large_file")
+        self.assertEqual(finding["severity"], "warn")
+        self.assertEqual(finding["pattern"], "large_file")
+        self.assertFalse(finding["redacted"])
+
+    def test_public_safety_report_matches_json_schema(self) -> None:
+        self._init_git_repo()
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        secret_line = 'api_' + 'key = "' + ("a" * 24) + '"\n'
+        (self.tmp_path / "config.py").write_text(secret_line, encoding="utf-8")
+        (self.tmp_path / "large.bin").write_bytes(b"x" * (2 * 1024 * 1024))
+        (self.tmp_path / "artifacts").mkdir()
+        (self.tmp_path / "artifacts" / "build.log").write_text("log\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "README.md", "artifacts/build.log"],
+            cwd=self.tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        report = diagnose_repo(self.tmp_path, large_file_threshold_mb=1, public_safety=True)
+        payload = json.loads(format_json(report))
+        schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+        _assert_matches_schema(self, payload, schema)
+
+    def test_findings_share_stable_public_contract(self) -> None:
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        secret_line = 'api_' + 'key = "' + ("a" * 24) + '"\n'
+        (self.tmp_path / "app.py").write_text(secret_line, encoding="utf-8")
+        (self.tmp_path / "large.bin").write_bytes(b"x" * (2 * 1024 * 1024))
+
+        report = diagnose_repo(self.tmp_path, large_file_threshold_mb=1)
+        findings = [
+            finding
+            for check in report["checks"]
+            for finding in check["details"].get("findings", [])
+        ]
+
+        self.assertGreaterEqual(len(findings), 2)
+        for finding in findings:
+            self.assertTrue(finding["rule_id"].startswith("rhd."))
+            self.assertIn(finding["severity"], {"warn", "block"})
+            self.assertFalse(Path(finding["file"]).is_absolute())
+            self.assertIn("pattern", finding)
+            self.assertIsInstance(finding["redacted"], bool)
 
     def test_package_module_help_runs(self) -> None:
         env = os.environ.copy()

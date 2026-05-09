@@ -103,10 +103,14 @@ JSON 出力の先頭は次のようになります。
 {
   "tool": "repo-health-doctor",
   "version": "0.1.0",
+  "schema_version": "1.0",
   "repo_path": ".",
   "overall_status": "pass"
 }
 ```
+
+JSON report の契約は `schema_version` で管理します。finding が出る場合は `rule_id`, `severity`, `file`, `pattern`, `redacted` を含み、検知値そのものは出力しません。
+機械処理する場合は [schemas/public-safety-report.schema.json](schemas/public-safety-report.schema.json) を参照してください。rule の一覧は [docs/rules.md](docs/rules.md) にまとめています。
 
 ## Exit Codes
 

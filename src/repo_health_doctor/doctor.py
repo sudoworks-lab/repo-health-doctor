@@ -12,6 +12,7 @@ DEFAULT_LARGE_FILE_THRESHOLD_MB = 10
 LARGE_FILE_THRESHOLD_BYTES = DEFAULT_LARGE_FILE_THRESHOLD_MB * 1024 * 1024
 TEXT_FILE_SCAN_LIMIT_BYTES = 1 * 1024 * 1024
 MAX_SCANNED_FILES = 200
+REPORT_SCHEMA_VERSION = "1.0"
 
 README_NAMES = ("README", "README.md", "README.rst", "README.txt")
 LICENSE_NAMES = ("LICENSE", "LICENSE.txt", "LICENSE.md", "COPYING")
@@ -78,6 +79,25 @@ NULL_BYTE = b"\x00"
 STATUS_PASS = "pass"
 STATUS_WARN = "warn"
 STATUS_BLOCK = "block"
+RULE_ID_LARGE_FILE = "rhd.repository.large_file"
+SECRET_RULE_IDS = {
+    "aws_access_key": "rhd.secret.aws_access_key",
+    "github_token": "rhd.secret.github_token",
+    "slack_token": "rhd.secret.slack_token",
+    "private_key": "rhd.secret.private_key",
+    "generic_api_key": "rhd.secret.generic_api_key",
+}
+PUBLIC_TEXT_RULE_IDS = {
+    "restricted_term": "rhd.public_text.restricted_term",
+    "private_path": "rhd.public_text.private_path",
+    "local_ip": "rhd.public_text.local_ip",
+}
+TRACKED_ARTIFACT_RULE_IDS = {
+    "generated_dir": "rhd.tracked_artifact.generated_dir",
+    "cache_dir": "rhd.tracked_artifact.cache_dir",
+    "generated_file": "rhd.tracked_artifact.generated_file",
+    "env_file": "rhd.tracked_artifact.env_file",
+}
 
 
 def _join_fragments(*parts: str) -> str:
@@ -257,6 +277,30 @@ def _safe_repo_path(root: Path) -> str:
         return f"<repo:{root.name}>"
 
 
+def _finding(
+    *,
+    rule_id: str,
+    severity: str,
+    file: str,
+    pattern: str,
+    redacted: bool,
+    line: int | None = None,
+    size_bytes: int | None = None,
+) -> dict:
+    finding = {
+        "rule_id": rule_id,
+        "severity": severity,
+        "file": file,
+        "pattern": pattern,
+        "redacted": redacted,
+    }
+    if line is not None:
+        finding["line"] = line
+    if size_bytes is not None:
+        finding["size_bytes"] = size_bytes
+    return finding
+
+
 def _scan_secrets(root: Path, ignore_patterns: tuple[str, ...]) -> tuple[list[dict], int]:
     findings: list[dict] = []
     scanned_files = 0
@@ -283,12 +327,14 @@ def _scan_secrets(root: Path, ignore_patterns: tuple[str, ...]) -> tuple[list[di
             match = pattern.search(content)
             if match:
                 findings.append(
-                    {
-                        "file": str(path.relative_to(root)),
-                        "pattern": label,
-                        "line": content.count("\n", 0, match.start()) + 1,
-                        "redacted": True,
-                    }
+                    _finding(
+                        rule_id=SECRET_RULE_IDS[label],
+                        severity=STATUS_BLOCK,
+                        file=str(path.relative_to(root)),
+                        pattern=label,
+                        line=content.count("\n", 0, match.start()) + 1,
+                        redacted=True,
+                    )
                 )
 
     return findings, scanned_files
@@ -303,10 +349,14 @@ def _scan_large_files(root: Path, threshold_bytes: int) -> list[dict]:
             continue
         if size >= threshold_bytes:
             findings.append(
-                {
-                    "file": str(path.relative_to(root)),
-                    "size_bytes": size,
-                }
+                _finding(
+                    rule_id=RULE_ID_LARGE_FILE,
+                    severity=STATUS_WARN,
+                    file=str(path.relative_to(root)),
+                    pattern="large_file",
+                    size_bytes=size,
+                    redacted=False,
+                )
             )
     findings.sort(key=lambda item: item["size_bytes"], reverse=True)
     return findings
@@ -338,12 +388,14 @@ def _scan_public_text_safety(
             if not match:
                 continue
             findings.append(
-                {
-                    "file": str(path.relative_to(root)),
-                    "pattern": label,
-                    "line": content.count("\n", 0, match.start()) + 1,
-                    "redacted": True,
-                }
+                _finding(
+                    rule_id=PUBLIC_TEXT_RULE_IDS[label],
+                    severity=STATUS_BLOCK,
+                    file=str(path.relative_to(root)),
+                    pattern=label,
+                    line=content.count("\n", 0, match.start()) + 1,
+                    redacted=True,
+                )
             )
 
     return findings, scanned_files, scope
@@ -377,7 +429,15 @@ def _scan_tracked_artifacts(root: Path, tracked_files: tuple[Path, ...] | None) 
         relative_path = path.relative_to(root)
         category = _classify_tracked_artifact(relative_path)
         if category:
-            findings.append({"file": str(relative_path), "pattern": category})
+            findings.append(
+                _finding(
+                    rule_id=TRACKED_ARTIFACT_RULE_IDS[category],
+                    severity=STATUS_BLOCK,
+                    file=str(relative_path),
+                    pattern=category,
+                    redacted=True,
+                )
+            )
     return findings, "tracked"
 
 
@@ -542,6 +602,7 @@ def diagnose_repo(
     return {
         "tool": "repo-health-doctor",
         "version": "0.1.0",
+        "schema_version": REPORT_SCHEMA_VERSION,
         "repo_path": _safe_repo_path(root),
         "overall_status": overall_status,
         "summary": counts,
