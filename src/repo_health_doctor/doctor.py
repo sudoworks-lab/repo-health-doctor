@@ -75,6 +75,9 @@ TEXT_EXTENSIONS = {
     ".java", ".go", ".rs", ".rb", ".php", ".c", ".cc", ".cpp", ".h", ".hpp",
 }
 NULL_BYTE = b"\x00"
+STATUS_PASS = "pass"
+STATUS_WARN = "warn"
+STATUS_BLOCK = "block"
 
 
 def _join_fragments(*parts: str) -> str:
@@ -241,6 +244,19 @@ def _list_tracked_files(root: Path) -> tuple[Path, ...] | None:
     return tuple(tracked_files)
 
 
+def _safe_repo_path(root: Path) -> str:
+    try:
+        cwd = Path.cwd().resolve()
+    except OSError:
+        return "<repo>"
+    if root == cwd:
+        return "."
+    try:
+        return root.relative_to(cwd).as_posix()
+    except ValueError:
+        return f"<repo:{root.name}>"
+
+
 def _scan_secrets(root: Path, ignore_patterns: tuple[str, ...]) -> tuple[list[dict], int]:
     findings: list[dict] = []
     scanned_files = 0
@@ -270,7 +286,8 @@ def _scan_secrets(root: Path, ignore_patterns: tuple[str, ...]) -> tuple[list[di
                     {
                         "file": str(path.relative_to(root)),
                         "pattern": label,
-                        "excerpt": match.group(0)[:80],
+                        "line": content.count("\n", 0, match.start()) + 1,
+                        "redacted": True,
                     }
                 )
 
@@ -325,6 +342,7 @@ def _scan_public_text_safety(
                     "file": str(path.relative_to(root)),
                     "pattern": label,
                     "line": content.count("\n", 0, match.start()) + 1,
+                    "redacted": True,
                 }
             )
 
@@ -378,7 +396,7 @@ def diagnose_repo(
     checks.append(
         CheckResult(
             name="readme",
-            status="pass" if readmes else "warn",
+            status=STATUS_PASS if readmes else STATUS_WARN,
             summary="README found." if readmes else "README is missing.",
             details={"found": readmes},
         )
@@ -388,7 +406,7 @@ def diagnose_repo(
     checks.append(
         CheckResult(
             name="license",
-            status="pass" if licenses else "warn",
+            status=STATUS_PASS if licenses else STATUS_WARN,
             summary="License file found." if licenses else "License file is missing.",
             details={"found": licenses},
         )
@@ -398,7 +416,7 @@ def diagnose_repo(
     checks.append(
         CheckResult(
             name="gitignore",
-            status="pass" if gitignores else "warn",
+            status=STATUS_PASS if gitignores else STATUS_WARN,
             summary=".gitignore found." if gitignores else ".gitignore is missing.",
             details={"found": gitignores},
         )
@@ -408,7 +426,7 @@ def diagnose_repo(
     checks.append(
         CheckResult(
             name="tests",
-            status="pass" if test_dirs else "warn",
+            status=STATUS_PASS if test_dirs else STATUS_WARN,
             summary="Test directory found." if test_dirs else "Test directory is missing.",
             details={"found": test_dirs},
         )
@@ -418,7 +436,7 @@ def diagnose_repo(
     checks.append(
         CheckResult(
             name="docs",
-            status="pass" if docs_dirs else "warn",
+            status=STATUS_PASS if docs_dirs else STATUS_WARN,
             summary="Docs directory found." if docs_dirs else "Docs directory is missing.",
             details={"found": docs_dirs},
         )
@@ -428,7 +446,7 @@ def diagnose_repo(
     checks.append(
         CheckResult(
             name="scripts",
-            status="pass" if script_dirs else "warn",
+            status=STATUS_PASS if script_dirs else STATUS_WARN,
             summary="Scripts directory found." if script_dirs else "Scripts directory is missing.",
             details={"found": script_dirs},
         )
@@ -438,7 +456,7 @@ def diagnose_repo(
     checks.append(
         CheckResult(
             name="secrets_scan",
-            status="fail" if secret_findings else "pass",
+            status=STATUS_BLOCK if secret_findings else STATUS_PASS,
             summary="Potential secrets detected." if secret_findings else "No obvious secrets detected.",
             details={
                 "findings": secret_findings,
@@ -452,7 +470,7 @@ def diagnose_repo(
     checks.append(
         CheckResult(
             name="large_files",
-            status="warn" if large_files else "pass",
+            status=STATUS_WARN if large_files else STATUS_PASS,
             summary="Large files detected." if large_files else "No large files detected.",
             details={
                 "threshold_mb": large_file_threshold_mb,
@@ -468,7 +486,7 @@ def diagnose_repo(
         checks.append(
             CheckResult(
                 name="public_text_safety",
-                status="fail" if public_text_findings else "pass",
+                status=STATUS_BLOCK if public_text_findings else STATUS_PASS,
                 summary=(
                     "Public-facing text should be reviewed before release."
                     if public_text_findings
@@ -483,7 +501,7 @@ def diagnose_repo(
         )
 
         tracked_artifacts, tracked_scope = _scan_tracked_artifacts(root, tracked_files)
-        tracked_artifact_status = "fail" if tracked_artifacts else "pass"
+        tracked_artifact_status = STATUS_BLOCK if tracked_artifacts else STATUS_PASS
         tracked_artifact_summary = (
             "Tracked generated or environment files should be reviewed before release."
             if tracked_artifacts
@@ -494,7 +512,7 @@ def diagnose_repo(
             )
         )
         if tracked_scope == "unavailable":
-            tracked_artifact_status = "warn"
+            tracked_artifact_status = STATUS_WARN
 
         checks.append(
             CheckResult(
@@ -509,16 +527,22 @@ def diagnose_repo(
         )
 
     counts = {
-        "pass": sum(1 for check in checks if check.status == "pass"),
-        "warn": sum(1 for check in checks if check.status == "warn"),
-        "fail": sum(1 for check in checks if check.status == "fail"),
+        STATUS_PASS: sum(1 for check in checks if check.status == STATUS_PASS),
+        STATUS_WARN: sum(1 for check in checks if check.status == STATUS_WARN),
+        STATUS_BLOCK: sum(1 for check in checks if check.status == STATUS_BLOCK),
     }
 
-    overall_status = "fail" if counts["fail"] else "warn" if counts["warn"] else "pass"
+    overall_status = (
+        STATUS_BLOCK
+        if counts[STATUS_BLOCK]
+        else STATUS_WARN
+        if counts[STATUS_WARN]
+        else STATUS_PASS
+    )
     return {
         "tool": "repo-health-doctor",
         "version": "0.1.0",
-        "repo_path": str(root),
+        "repo_path": _safe_repo_path(root),
         "overall_status": overall_status,
         "summary": counts,
         "checks": [asdict(check) for check in checks],
@@ -533,7 +557,7 @@ def format_text(report: dict) -> str:
             "Summary: "
             f"{report['summary']['pass']} pass, "
             f"{report['summary']['warn']} warn, "
-            f"{report['summary']['fail']} fail"
+            f"{report['summary']['block']} block"
         ),
         "",
     ]
@@ -573,7 +597,7 @@ def format_json(report: dict) -> str:
 
 
 def determine_exit_code(report: dict, strict: bool = False) -> int:
-    if report["summary"]["fail"] > 0:
+    if report["summary"]["block"] > 0:
         return 1
     if strict and report["summary"]["warn"] > 0:
         return 1

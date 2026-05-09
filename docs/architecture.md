@@ -6,7 +6,7 @@
 
 - 深い解析よりも、速い repository hygiene check を優先する
 - 人間向け text と automation 向け JSON の両方を同じ report から生成する
-- AI 作業や CI の前段で使えるよう、network 依存を持ち込まない
+- CI や automation の前段で使えるよう、network 依存を持ち込まない
 - 小さな Python 実装のまま読めて、拡張しやすい状態を保つ
 
 ## repo 診断の考え方
@@ -24,7 +24,7 @@
 - テキスト寄りファイルに対する簡易 secret-like pattern scan
 - 閾値以上の large file
 
-各結果は `pass` / `warn` / `fail` に集約され、text または JSON として出力されます。
+各結果は `pass` / `warn` / `block` に集約され、text または JSON として出力されます。
 
 `--public-safety` を有効にすると、通常診断に加えて公開前向けの追加チェックを走らせます。
 
@@ -52,17 +52,17 @@
 
 この境界を明示する理由は、README が実装以上のことを約束し始めると、公開 repository としての信頼性が下がるためです。
 
-## AI 作業前 preflight としての位置づけ
+## 公開・共有前 preflight としての位置づけ
 
-`repo-health-doctor` は、AI 支援作業の前に実行する軽量 preflight として使うのが自然です。
+`repo-health-doctor` は、公開・共有前に実行する軽量 preflight として使うのが自然です。
 
 典型的な流れ:
 
 1. local で health check を走らせる
-2. obvious な warning / fail を確認する
-3. Codex、CI、その他 automation に repository を渡す
+2. obvious な warning / block を確認する
+3. CI やその他 automation に repository を渡す
 
-Codex preflight や local run logging のような周辺 workflow と補完関係にはありますが、直接結合はしていません。契約はシンプルで、「path を inspect して、短い report を返し、local に留まる」ことです。
+周辺 workflow と補完関係にはありますが、直接結合はしていません。契約はシンプルで、「path を inspect して、短い report を返し、local に留まる」ことです。
 
 ## 出力形式の考え方
 

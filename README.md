@@ -1,14 +1,14 @@
 # repo-health-doctor
 
-`repo-health-doctor` は、repository を AI 開発前に軽く診断するための小さな Python CLI です。
+`repo-health-doctor` は、repository を公開・共有前に軽く診断するための小さな Python CLI です。
 「README があるか」「tests / docs / scripts があるか」「明らかな secret らしき文字列が混ざっていないか」「大きすぎるファイルがないか」を、ローカルで短時間に確認できます。
 
-派手な機能追加ではなく、AI 支援開発やローカル開発基盤の前段で repository の hygiene を機械的に点検する用途を想定しています。
+派手な機能追加ではなく、ローカル開発や CI の前段で repository の hygiene を機械的に点検する用途を想定しています。
 
 ## 何を解決するか
 
-- AI に repository を渡す前の preflight を軽く回したい
-- private repo を他人に見せる前に、基本的な抜け漏れを短時間で確認したい
+- repository を公開・共有する前の preflight を軽く回したい
+- repository を第三者に見せる前に、基本的な抜け漏れを短時間で確認したい
 - 人間が読みやすい text 出力と、自動化しやすい JSON 出力の両方がほしい
 
 この tool は「深い静的解析」ではなく、公開・共有前の初期チェックに特化しています。
@@ -58,7 +58,7 @@ repo-health-doctor . --secrets-ignore artifacts/ --secrets-ignore tmp/
 開発中に entry point を使わず試す場合は、次も実在します。
 
 ```bash
-PYTHONPATH=src python3 -m repo_health_doctor.cli .
+PYTHONPATH=src python3 -m repo_health_doctor .
 ```
 
 `--output` を指定すると、指定ファイルへ保存しつつ同じ内容を標準出力にも出します。
@@ -69,8 +69,8 @@ PYTHONPATH=src python3 -m repo_health_doctor.cli .
 
 ```text
 Repo Health Doctor: PASS
-Target: /path/to/repo
-Summary: 8 pass, 0 warn, 0 fail
+Target: .
+Summary: 8 pass, 0 warn, 0 block
 
 [PASS] readme: README found.
   found: README.md
@@ -103,7 +103,7 @@ JSON 出力の先頭は次のようになります。
 {
   "tool": "repo-health-doctor",
   "version": "0.1.0",
-  "repo_path": "/path/to/repo",
+  "repo_path": ".",
   "overall_status": "pass"
 }
 ```
@@ -112,7 +112,7 @@ JSON 出力の先頭は次のようになります。
 
 - `0`: `pass` のみ
 - `0`: `warn` のみで `--strict` なし
-- `1`: `fail` が 1 件以上
+- `1`: `block` が 1 件以上
 - `1`: `--strict` 指定時に `warn` が 1 件以上
 
 ## CLI Options
@@ -135,8 +135,10 @@ pip install -e .
 PYTHONPATH=src python -m unittest discover -s tests -v
 repo-health-doctor .
 repo-health-doctor . --strict
-repo-health-doctor . --format json --output /tmp/repo-health-doctor-result.json
+repo-health-doctor . --strict --public-safety
+repo-health-doctor . --strict --public-safety --format json --output /tmp/repo-health-doctor-result.json
 test -s /tmp/repo-health-doctor-result.json
+python -m json.tool /tmp/repo-health-doctor-result.json >/dev/null
 ```
 
 `--strict` なしでは warning-only の repository は成功扱いなので、ローカル確認や段階導入に向いています。CI で warning も失敗扱いにしたい場合は `--strict` を使います。
@@ -147,19 +149,19 @@ test -s /tmp/repo-health-doctor-result.json
 - secrets scan は軽量な heuristic ベースであり、完全な secret detection を保証しません
 - binary file は secrets scan の対象外です
 - `node_modules/`, `.venv/`, `.pytest_cache/`, `dist/`, `build/` などは既定で scan 対象外です
-- `artifacts/` や AI 実行ログのような生成物を除外したい場合は `--secrets-ignore` を追加してください
+- `artifacts/` や実行ログのような生成物を除外したい場合は `--secrets-ignore` を追加してください
 - `--public-safety` は report 上に生の検知文字列を出さず、中立的なカテゴリ名だけを返します
 
 ## 設計意図
 
-この repository の意図は、AI がコードを書き始める前に repository の足元を数秒で確認できるようにすることです。
+この repository の意図は、公開・共有前に repository の足元を数秒で確認できるようにすることです。
 依存解析や SAST のような重い仕組みの代替ではなく、次のような場面での「軽い診断」に寄せています。
 
-- private repo を外部に見せる前の最終確認
-- Codex などへ作業依頼する前の preflight
+- repository を第三者に見せる前の最終確認
+- CI や automation に渡す前の preflight
 - JSON を downstream automation に渡す前段チェック
 
-`ai-run-logger` や Codex preflight と直接結合しているわけではありませんが、そうした AI 作業フローの前段で走らせる補助 CLI としては相性が良い設計です。生成された `artifacts/` や `logs/` を scan 対象から外したい場合は `--secrets-ignore` で調整できます。
+特定の周辺 workflow と直接結合せず、「path を inspect して、短い report を返し、local に留まる」ことを契約にしています。生成された `artifacts/` や `logs/` を scan 対象から外したい場合は `--secrets-ignore` で調整できます。
 
 ## Architecture
 

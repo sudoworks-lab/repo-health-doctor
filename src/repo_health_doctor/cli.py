@@ -28,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--strict",
         action="store_true",
-        help="Return exit code 1 when any warning or failure is present.",
+        help="Return exit code 1 when any warning or block is present.",
     )
     parser.add_argument(
         "--large-file-threshold-mb",

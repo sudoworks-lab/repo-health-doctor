@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from repo_health_doctor.doctor import determine_exit_code, diagnose_repo, format_text
+from repo_health_doctor.doctor import determine_exit_code, diagnose_repo, format_json, format_text
 
 
 class RepoHealthDoctorBehaviorTests(unittest.TestCase):
@@ -72,15 +72,15 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
 
         payload = json.loads(result.stdout)
         self.assertEqual(payload["tool"], "repo-health-doctor")
-        self.assertEqual(payload["repo_path"], str(self.tmp_path.resolve()))
+        self.assertFalse(Path(payload["repo_path"]).is_absolute())
 
-    def test_fail_exit_code_when_secret_detected(self) -> None:
+    def test_block_exit_code_when_secret_detected(self) -> None:
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
         secret_line = 'to' + 'ken = "' + ("a" * 20) + '"\n'
         (self.tmp_path / "config.py").write_text(secret_line, encoding="utf-8")
 
         report = diagnose_repo(self.tmp_path)
-        self.assertEqual(report["overall_status"], "fail")
+        self.assertEqual(report["overall_status"], "block")
         self.assertEqual(determine_exit_code(report), 1)
 
     def test_warn_only_exit_code_without_strict_is_zero(self) -> None:
@@ -187,8 +187,26 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         report = diagnose_repo(self.tmp_path)
         checks = {check["name"]: check for check in report["checks"]}
 
-        self.assertEqual(checks["secrets_scan"]["status"], "fail")
+        self.assertEqual(checks["secrets_scan"]["status"], "block")
         self.assertEqual(checks["secrets_scan"]["details"]["findings"][0]["file"], "app.py")
+        self.assertNotIn("excerpt", checks["secrets_scan"]["details"]["findings"][0])
+
+    def test_secret_findings_are_redacted_in_json_and_text(self) -> None:
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        secret_value = "s" * 24
+        secret_line = 'api_' + 'key = "' + secret_value + '"\n'
+        (self.tmp_path / "app.py").write_text(secret_line, encoding="utf-8")
+
+        report = diagnose_repo(self.tmp_path)
+        rendered_json = format_json(report)
+        rendered_text = format_text(report)
+
+        self.assertEqual(report["overall_status"], "block")
+        self.assertNotIn(secret_value, rendered_json)
+        self.assertNotIn(secret_line.strip(), rendered_json)
+        self.assertNotIn(secret_value, rendered_text)
+        self.assertNotIn(secret_line.strip(), rendered_text)
+        self.assertNotIn("excerpt", rendered_json)
 
     def test_cli_secrets_ignore_skips_matching_path(self) -> None:
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
@@ -256,7 +274,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         report = diagnose_repo(self.tmp_path, public_safety=True)
         checks = {check["name"]: check for check in report["checks"]}
 
-        self.assertEqual(checks["public_text_safety"]["status"], "fail")
+        self.assertEqual(checks["public_text_safety"]["status"], "block")
         self.assertEqual(checks["public_text_safety"]["details"]["findings"][0]["pattern"], "restricted_term")
         self.assertEqual(checks["public_text_safety"]["details"]["scan_scope"], "tracked")
 
@@ -276,8 +294,33 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         report = diagnose_repo(self.tmp_path, public_safety=True)
         checks = {check["name"]: check for check in report["checks"]}
 
-        self.assertEqual(checks["public_text_safety"]["status"], "fail")
+        self.assertEqual(checks["public_text_safety"]["status"], "block")
         self.assertEqual(checks["public_text_safety"]["details"]["findings"][0]["pattern"], "private_path")
+        self.assertNotIn(private_path.strip(), format_json(report))
+        self.assertNotIn(private_path.strip(), format_text(report))
+
+    def test_public_safety_detects_local_ip_without_leaking_value(self) -> None:
+        self._init_git_repo()
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        local_ip = ".".join(("19" + "2", "16" + "8", "1", "25"))
+        (self.tmp_path / "notes.txt").write_text(f"endpoint={local_ip}\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "README.md", "notes.txt"],
+            cwd=self.tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        report = diagnose_repo(self.tmp_path, public_safety=True)
+        checks = {check["name"]: check for check in report["checks"]}
+        rendered_json = format_json(report)
+        rendered_text = format_text(report)
+
+        self.assertEqual(checks["public_text_safety"]["status"], "block")
+        self.assertEqual(checks["public_text_safety"]["details"]["findings"][0]["pattern"], "local_ip")
+        self.assertNotIn(local_ip, rendered_json)
+        self.assertNotIn(local_ip, rendered_text)
 
     def test_public_safety_detects_tracked_artifact_candidate(self) -> None:
         self._init_git_repo()
@@ -295,7 +338,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         report = diagnose_repo(self.tmp_path, public_safety=True)
         checks = {check["name"]: check for check in report["checks"]}
 
-        self.assertEqual(checks["tracked_artifacts"]["status"], "fail")
+        self.assertEqual(checks["tracked_artifacts"]["status"], "block")
         self.assertEqual(checks["tracked_artifacts"]["details"]["findings"][0]["pattern"], "generated_dir")
 
     def test_public_safety_allows_env_template(self) -> None:
@@ -314,6 +357,24 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         checks = {check["name"]: check for check in report["checks"]}
 
         self.assertEqual(checks["tracked_artifacts"]["status"], "pass")
+
+    def test_package_module_help_runs(self) -> None:
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "--help",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        self.assertIn("repo-health-doctor", result.stdout)
 
 
 if __name__ == "__main__":
