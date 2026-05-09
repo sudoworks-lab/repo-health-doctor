@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -9,6 +10,11 @@ from pathlib import Path
 import unittest
 
 from repo_health_doctor.doctor import (
+    DOCUMENTED_RESERVED_RULE_IDS,
+    REPORT_SCHEMA_VERSION,
+    RULE_REGISTRY,
+    RUNTIME_FINDING_SEVERITY_VALUES,
+    RUNTIME_STATUS_VALUES,
     TOOL_VERSION,
     determine_exit_code,
     diagnose_repo,
@@ -59,6 +65,12 @@ def _assert_matches_schema(testcase: unittest.TestCase, value: object, schema: d
         testcase.assertIn(value, schema["enum"], f"{path} has invalid enum value")
     if "minimum" in schema:
         testcase.assertGreaterEqual(value, schema["minimum"], f"{path} is below minimum")
+
+
+def _parse_documented_rules() -> dict[str, str]:
+    rules_doc = (Path(__file__).resolve().parents[1] / "docs" / "rules.md").read_text(encoding="utf-8")
+    matches = re.findall(r"^\|\s*`(rhd\.[^`]+)`\s*\|.*\|\s*`(warn|block)`\s*\|", rules_doc, flags=re.MULTILINE)
+    return {rule_id: severity for rule_id, severity in matches}
 
 
 class RepoHealthDoctorBehaviorTests(unittest.TestCase):
@@ -587,6 +599,88 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             self.assertFalse(Path(finding["file"]).is_absolute())
             self.assertIn("pattern", finding)
             self.assertIsInstance(finding["redacted"], bool)
+
+    def test_runtime_rule_registry_is_documented(self) -> None:
+        documented_rules = _parse_documented_rules()
+        undocumented_rules = sorted(set(RULE_REGISTRY) - set(documented_rules))
+
+        self.assertEqual(undocumented_rules, [])
+
+    def test_documented_rules_are_runtime_or_reserved(self) -> None:
+        documented_rules = _parse_documented_rules()
+        unknown_documented_rules = sorted(set(documented_rules) - set(RULE_REGISTRY) - set(DOCUMENTED_RESERVED_RULE_IDS))
+
+        self.assertEqual(unknown_documented_rules, [])
+
+    def test_documented_rule_severities_match_runtime_registry(self) -> None:
+        documented_rules = _parse_documented_rules()
+
+        for rule_id, severity in documented_rules.items():
+            if rule_id in RULE_REGISTRY:
+                self.assertEqual(RULE_REGISTRY[rule_id]["severity"], severity)
+
+    def test_schema_contract_matches_runtime_constants(self) -> None:
+        schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+        checks_schema = schema["properties"]["checks"]["items"]["properties"]
+        finding_schema = checks_schema["details"]["properties"]["findings"]["items"]["properties"]
+
+        self.assertEqual(schema["properties"]["schema_version"]["enum"], [REPORT_SCHEMA_VERSION])
+        self.assertEqual(tuple(schema["properties"]["overall_status"]["enum"]), RUNTIME_STATUS_VALUES)
+        self.assertEqual(tuple(checks_schema["status"]["enum"]), RUNTIME_STATUS_VALUES)
+        self.assertEqual(tuple(finding_schema["severity"]["enum"]), RUNTIME_FINDING_SEVERITY_VALUES)
+
+    def test_runtime_and_policy_findings_follow_common_contract(self) -> None:
+        policy_marker = "ignore_pathz"
+        (self.tmp_path / "app.py").write_text('api_' + 'key = "' + ("a" * 24) + '"\n', encoding="utf-8")
+        (self.tmp_path / "repo-health-doctor.yml").write_text(
+            f"{policy_marker}:\n"
+            "  - private-area/\n",
+            encoding="utf-8",
+        )
+
+        report = diagnose_repo(self.tmp_path)
+        findings = [
+            finding
+            for check in report["checks"]
+            for finding in check["details"].get("findings", [])
+        ]
+
+        self.assertGreaterEqual(len(findings), 3)
+        for finding in findings:
+            self.assertEqual(
+                {"rule_id", "severity", "file", "pattern", "redacted"} - set(finding),
+                set(),
+            )
+            self.assertIn(finding["rule_id"], RULE_REGISTRY)
+            self.assertIn(finding["severity"], RUNTIME_FINDING_SEVERITY_VALUES)
+            self.assertFalse(Path(finding["file"]).is_absolute())
+            self.assertIsInstance(finding["pattern"], str)
+            self.assertIsInstance(finding["redacted"], bool)
+
+    def test_policy_issue_findings_preserve_redaction_contract(self) -> None:
+        raw_value = "private-policy-area/"
+        (self.tmp_path / "repo-health-doctor.yml").write_text(
+            "ignore_pathz:\n"
+            f"  - {raw_value}\n",
+            encoding="utf-8",
+        )
+
+        report = validate_policy(self.tmp_path)
+        rendered_json = format_json(report)
+        rendered_text = format_text(report)
+        findings = report["checks"][0]["details"]["findings"]
+
+        self.assertGreaterEqual(len(findings), 1)
+        for finding in findings:
+            self.assertEqual(
+                {"rule_id", "severity", "file", "pattern", "redacted"} - set(finding),
+                set(),
+            )
+            self.assertEqual(finding["file"], "<policy>")
+            self.assertTrue(finding["redacted"])
+            self.assertEqual(finding["severity"], "block")
+        self.assertNotIn(raw_value, rendered_json)
+        self.assertNotIn(raw_value, rendered_text)
 
     def test_policy_ignore_paths_only_exclude_non_security_checks(self) -> None:
         self._init_git_repo()

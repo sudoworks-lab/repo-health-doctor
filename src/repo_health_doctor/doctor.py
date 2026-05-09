@@ -87,6 +87,8 @@ NULL_BYTE = b"\x00"
 STATUS_PASS = "pass"
 STATUS_WARN = "warn"
 STATUS_BLOCK = "block"
+RUNTIME_STATUS_VALUES = (STATUS_PASS, STATUS_WARN, STATUS_BLOCK)
+RUNTIME_FINDING_SEVERITY_VALUES = (STATUS_WARN, STATUS_BLOCK)
 RULE_ID_LARGE_FILE = "rhd.repository.large_file"
 RULE_ID_MISSING_README = "rhd.repository.missing_readme"
 RULE_ID_MISSING_LICENSE = "rhd.repository.missing_license"
@@ -119,19 +121,25 @@ POLICY_RULE_IDS = {
     "unknown_top_level_key": "rhd.policy.unknown_top_level_key",
     "restricted_secret_allow": "rhd.policy.restricted_secret_allow",
 }
-KNOWN_FINDING_RULE_IDS = (
-    set(SECRET_RULE_IDS.values())
-    | set(PUBLIC_TEXT_RULE_IDS.values())
-    | set(TRACKED_ARTIFACT_RULE_IDS.values())
-    | {
-        RULE_ID_LARGE_FILE,
-        RULE_ID_MISSING_README,
-        RULE_ID_MISSING_LICENSE,
-        RULE_ID_MISSING_CI,
-        RULE_ID_MISSING_TESTS,
-    }
+RULE_REGISTRY = {
+    RULE_ID_MISSING_README: {"severity": STATUS_WARN, "family": "repository"},
+    RULE_ID_MISSING_LICENSE: {"severity": STATUS_WARN, "family": "repository"},
+    RULE_ID_MISSING_CI: {"severity": STATUS_WARN, "family": "repository"},
+    RULE_ID_MISSING_TESTS: {"severity": STATUS_WARN, "family": "repository"},
+    RULE_ID_LARGE_FILE: {"severity": STATUS_WARN, "family": "repository"},
+    **{rule_id: {"severity": STATUS_BLOCK, "family": "secret"} for rule_id in SECRET_RULE_IDS.values()},
+    **{rule_id: {"severity": STATUS_BLOCK, "family": "public_text"} for rule_id in PUBLIC_TEXT_RULE_IDS.values()},
+    **{
+        rule_id: {"severity": STATUS_BLOCK, "family": "tracked_artifact"}
+        for rule_id in TRACKED_ARTIFACT_RULE_IDS.values()
+    },
+    **{rule_id: {"severity": STATUS_BLOCK, "family": "policy"} for rule_id in POLICY_RULE_IDS.values()},
+}
+KNOWN_FINDING_RULE_IDS = frozenset(RULE_REGISTRY)
+SECRET_RULE_ID_VALUES = frozenset(
+    rule_id for rule_id, metadata in RULE_REGISTRY.items() if metadata["family"] == "secret"
 )
-SECRET_RULE_ID_VALUES = set(SECRET_RULE_IDS.values())
+DOCUMENTED_RESERVED_RULE_IDS = frozenset()
 SECRET_ALLOW_FIXTURE_PREFIXES = ("tests/fixtures/", "test/fixtures/")
 POLICY_TOP_LEVEL_KEYS = frozenset({"ignore_paths", "allow_findings"})
 
