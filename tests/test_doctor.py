@@ -32,6 +32,9 @@ POLICY_FIXTURES_PATH = FIXTURES_PATH / "policies"
 VALID_POLICY_REPO_PATH = FIXTURES_PATH / "policy-valid-repo"
 DEMO_FIXTURE_PATH = FIXTURES_PATH / "demo-repo"
 GOLDEN_POLICY_REPORT_PATH = FIXTURES_PATH / "golden" / "valid-policy-report.json"
+GOLDEN_DEMO_PUBLIC_JSON_PATH = FIXTURES_PATH / "golden" / "public-safety-demo.json"
+GOLDEN_DEMO_POLICY_JSON_PATH = FIXTURES_PATH / "golden" / "policy-demo.json"
+GOLDEN_DEMO_PUBLIC_TEXT_PATH = FIXTURES_PATH / "golden" / "public-safety-demo.txt"
 
 
 def _assert_matches_schema(testcase: unittest.TestCase, value: object, schema: dict, path: str = "$") -> None:
@@ -75,6 +78,12 @@ def _parse_documented_rules() -> dict[str, str]:
     return {rule_id: severity for rule_id, severity in matches}
 
 
+def _extract_fenced_block(content: str, language: str, occurrence: int = 0) -> str:
+    pattern = rf"```{re.escape(language)}\n(.*?)\n```"
+    matches = re.findall(pattern, content, flags=re.DOTALL)
+    return matches[occurrence]
+
+
 class RepoHealthDoctorBehaviorTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp_dir = tempfile.TemporaryDirectory()
@@ -101,6 +110,30 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         (self.tmp_path / "tests").mkdir(exist_ok=True)
         (self.tmp_path / "docs").mkdir(exist_ok=True)
         (self.tmp_path / "scripts").mkdir(exist_ok=True)
+
+    def _materialize_demo_repo(self) -> Path:
+        demo_repo = self.tmp_path / "demo-repo"
+        shutil.copytree(DEMO_FIXTURE_PATH, demo_repo)
+        subprocess.run(
+            ["git", "-C", str(demo_repo), "init"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(demo_repo), "add", "."],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return demo_repo
+
+    def _normalized_demo_reports(self) -> tuple[dict, dict, str]:
+        public_report = diagnose_repo(self._materialize_demo_repo(), public_safety=True)
+        policy_report = validate_policy(self.tmp_path / "demo-repo")
+        public_report["repo_path"] = "<demo-repo>"
+        policy_report["repo_path"] = "<demo-repo>"
+        return public_report, policy_report, format_text(public_report)
 
     def test_diagnose_repo_detects_expected_checks(self) -> None:
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
@@ -1177,24 +1210,10 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             self.assertIn(rule_id, rules_doc)
 
     def test_demo_fixture_supports_documented_commands(self) -> None:
-        demo_repo = self.tmp_path / "demo-repo"
-        shutil.copytree(DEMO_FIXTURE_PATH, demo_repo)
+        demo_repo = self._materialize_demo_repo()
         repo_root = Path(__file__).resolve().parents[1]
         env = os.environ.copy()
         env["PYTHONPATH"] = str(repo_root / "src")
-
-        subprocess.run(
-            ["git", "-C", str(demo_repo), "init"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        subprocess.run(
-            ["git", "-C", str(demo_repo), "add", "."],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
 
         public_result = subprocess.run(
             [
@@ -1267,6 +1286,85 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertIn("Repo Health Doctor: PASS", policy_result.stdout)
         self.assertEqual(json.loads(public_json_path.read_text(encoding="utf-8"))["overall_status"], "pass")
         self.assertEqual(json.loads(policy_json_path.read_text(encoding="utf-8"))["overall_status"], "pass")
+
+    def test_demo_public_safety_json_golden_fixture_is_stable(self) -> None:
+        public_report, _, _ = self._normalized_demo_reports()
+        golden = json.loads(GOLDEN_DEMO_PUBLIC_JSON_PATH.read_text(encoding="utf-8"))
+
+        self.assertEqual(public_report, golden)
+
+    def test_demo_policy_json_golden_fixture_is_stable(self) -> None:
+        _, policy_report, _ = self._normalized_demo_reports()
+        golden = json.loads(GOLDEN_DEMO_POLICY_JSON_PATH.read_text(encoding="utf-8"))
+
+        self.assertEqual(policy_report, golden)
+
+    def test_demo_public_safety_text_golden_fixture_is_stable(self) -> None:
+        _, _, public_text = self._normalized_demo_reports()
+        golden = GOLDEN_DEMO_PUBLIC_TEXT_PATH.read_text(encoding="utf-8")
+
+        self.assertEqual(public_text, golden)
+
+    def test_golden_demo_outputs_do_not_contain_absolute_paths(self) -> None:
+        for path in (
+            GOLDEN_DEMO_PUBLIC_JSON_PATH,
+            GOLDEN_DEMO_POLICY_JSON_PATH,
+            GOLDEN_DEMO_PUBLIC_TEXT_PATH,
+        ):
+            content = path.read_text(encoding="utf-8")
+            self.assertNotIn(str(self.tmp_path), content)
+            self.assertNotIn("/tmp/", content)
+            self.assertNotIn("\\\\", content)
+
+    def test_readme_sample_output_matches_demo_golden_fixtures(self) -> None:
+        readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+        json_block = _extract_fenced_block(readme, "json", occurrence=0)
+        text_block = _extract_fenced_block(readme, "text", occurrence=0)
+
+        self.assertEqual(json_block + "\n", GOLDEN_DEMO_POLICY_JSON_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(text_block + "\n", GOLDEN_DEMO_PUBLIC_TEXT_PATH.read_text(encoding="utf-8"))
+
+    def test_documented_command_references_cover_quickstart_demo_and_release(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        readme = (repo_root / "README.md").read_text(encoding="utf-8")
+        demo_doc = (repo_root / "docs" / "demo.md").read_text(encoding="utf-8")
+        release_checklist = (repo_root / "docs" / "release-checklist.md").read_text(encoding="utf-8")
+
+        for command in (
+            "repo-health-doctor --version",
+            "repo-health-doctor validate-policy .",
+            "repo-health-doctor . --fail-on block --public-safety",
+        ):
+            self.assertIn(command, readme)
+        for command in (
+            "PYTHONPATH=src python3 -m repo_health_doctor /tmp/repo-health-doctor-demo --public-safety",
+            "PYTHONPATH=src python3 -m repo_health_doctor validate-policy /tmp/repo-health-doctor-demo",
+        ):
+            self.assertIn(command, demo_doc)
+        for command in (
+            "repo-health-doctor --help",
+            "repo-health-doctor --version",
+            "PYTHONPATH=src python3 -m repo_health_doctor . --fail-on warn --public-safety",
+            "PYTHONPATH=src python3 -m repo_health_doctor validate-policy .",
+        ):
+            self.assertIn(command, release_checklist)
+
+    def test_readme_and_release_checklist_describe_offline_and_packaging_verify(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        readme = (repo_root / "README.md").read_text(encoding="utf-8")
+        release_checklist = (repo_root / "docs" / "release-checklist.md").read_text(encoding="utf-8")
+
+        self.assertIn("offline local verify", readme)
+        self.assertIn("packaging verify", readme)
+        self.assertIn("CI または build dependency 解決済み環境", readme)
+        self.assertIn("## Offline Local Verify", release_checklist)
+        self.assertIn("## Packaging Verify", release_checklist)
+
+    def test_rules_document_has_no_duplicate_rule_ids(self) -> None:
+        rules_doc = (Path(__file__).resolve().parents[1] / "docs" / "rules.md").read_text(encoding="utf-8")
+        documented_rule_ids = re.findall(r"`(rhd\.[^`]+)`", rules_doc)
+
+        self.assertEqual(len(documented_rule_ids), len(set(documented_rule_ids)))
 
     def test_validate_policy_cli_outputs_json(self) -> None:
         env = os.environ.copy()

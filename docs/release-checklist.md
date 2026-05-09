@@ -2,17 +2,23 @@
 
 配布前には、CLI と JSON 契約、CI、redaction 方針が揃っていることを確認します。
 
-## Local Verification
+## Offline Local Verify
 
 - `git status --short` が意図した差分だけであること
-- `python3 -m unittest discover -s tests -v` が成功すること
-- 一時 `venv` を作成して `python -m pip install -e .` が成功すること
-- `repo-health-doctor --help` が成功すること
-- `repo-health-doctor --version` が成功すること
-- `repo-health-doctor . --fail-on warn --public-safety` が期待どおりの exit code を返すこと
-- `repo-health-doctor validate-policy .` が policy 破損を独立して検出できること
+- `PYTHONPATH=src python3 -m unittest discover -s tests -v` が成功すること
+- `PYTHONPATH=src python3 -m repo_health_doctor --help` が成功すること
+- `PYTHONPATH=src python3 -m repo_health_doctor --version` が成功すること
+- `PYTHONPATH=src python3 -m repo_health_doctor . --fail-on warn --public-safety` が期待どおりの exit code を返すこと
+- `PYTHONPATH=src python3 -m repo_health_doctor validate-policy .` が policy 破損を独立して検出できること
 - JSON 出力が `python3 -m json.tool` で parse できること
 - README の Quickstart と `docs/demo.md` の主要コマンドが現行 CLI と一致していること
+
+## Packaging Verify
+
+- build dependency 解決済み環境または CI で `python3 -m pip install -e .` が成功すること
+- editable install 後に `repo-health-doctor --help` と `repo-health-doctor --version` が成功すること
+- editable install 後に `repo-health-doctor validate-policy .` が成功すること
+- network-restricted な local 環境で build-system dependency 解決前に止まる場合は、offline local verify を正本にし、packaging verify は CI で維持すること
 
 ## Status And Exit Codes
 
@@ -40,5 +46,4 @@
 
 - `pyproject.toml` の project metadata と console script が現在の CLI と一致していること
 - build backend は標準の `setuptools.build_meta` を維持すること
-- editable install 後に `repo-health-doctor --help` と `repo-health-doctor --version` が成功すること
 - module 実行 `python3 -m repo_health_doctor --help` が成功すること

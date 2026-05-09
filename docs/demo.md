@@ -40,6 +40,11 @@ python3 -m json.tool /tmp/repo-health-doctor-demo-policy.json >/dev/null
 ```
 
 artifact を残しておくと、local review と CI の両方で同じ JSON を扱えます。
+この sample repo の正規化済み出力は次の golden fixture でも確認できます。
+
+- `tests/fixtures/golden/public-safety-demo.json`
+- `tests/fixtures/golden/policy-demo.json`
+- `tests/fixtures/golden/public-safety-demo.txt`
 
 ## 5. Read The Result
 

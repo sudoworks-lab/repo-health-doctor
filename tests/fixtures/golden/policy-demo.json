@@ -1,0 +1,27 @@
+{
+  "tool": "repo-health-doctor",
+  "version": "0.1.0",
+  "schema_version": "1.1",
+  "repo_path": "<demo-repo>",
+  "overall_status": "pass",
+  "summary": {
+    "pass": 1,
+    "warn": 0,
+    "block": 0
+  },
+  "checks": [
+    {
+      "name": "policy",
+      "status": "pass",
+      "summary": "Policy configuration loaded.",
+      "details": {
+        "findings": [],
+        "policy_sources": [
+          "repo"
+        ],
+        "ignore_path_count": 1,
+        "allow_finding_count": 0
+      }
+    }
+  ]
+}
