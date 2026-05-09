@@ -8,7 +8,14 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from repo_health_doctor.doctor import determine_exit_code, diagnose_repo, format_json, format_text, validate_policy
+from repo_health_doctor.doctor import (
+    TOOL_VERSION,
+    determine_exit_code,
+    diagnose_repo,
+    format_json,
+    format_text,
+    validate_policy,
+)
 
 
 SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "public-safety-report.schema.json"
@@ -149,6 +156,13 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertEqual(report["overall_status"], "warn")
         self.assertEqual(determine_exit_code(report, strict=True), 1)
 
+    def test_warn_only_exit_code_with_fail_on_warn_is_one(self) -> None:
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+
+        report = diagnose_repo(self.tmp_path)
+        self.assertEqual(report["overall_status"], "warn")
+        self.assertEqual(determine_exit_code(report, fail_on="warn"), 1)
+
     def test_large_file_threshold_option_changes_result(self) -> None:
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
         (self.tmp_path / "LICENSE").write_text("MIT\n", encoding="utf-8")
@@ -219,6 +233,19 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertTrue(output_path.exists())
         self.assertEqual(result.stdout, output_path.read_text(encoding="utf-8"))
         self.assertIn("Repo Health Doctor:", output_path.read_text(encoding="utf-8"))
+
+    def test_text_output_includes_cli_ux_context_without_raw_secret(self) -> None:
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        secret_value = "s" * 24
+        (self.tmp_path / "app.py").write_text('api_' + 'key = "' + secret_value + '"\n', encoding="utf-8")
+
+        report = diagnose_repo(self.tmp_path)
+        rendered_text = format_text(report)
+
+        self.assertIn("Schema: 1.1", rendered_text)
+        self.assertIn("Status: PASS ok, WARN review, BLOCK release blocker", rendered_text)
+        self.assertIn("rule=rhd.secret.generic_api_key", rendered_text)
+        self.assertNotIn(secret_value, rendered_text)
 
     def test_default_ignored_directory_is_not_scanned_for_secrets(self) -> None:
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
@@ -854,6 +881,43 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertEqual(payload["overall_status"], "pass")
         self.assertEqual([check["name"] for check in payload["checks"]], ["policy"])
 
+    def test_scan_cli_fail_on_controls_warn_exit_code(self) -> None:
+        (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+
+        block_result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                str(self.tmp_path),
+                "--fail-on",
+                "block",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        warn_result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                str(self.tmp_path),
+                "--fail-on",
+                "warn",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        self.assertEqual(block_result.returncode, 0)
+        self.assertEqual(warn_result.returncode, 1)
+
     def test_validate_policy_help_is_policy_focused(self) -> None:
         env = os.environ.copy()
         env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
@@ -874,6 +938,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertIn("validate-policy", result.stdout)
         self.assertIn("--no-local-config", result.stdout)
         self.assertNotIn("--public-safety", result.stdout)
+        self.assertNotIn("--fail-on", result.stdout)
 
     def test_validate_policy_cli_blocks_invalid_policy_without_scanning(self) -> None:
         env = os.environ.copy()
@@ -945,6 +1010,24 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         )
 
         self.assertIn("repo-health-doctor", result.stdout)
+
+    def test_package_module_version_runs(self) -> None:
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "--version",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        self.assertEqual(result.stdout.strip(), f"repo-health-doctor {TOOL_VERSION}")
 
 
 if __name__ == "__main__":

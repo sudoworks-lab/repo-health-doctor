@@ -6,6 +6,7 @@ import sys
 
 from .doctor import (
     DEFAULT_LARGE_FILE_THRESHOLD_MB,
+    TOOL_VERSION,
     determine_exit_code,
     diagnose_repo,
     format_json,
@@ -40,11 +41,22 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
         "--output",
         help="Write the rendered report to a file while also printing to stdout.",
     )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"repo-health-doctor {TOOL_VERSION}",
+    )
     if not validate_mode:
+        parser.add_argument(
+            "--fail-on",
+            choices=("block", "warn"),
+            default="block",
+            help="Exit with code 1 on block findings, or on warn and block findings.",
+        )
         parser.add_argument(
             "--strict",
             action="store_true",
-            help="Return exit code 1 when any warning or block is present.",
+            help="Alias for --fail-on warn.",
         )
         parser.add_argument(
             "--large-file-threshold-mb",
@@ -100,6 +112,7 @@ def main(argv: list[str] | None = None) -> int:
             local_config_path=args.local_config,
             load_local_config=not args.no_local_config,
         )
+        fail_on = "block"
     else:
         if args.large_file_threshold_mb <= 0:
             parser.error("--large-file-threshold-mb must be greater than 0")
@@ -112,13 +125,14 @@ def main(argv: list[str] | None = None) -> int:
             local_config_path=args.local_config,
             load_local_config=not args.no_local_config,
         )
+        fail_on = "warn" if args.strict else args.fail_on
     output = format_json(report) if args.format == "json" else format_text(report)
     if args.output:
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(output, encoding="utf-8")
     sys.stdout.write(output)
-    return determine_exit_code(report, strict=args.strict if command == "scan" else True)
+    return determine_exit_code(report, fail_on=fail_on)
 
 
 if __name__ == "__main__":

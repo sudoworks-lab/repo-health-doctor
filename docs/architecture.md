@@ -27,6 +27,7 @@
 各結果は `pass` / `warn` / `block` に集約され、text または JSON として出力されます。
 
 `--public-safety` を有効にすると、通常診断に加えて公開前向けの追加チェックを走らせます。
+`validate-policy` は scan を実行せず、policy file の形式と期限、rule_id、allow 制約だけを検証します。
 
 ## 何を検知するか
 
@@ -74,6 +75,15 @@
 JSON には `schema_version` と per-check details を含めているため、呼び出し側が独自の gating や annotation を実装できます。
 finding が出る場合は `rule_id` と `severity` を含め、検知値そのものではなく中立カテゴリを返します。
 policy が適用された finding には safe な policy id と source だけを付与し、policy file 内の具体値は返しません。
+`schema_version: 1.1` は Phase2 系の公開安全 report 契約として維持します。
+
+## Exit Policy
+
+- `pass`: exit code `0`
+- `warn`: デフォルトでは exit code `0`、`--fail-on warn` または `--strict` では exit code `1`
+- `block`: 常に exit code `1`
+
+CI の公開前 gate では、段階導入なら `--fail-on block`、warning も止めるなら `--fail-on warn` を使います。
 
 ## Privacy / Safety
 

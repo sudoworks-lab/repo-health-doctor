@@ -15,6 +15,7 @@ LARGE_FILE_THRESHOLD_BYTES = DEFAULT_LARGE_FILE_THRESHOLD_MB * 1024 * 1024
 TEXT_FILE_SCAN_LIMIT_BYTES = 1 * 1024 * 1024
 MAX_SCANNED_FILES = 200
 REPORT_SCHEMA_VERSION = "1.1"
+TOOL_VERSION = "0.1.0"
 
 README_NAMES = ("README", "README.md", "README.rst", "README.txt")
 LICENSE_NAMES = ("LICENSE", "LICENSE.txt", "LICENSE.md", "COPYING")
@@ -621,7 +622,7 @@ def _build_report(root: Path, checks: list[CheckResult]) -> dict:
     )
     return {
         "tool": "repo-health-doctor",
-        "version": "0.1.0",
+        "version": TOOL_VERSION,
         "schema_version": REPORT_SCHEMA_VERSION,
         "repo_path": _safe_repo_path(root),
         "overall_status": overall_status,
@@ -974,52 +975,65 @@ def format_text(report: dict) -> str:
     lines = [
         f"Repo Health Doctor: {report['overall_status'].upper()}",
         f"Target: {report['repo_path']}",
+        f"Schema: {report['schema_version']}",
         (
             "Summary: "
             f"{report['summary']['pass']} pass, "
             f"{report['summary']['warn']} warn, "
             f"{report['summary']['block']} block"
         ),
+        "Status: PASS ok, WARN review, BLOCK release blocker",
         "",
+        "Checks:",
     ]
 
     for check in report["checks"]:
-        lines.append(f"[{check['status'].upper()}] {check['name']}: {check['summary']}")
+        lines.append(f"- [{check['status'].upper()}] {check['name']}: {check['summary']}")
         details = check["details"]
         if details.get("found"):
-            lines.append(f"  found: {', '.join(details['found'])}")
+            lines.append(f"    found: {', '.join(details['found'])}")
         if check["name"] == "secrets_scan":
-            lines.append(f"  scanned_files: {details['scanned_files']}")
+            lines.append(f"    scanned_files: {details['scanned_files']}")
             for finding in details["findings"][:5]:
-                prefix = "allowed possible secret" if finding.get("allowed") else "possible secret"
-                lines.append(f"  {prefix}: {finding['file']} ({finding['pattern']})")
-        if check["name"] == "large_files":
-            lines.append(f"  threshold_bytes: {details['threshold_bytes']}")
-            for finding in details["findings"][:5]:
-                prefix = "allowed large file" if finding.get("allowed") else "large file"
-                lines.append(f"  {prefix}: {finding['file']} ({finding['size_bytes']} bytes)")
-        if check["name"] == "public_text_safety":
-            lines.append(f"  scanned_files: {details['scanned_files']}")
-            lines.append(f"  scan_scope: {details['scan_scope']}")
-            for finding in details["findings"][:5]:
-                prefix = "allowed public text issue" if finding.get("allowed") else "public text issue"
+                prefix = "allowed finding" if finding.get("allowed") else "finding"
                 lines.append(
-                    f"  {prefix}: "
-                    f"{finding['file']} ({finding['pattern']} line {finding['line']})"
+                    f"    {prefix}: file={finding['file']} "
+                    f"rule={finding['rule_id']} category={finding['pattern']}"
+                )
+        if check["name"] == "large_files":
+            lines.append(f"    threshold_bytes: {details['threshold_bytes']}")
+            for finding in details["findings"][:5]:
+                prefix = "allowed finding" if finding.get("allowed") else "finding"
+                lines.append(
+                    f"    {prefix}: file={finding['file']} "
+                    f"rule={finding['rule_id']} size_bytes={finding['size_bytes']}"
+                )
+        if check["name"] == "public_text_safety":
+            lines.append(f"    scanned_files: {details['scanned_files']}")
+            lines.append(f"    scan_scope: {details['scan_scope']}")
+            for finding in details["findings"][:5]:
+                prefix = "allowed finding" if finding.get("allowed") else "finding"
+                lines.append(
+                    f"    {prefix}: file={finding['file']} "
+                    f"rule={finding['rule_id']} category={finding['pattern']} line={finding['line']}"
                 )
         if check["name"] == "tracked_artifacts":
-            lines.append(f"  scan_scope: {details['scan_scope']}")
+            lines.append(f"    scan_scope: {details['scan_scope']}")
             for finding in details["findings"][:5]:
-                prefix = "allowed tracked file issue" if finding.get("allowed") else "tracked file issue"
-                lines.append(f"  {prefix}: {finding['file']} ({finding['pattern']})")
+                prefix = "allowed finding" if finding.get("allowed") else "finding"
+                lines.append(
+                    f"    {prefix}: file={finding['file']} "
+                    f"rule={finding['rule_id']} category={finding['pattern']}"
+                )
         if check["name"] == "policy":
-            lines.append(f"  policy_sources: {', '.join(details['policy_sources'])}")
-            lines.append(f"  ignore_path_count: {details['ignore_path_count']}")
-            lines.append(f"  allow_finding_count: {details['allow_finding_count']}")
+            policy_sources = ", ".join(details["policy_sources"]) if details["policy_sources"] else "none"
+            lines.append(f"    policy_sources: {policy_sources}")
+            lines.append(f"    ignore_path_count: {details['ignore_path_count']}")
+            lines.append(f"    allow_finding_count: {details['allow_finding_count']}")
             for finding in details["findings"][:5]:
                 lines.append(
-                    "  policy issue: "
-                    f"{finding['matched_policy_id']} ({finding['pattern']})"
+                    f"    policy issue: policy_id={finding['matched_policy_id']} "
+                    f"rule={finding['rule_id']} category={finding['pattern']}"
                 )
         lines.append("")
 
@@ -1030,9 +1044,11 @@ def format_json(report: dict) -> str:
     return json.dumps(report, indent=2, ensure_ascii=False) + "\n"
 
 
-def determine_exit_code(report: dict, strict: bool = False) -> int:
+def determine_exit_code(report: dict, strict: bool = False, fail_on: str = STATUS_BLOCK) -> int:
+    if fail_on not in {STATUS_BLOCK, STATUS_WARN}:
+        raise ValueError("fail_on must be 'block' or 'warn'")
     if report["summary"]["block"] > 0:
         return 1
-    if strict and report["summary"]["warn"] > 0:
+    if (strict or fail_on == STATUS_WARN) and report["summary"]["warn"] > 0:
         return 1
     return 0

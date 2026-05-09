@@ -12,6 +12,14 @@ license = {file = "LICENSE"}
 authors = [
   {name = "Codex"}
 ]
+keywords = ["repository", "cli", "preflight", "ci"]
+classifiers = [
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Quality Assurance"
+]
 dependencies = []
 
 [project.scripts]

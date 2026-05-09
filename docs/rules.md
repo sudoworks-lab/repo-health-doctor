@@ -5,8 +5,17 @@
 ## Severity
 
 - `pass`: 問題なし。finding は通常出力されません。
-- `warn`: 確認推奨。`--strict` 指定時は exit code `1` になります。
+- `warn`: 確認推奨。`--fail-on warn` または `--strict` 指定時は exit code `1` になります。
 - `block`: 公開・共有前に対応が必要。常に exit code `1` になります。
+
+## Exit Codes
+
+- `0`: `pass` のみ
+- `0`: `warn` のみで `--fail-on block`
+- `1`: `block` が 1 件以上
+- `1`: `--fail-on warn` または `--strict` 指定時に `warn` が 1 件以上
+
+`--strict` は後方互換のための alias で、通常は `--fail-on warn` を明示します。
 
 ## Finding Schema
 
@@ -46,7 +55,7 @@ raw の検知文字列、secret 候補、個人環境由来の値、local networ
 | `rhd.policy.unknown_rule_id` | 未定義 rule_id を参照する allow policy を検知する | `block` | policy source, policy id, category | raw config value は出さない |
 | `rhd.policy.restricted_secret_allow` | fixture 以外で secret 系 rule を allow しようとする policy を検知する | `block` | policy source, policy id, category | raw config value は出さない |
 
-## Phase2-C Note
+## CLI UX Note
 
-Phase2-C では `validate-policy` mode を追加し、scan を実行せずに policy の破損を検出できるようにします。
-policy validation の finding も通常の JSON report と同じ `rule_id`, `severity`, `redacted` 契約に従います。
+`validate-policy` mode は scan を実行せずに policy の破損を検出します。
+policy validation の finding も通常の JSON report と同じ `schema_version: 1.1`, `rule_id`, `severity`, `redacted` 契約に従います。
