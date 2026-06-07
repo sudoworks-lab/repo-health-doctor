@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
 import json
 import os
 import re
@@ -22,6 +23,7 @@ from repo_health_doctor.doctor import (
     format_json,
     format_markdown,
     format_text,
+    list_policy_allows,
     validate_policy,
 )
 
@@ -1275,6 +1277,83 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertEqual(checks["policy"]["details"]["ignore_path_count"], 1)
         self.assertEqual(checks["policy"]["details"]["allow_finding_count"], 1)
 
+    def test_list_policy_allows_reports_active_allow(self) -> None:
+        report = list_policy_allows(self.tmp_path, config_path=POLICY_FIXTURES_PATH / "valid-policy.yml")
+        checks = {check["name"]: check for check in report["checks"]}
+        inventory = checks["policy_allow_inventory"]
+        allow = inventory["details"]["allows"][0]
+
+        self.assertEqual(report["overall_status"], "pass")
+        self.assertEqual(inventory["status"], "pass")
+        self.assertEqual(allow["policy_source"], "repo")
+        self.assertEqual(allow["policy_id"], "repo:allow:1")
+        self.assertEqual(allow["rule_id"], "rhd.repository.large_file")
+        self.assertEqual(allow["path_scope"], "exact_path")
+        self.assertEqual(allow["expires"], "2999-01-01")
+        self.assertEqual(allow["status"], "active")
+        self.assertTrue(allow["redacted"])
+
+    def test_list_policy_allows_reports_expiring_soon_allow(self) -> None:
+        soon_date = (date.today() + timedelta(days=15)).isoformat()
+        (self.tmp_path / "repo-health-doctor.yml").write_text(
+            "allow_findings:\n"
+            "  - rule_id: rhd.repository.large_file\n"
+            "    path: docs/*.bin\n"
+            "    reason: reviewed category\n"
+            "    owner: release-team\n"
+            f"    expires: {soon_date}\n",
+            encoding="utf-8",
+        )
+
+        report = list_policy_allows(self.tmp_path)
+        checks = {check["name"]: check for check in report["checks"]}
+        inventory = checks["policy_allow_inventory"]
+        allow = inventory["details"]["allows"][0]
+
+        self.assertEqual(report["overall_status"], "warn")
+        self.assertEqual(inventory["status"], "warn")
+        self.assertEqual(inventory["details"]["expiring_soon_count"], 1)
+        self.assertEqual(allow["path_scope"], "wildcard_pattern")
+        self.assertEqual(allow["status"], "expiring-soon")
+
+    def test_list_policy_allows_reports_expired_allow_without_raw_path(self) -> None:
+        expired_date = (date.today() - timedelta(days=1)).isoformat()
+        raw_path = "private-allow-scope/generated.bin"
+        (self.tmp_path / "repo-health-doctor.yml").write_text(
+            "allow_findings:\n"
+            "  - rule_id: rhd.repository.large_file\n"
+            f"    path: {raw_path}\n"
+            "    reason: reviewed category\n"
+            "    owner: release-team\n"
+            f"    expires: {expired_date}\n",
+            encoding="utf-8",
+        )
+
+        report = list_policy_allows(self.tmp_path)
+        rendered_json = format_json(report)
+        rendered_text = format_text(report)
+        rendered_markdown = format_markdown(report)
+        checks = {check["name"]: check for check in report["checks"]}
+        inventory = checks["policy_allow_inventory"]
+        allow = inventory["details"]["allows"][0]
+
+        self.assertEqual(report["overall_status"], "block")
+        self.assertEqual(checks["policy"]["status"], "block")
+        self.assertEqual(inventory["status"], "block")
+        self.assertEqual(inventory["details"]["expired_count"], 1)
+        self.assertEqual(allow["status"], "expired")
+        self.assertEqual(allow["path_scope"], "exact_path")
+        self.assertNotIn(raw_path, rendered_json)
+        self.assertNotIn(raw_path, rendered_text)
+        self.assertNotIn(raw_path, rendered_markdown)
+
+    def test_list_policy_allows_report_matches_public_report_schema(self) -> None:
+        report = list_policy_allows(self.tmp_path, config_path=POLICY_FIXTURES_PATH / "valid-policy.yml")
+        payload = json.loads(format_json(report))
+        schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+        _assert_matches_schema(self, payload, schema)
+
     def test_validate_policy_blocks_missing_required_field(self) -> None:
         report = validate_policy(self.tmp_path, config_path=POLICY_FIXTURES_PATH / "missing-required.yml")
         checks = {check["name"]: check for check in report["checks"]}
@@ -1551,12 +1630,14 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         readme = (repo_root / "README.md").read_text(encoding="utf-8")
         demo_doc = (repo_root / "docs" / "demo.md").read_text(encoding="utf-8")
         ci_doc = (repo_root / "docs" / "ci-integration.md").read_text(encoding="utf-8")
+        policy_doc = (repo_root / "docs" / "policy.md").read_text(encoding="utf-8")
         release_checklist = (repo_root / "docs" / "release-checklist.md").read_text(encoding="utf-8")
 
         for command in (
             "repo-health-doctor --version",
             "repo-health-doctor validate-policy .",
             "repo-health-doctor . --fail-on block --public-safety",
+            "repo-health-doctor list-allows .",
         ):
             self.assertIn(command, readme)
         for command in (
@@ -1577,6 +1658,12 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             'cat /tmp/repo-health-doctor-summary.md >> "$GITHUB_STEP_SUMMARY"',
         ):
             self.assertIn(command, ci_doc)
+        for command in (
+            "repo-health-doctor validate-policy .",
+            "repo-health-doctor list-allows .",
+            "repo-health-doctor list-allows . --format json",
+        ):
+            self.assertIn(command, policy_doc)
 
     def test_readme_and_release_checklist_describe_offline_and_packaging_verify(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
@@ -1620,6 +1707,31 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertEqual(payload["overall_status"], "pass")
         self.assertEqual([check["name"] for check in payload["checks"]], ["policy"])
 
+    def test_list_allows_cli_outputs_json(self) -> None:
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "list-allows",
+                str(self.tmp_path),
+                "--format",
+                "json",
+                "--config",
+                str(POLICY_FIXTURES_PATH / "valid-policy.yml"),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["overall_status"], "pass")
+        self.assertEqual([check["name"] for check in payload["checks"]], ["policy", "policy_allow_inventory"])
+
     def test_validate_policy_cli_outputs_markdown(self) -> None:
         env = os.environ.copy()
         env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
@@ -1644,6 +1756,31 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertIn("# Repo Health Doctor Report", result.stdout)
         self.assertIn("Overall Status: `PASS`", result.stdout)
         self.assertIn("### `policy`", result.stdout)
+
+    def test_list_allows_cli_outputs_markdown(self) -> None:
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "list-allows",
+                str(self.tmp_path),
+                "--format",
+                "markdown",
+                "--config",
+                str(POLICY_FIXTURES_PATH / "valid-policy.yml"),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        self.assertIn("# Repo Health Doctor Report", result.stdout)
+        self.assertIn("### `policy_allow_inventory`", result.stdout)
+        self.assertIn("| Policy Source | Policy ID | Rule ID | Path Scope | Expires | Status | Redacted |", result.stdout)
 
     def test_scan_cli_fail_on_controls_warn_exit_code(self) -> None:
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
@@ -1700,6 +1837,28 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         )
 
         self.assertIn("validate-policy", result.stdout)
+        self.assertIn("--no-local-config", result.stdout)
+        self.assertNotIn("--public-safety", result.stdout)
+        self.assertNotIn("--fail-on", result.stdout)
+
+    def test_list_allows_help_is_policy_focused(self) -> None:
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "list-allows",
+                "--help",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        self.assertIn("list-allows", result.stdout)
         self.assertIn("--no-local-config", result.stdout)
         self.assertNotIn("--public-safety", result.stdout)
         self.assertNotIn("--fail-on", result.stdout)

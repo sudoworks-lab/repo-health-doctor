@@ -12,22 +12,34 @@ from .doctor import (
     format_json,
     format_markdown,
     format_text,
+    list_policy_allows,
     validate_policy,
 )
 
 
 def build_parser(command: str = "scan") -> argparse.ArgumentParser:
     validate_mode = command == "validate-policy"
+    list_allows_mode = command == "list-allows"
     parser = argparse.ArgumentParser(
-        prog="repo-health-doctor validate-policy" if validate_mode else "repo-health-doctor",
+        prog=(
+            "repo-health-doctor validate-policy"
+            if validate_mode
+            else "repo-health-doctor list-allows"
+            if list_allows_mode
+            else "repo-health-doctor"
+        ),
         description=(
             "Validate policy configuration without scanning repository contents."
             if validate_mode
+            else "List allow entries with stale-policy status."
+            if list_allows_mode
             else "Diagnose basic repository health signals."
         ),
         epilog=(
             "Policy-only mode: repo-health-doctor validate-policy <path> [--format json|markdown]"
-            if not validate_mode
+            if not validate_mode and not list_allows_mode
+            else "Allow inventory mode: repo-health-doctor list-allows <path> [--format json|markdown]"
+            if list_allows_mode
             else None
         ),
     )
@@ -47,7 +59,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
         action="version",
         version=f"repo-health-doctor {TOOL_VERSION}",
     )
-    if not validate_mode:
+    if not validate_mode and not list_allows_mode:
         parser.add_argument(
             "--fail-on",
             choices=("block", "warn"),
@@ -98,6 +110,9 @@ def main(argv: list[str] | None = None) -> int:
     if raw_args and raw_args[0] == "validate-policy":
         command = "validate-policy"
         raw_args = raw_args[1:]
+    elif raw_args and raw_args[0] == "list-allows":
+        command = "list-allows"
+        raw_args = raw_args[1:]
 
     parser = build_parser(command)
     args = parser.parse_args(raw_args)
@@ -108,6 +123,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if command == "validate-policy":
         report = validate_policy(
+            target,
+            config_path=args.config,
+            local_config_path=args.local_config,
+            load_local_config=not args.no_local_config,
+        )
+        fail_on = "block"
+    elif command == "list-allows":
+        report = list_policy_allows(
             target,
             config_path=args.config,
             local_config_path=args.local_config,

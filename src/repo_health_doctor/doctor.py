@@ -14,6 +14,7 @@ DEFAULT_LARGE_FILE_THRESHOLD_MB = 10
 LARGE_FILE_THRESHOLD_BYTES = DEFAULT_LARGE_FILE_THRESHOLD_MB * 1024 * 1024
 TEXT_FILE_SCAN_LIMIT_BYTES = 1 * 1024 * 1024
 MAX_SCANNED_FILES = 200
+POLICY_ALLOW_EXPIRING_SOON_DAYS = 30
 REPORT_SCHEMA_VERSION = "1.1"
 TOOL_VERSION = "0.1.0"
 
@@ -87,6 +88,9 @@ NULL_BYTE = b"\x00"
 STATUS_PASS = "pass"
 STATUS_WARN = "warn"
 STATUS_BLOCK = "block"
+POLICY_ALLOW_STATUS_ACTIVE = "active"
+POLICY_ALLOW_STATUS_EXPIRING_SOON = "expiring-soon"
+POLICY_ALLOW_STATUS_EXPIRED = "expired"
 RUNTIME_STATUS_VALUES = (STATUS_PASS, STATUS_WARN, STATUS_BLOCK)
 RUNTIME_FINDING_SEVERITY_VALUES = (STATUS_WARN, STATUS_BLOCK)
 RULE_ID_LARGE_FILE = "rhd.repository.large_file"
@@ -210,12 +214,25 @@ class AllowFindingPolicy:
     source: str
     rule_id: str
     path_pattern: str
+    expires: date
+
+
+@dataclass(frozen=True)
+class PolicyAllowInventoryEntry:
+    policy_source: str
+    policy_id: str
+    rule_id: str
+    path_scope: str
+    expires: str
+    status: str
+    redacted: bool = True
 
 
 @dataclass
 class PolicyConfig:
     ignore_paths: tuple[str, ...]
     allow_findings: tuple[AllowFindingPolicy, ...]
+    allow_inventory: tuple[PolicyAllowInventoryEntry, ...]
     issues: list[dict]
     sources: tuple[str, ...]
     ignore_path_count: int
@@ -478,6 +495,42 @@ def _is_secret_fixture_path(path_pattern: str) -> bool:
     return any(normalized.startswith(prefix) for prefix in SECRET_ALLOW_FIXTURE_PREFIXES)
 
 
+def _classify_policy_path_scope(path_pattern: str) -> str:
+    normalized = path_pattern.replace("\\", "/").strip().lstrip("/")
+    if any(char in normalized for char in "*?[]"):
+        return "wildcard_pattern"
+    if normalized.endswith("/"):
+        return "directory_prefix"
+    return "exact_path"
+
+
+def _policy_allow_status(expires: date, today: date | None = None) -> str:
+    current_day = date.today() if today is None else today
+    if expires < current_day:
+        return POLICY_ALLOW_STATUS_EXPIRED
+    if expires <= current_day.fromordinal(current_day.toordinal() + POLICY_ALLOW_EXPIRING_SOON_DAYS):
+        return POLICY_ALLOW_STATUS_EXPIRING_SOON
+    return POLICY_ALLOW_STATUS_ACTIVE
+
+
+def _policy_allow_inventory_entry(
+    *,
+    source: str,
+    policy_id: str,
+    rule_id: str,
+    path_pattern: str,
+    expires: date,
+) -> PolicyAllowInventoryEntry:
+    return PolicyAllowInventoryEntry(
+        policy_source=source,
+        policy_id=policy_id,
+        rule_id=rule_id,
+        path_scope=_classify_policy_path_scope(path_pattern),
+        expires=expires.isoformat(),
+        status=_policy_allow_status(expires),
+    )
+
+
 def _load_policy_config(
     root: Path,
     config_path: str | Path | None = None,
@@ -496,6 +549,7 @@ def _load_policy_config(
 
     ignore_paths: list[str] = []
     allow_findings: list[AllowFindingPolicy] = []
+    allow_inventory: list[PolicyAllowInventoryEntry] = []
     issues: list[dict] = []
     loaded_sources: list[str] = []
     ignore_count = 0
@@ -563,7 +617,15 @@ def _load_policy_config(
             except ValueError:
                 issues.append(_policy_issue("invalid_allow", source, policy_id))
                 continue
-            if expires < date.today():
+            inventory_entry = _policy_allow_inventory_entry(
+                source=source,
+                policy_id=policy_id,
+                rule_id=rule_id,
+                path_pattern=path_pattern,
+                expires=expires,
+            )
+            allow_inventory.append(inventory_entry)
+            if inventory_entry.status == POLICY_ALLOW_STATUS_EXPIRED:
                 issues.append(_policy_issue("expired_allow", source, policy_id))
                 continue
 
@@ -577,12 +639,14 @@ def _load_policy_config(
                     source=source,
                     rule_id=rule_id,
                     path_pattern=path_pattern,
+                    expires=expires,
                 )
             )
 
     return PolicyConfig(
         ignore_paths=tuple(ignore_paths),
         allow_findings=tuple(allow_findings),
+        allow_inventory=tuple(allow_inventory),
         issues=issues,
         sources=tuple(dict.fromkeys(loaded_sources)),
         ignore_path_count=ignore_count,
@@ -643,6 +707,42 @@ def _policy_check(policy: PolicyConfig) -> CheckResult:
             "policy_sources": list(policy.sources),
             "ignore_path_count": policy.ignore_path_count,
             "allow_finding_count": policy.allow_finding_count,
+        },
+    )
+
+
+def _policy_allow_inventory_check(policy: PolicyConfig) -> CheckResult:
+    allows = [asdict(entry) for entry in policy.allow_inventory]
+    active_count = sum(1 for entry in policy.allow_inventory if entry.status == POLICY_ALLOW_STATUS_ACTIVE)
+    expiring_soon_count = sum(
+        1 for entry in policy.allow_inventory if entry.status == POLICY_ALLOW_STATUS_EXPIRING_SOON
+    )
+    expired_count = sum(1 for entry in policy.allow_inventory if entry.status == POLICY_ALLOW_STATUS_EXPIRED)
+
+    if expired_count:
+        status = STATUS_BLOCK
+        summary = "Expired allow entries require review."
+    elif expiring_soon_count:
+        status = STATUS_WARN
+        summary = "Some allow entries are expiring soon."
+    elif allows:
+        status = STATUS_PASS
+        summary = "Allow inventory loaded."
+    else:
+        status = STATUS_PASS
+        summary = "No allow entries found."
+
+    return CheckResult(
+        name="policy_allow_inventory",
+        status=status,
+        summary=summary,
+        details={
+            "policy_sources": list(policy.sources),
+            "allow_finding_count": policy.allow_finding_count,
+            "active_count": active_count,
+            "expiring_soon_count": expiring_soon_count,
+            "expired_count": expired_count,
+            "allows": allows,
         },
     )
 
@@ -1061,6 +1161,23 @@ def validate_policy(
     return _build_report(root, [_policy_check(policy)])
 
 
+def list_policy_allows(
+    repo_path: str | Path,
+    config_path: str | Path | None = None,
+    local_config_path: str | Path | None = None,
+    load_local_config: bool = True,
+) -> dict:
+    root = Path(repo_path).resolve()
+    policy = _load_policy_config(
+        root,
+        config_path=config_path,
+        local_config_path=local_config_path,
+        load_local_config=load_local_config,
+    )
+    checks = [_policy_check(policy), _policy_allow_inventory_check(policy)]
+    return _build_report(root, checks)
+
+
 def format_text(report: dict) -> str:
     lines = [
         f"Repo Health Doctor: {report['overall_status'].upper()}",
@@ -1125,7 +1242,27 @@ def format_text(report: dict) -> str:
                     f"    policy issue: policy_id={finding['matched_policy_id']} "
                     f"rule={finding['rule_id']} category={finding['pattern']}"
                 )
-        if check["name"] not in {"secrets_scan", "large_files", "public_text_safety", "tracked_artifacts", "policy"}:
+        if check["name"] == "policy_allow_inventory":
+            policy_sources = ", ".join(details["policy_sources"]) if details["policy_sources"] else "none"
+            lines.append(f"    policy_sources: {policy_sources}")
+            lines.append(f"    allow_finding_count: {details['allow_finding_count']}")
+            lines.append(f"    active_count: {details['active_count']}")
+            lines.append(f"    expiring_soon_count: {details['expiring_soon_count']}")
+            lines.append(f"    expired_count: {details['expired_count']}")
+            for allow in details["allows"][:10]:
+                lines.append(
+                    f"    allow: policy_source={allow['policy_source']} "
+                    f"policy_id={allow['policy_id']} rule={allow['rule_id']} "
+                    f"path_scope={allow['path_scope']} expires={allow['expires']} status={allow['status']}"
+                )
+        if check["name"] not in {
+            "secrets_scan",
+            "large_files",
+            "public_text_safety",
+            "tracked_artifacts",
+            "policy",
+            "policy_allow_inventory",
+        }:
             for finding in details.get("findings", [])[:5]:
                 prefix = "allowed finding" if finding.get("allowed") else "finding"
                 lines.append(
@@ -1234,6 +1371,12 @@ def format_markdown(report: dict) -> str:
             lines.append(f"- Ignore Path Count: {_format_markdown_code(details['ignore_path_count'])}")
         if "allow_finding_count" in details:
             lines.append(f"- Allow Finding Count: {_format_markdown_code(details['allow_finding_count'])}")
+        if "active_count" in details:
+            lines.append(f"- Active Count: {_format_markdown_code(details['active_count'])}")
+        if "expiring_soon_count" in details:
+            lines.append(f"- Expiring Soon Count: {_format_markdown_code(details['expiring_soon_count'])}")
+        if "expired_count" in details:
+            lines.append(f"- Expired Count: {_format_markdown_code(details['expired_count'])}")
 
         findings = details.get("findings", [])
         if findings:
@@ -1259,6 +1402,32 @@ def format_markdown(report: dict) -> str:
                 )
         else:
             lines.append("- Findings: none")
+
+        allows = details.get("allows", [])
+        if allows:
+            lines.extend(
+                [
+                    "",
+                    "| Policy Source | Policy ID | Rule ID | Path Scope | Expires | Status | Redacted |",
+                    "| --- | --- | --- | --- | --- | --- | --- |",
+                ]
+            )
+            for allow in allows:
+                lines.append(
+                    _format_markdown_table_row(
+                        [
+                            _format_markdown_code(allow["policy_source"]),
+                            _format_markdown_code(allow["policy_id"]),
+                            _format_markdown_code(allow["rule_id"]),
+                            _format_markdown_code(allow["path_scope"]),
+                            _format_markdown_code(allow["expires"]),
+                            _format_markdown_code(allow["status"]),
+                            _format_markdown_code(str(allow["redacted"]).lower()),
+                        ]
+                    )
+                )
+        elif "allows" in details:
+            lines.append("- Allows: none")
 
     return "\n".join(lines).rstrip() + "\n"
 
