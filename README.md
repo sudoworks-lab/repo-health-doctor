@@ -1,12 +1,33 @@
 # repo-health-doctor
 
-`repo-health-doctor` は、repository を公開・共有前に点検するための小さな Python CLI です。
-README や LICENSE の有無、workflow や tests の基本整備、軽量な secrets scan、large file、公開前 safety check をローカルまたは CI で短時間に確認できます。
+repo-health-doctor is a local-first preflight gate for maintainers deciding whether to accept AI-generated repository changes.
 
-## Why
+`repo-health-doctor` は、AI生成差分を受け入れるか判断する maintainer 向けの local-first preflight gate です。repo を公開・共有・自動化へ渡す前に、README、LICENSE、CI、tests、pre-publish signal checks、tracked artifacts、policy validity、redacted JSON output を短時間で確認します。
 
-公開直前の repository では、深い静的解析より前に「見せてよい状態か」を短時間で確かめたい場面があります。
-この tool はその preflight 用です。人間が読みやすい text と、自動化しやすい JSON の両方を返します。
+## Who This Helps
+
+- AI 生成差分をレビューする OSS maintainer
+- local-first な公開前 gate を置きたい個人開発者
+- repo 作業の前後で安全確認したい coding agent
+- PASS / WARN / BLOCK と JSON を CI で扱いたい automation
+
+## What It Checks
+
+- README、LICENSE、workflow、tests、docs、scripts の基本整備
+- secret-like pattern、large file、tracked artifact 候補
+- `--public-safety` による private path、local IP、限定カテゴリ pattern の検知
+- `validate-policy` による allow / ignore policy の形式、期限、rule_id の検証
+- raw 値を出さない redacted text / JSON report
+
+## Where It Fits
+
+深い static analysis や security 製品の代替ではありません。maintainer が repo を share、publish、automation へ渡す前に、短時間で publish-or-hold decision を行うための前段 gate です。
+
+## Maintainer And Agent Readiness
+
+- maintainer 向けの運用導線は [docs/maintainer-guide.md](docs/maintainer-guide.md) に分離しています
+- agent 向けの短い作業契約は [AGENTS.md](AGENTS.md)、詳細手順は [docs/agent-guide.md](docs/agent-guide.md) に置いています
+- redaction 境界は [docs/security-model.md](docs/security-model.md)、fixture と golden の考え方は [docs/evaluation-model.md](docs/evaluation-model.md) で管理します
 
 ## Quickstart
 
@@ -213,8 +234,15 @@ Checks:
 
 ## Related Docs
 
+- [docs/requirements.md](docs/requirements.md): 要件の正本
+- [docs/maintainer-guide.md](docs/maintainer-guide.md): maintainer の運用導線
+- [docs/agent-guide.md](docs/agent-guide.md): coding agent の作業境界と verify
+- [docs/security-model.md](docs/security-model.md): redaction と safety boundary
+- [docs/evaluation-model.md](docs/evaluation-model.md): tests、fixtures、golden の役割
 - [docs/demo.md](docs/demo.md): 小さな sample repo で実行の流れを確認する
 - [docs/policy.md](docs/policy.md): policy の考え方と validate-policy mode
 - [docs/rules.md](docs/rules.md): rule_id、severity、redaction 方針
 - [docs/architecture.md](docs/architecture.md): 設計方針と対象範囲
+- [docs/project-pitch.md](docs/project-pitch.md): 申請前の価値説明 draft
+- [docs/roadmap.md](docs/roadmap.md): 今後の改善候補
 - [docs/release-checklist.md](docs/release-checklist.md): 配布前チェック

@@ -64,3 +64,15 @@ raw の検知文字列、secret 候補、個人環境由来の値、local networ
 
 `validate-policy` mode は scan を実行せずに policy の破損を検出します。
 policy validation の finding も通常の JSON report と同じ `schema_version: 1.1`, `rule_id`, `severity`, `redacted` 契約に従います。
+
+## Rule Authoring
+
+rule を追加または調整する場合は、次を 1 セットで扱います。
+
+- stable な `rule_id` と `severity` の理由を決める
+- `tests/fixtures/` の既存 fixture で足りるか先に確認し、不足時だけ最小 fixture を追加する
+- `tests/test_doctor.py` の回帰 test または golden を追加する
+- この表と関連 docs を更新する
+- redaction contract と `schema_version: 1.1` の互換性を崩さない
+
+public-safety や redaction の変更では、raw 値を出さないことと golden output の drift を必ず確認します。

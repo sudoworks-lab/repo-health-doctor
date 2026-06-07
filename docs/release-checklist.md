@@ -8,6 +8,7 @@
 - `PYTHONPATH=src python3 -m unittest discover -s tests -v` が成功すること
 - `PYTHONPATH=src python3 -m repo_health_doctor --help` が成功すること
 - `PYTHONPATH=src python3 -m repo_health_doctor --version` が成功すること
+- `wc -l AGENTS.md` が 200 行以内であることを示すこと
 - `PYTHONPATH=src python3 -m repo_health_doctor . --fail-on warn --public-safety` が期待どおりの exit code を返すこと
 - `PYTHONPATH=src python3 -m repo_health_doctor validate-policy .` が policy 破損を独立して検出できること
 - JSON 出力が `python3 -m json.tool` で parse できること
@@ -39,6 +40,7 @@
 - text / JSON report に raw の検知値を出さないこと
 - policy 由来の具体値、reason、owner、path pattern を report に出さないこと
 - `repo_path` は絶対 path ではなく相対 path または masked value であること
+- `AGENTS.md` は短い作業契約に留め、詳細 recipe は `docs/agent-guide.md` に分離すること
 - README、docs、schema、workflow に組織固有の禁止語や具体的な検知値を例示しないこと
 - README と release-checklist で `--fail-on` / `--strict` / `validate-policy` の導線が矛盾しないこと
 

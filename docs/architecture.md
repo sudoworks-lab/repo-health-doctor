@@ -2,7 +2,7 @@
 
 ## 設計方針
 
-`repo-health-doctor` は、意図的に小さく、決定的で、local-first な CLI として設計しています。
+`repo-health-doctor` は、AI 生成差分をレビューする maintainer 向けの local-first preflight gate として、意図的に小さく、決定的で、network 非依存な CLI に寄せています。
 
 - 深い解析よりも、速い repository hygiene check を優先する
 - 人間向け text と automation 向け JSON の両方を同じ report から生成する
@@ -11,7 +11,7 @@
 
 ## repo 診断の考え方
 
-現在の実装は、local repository を走査してコンパクトな health signal を返します。
+現在の実装は、local repository を走査して compact な health signal を返し、maintainer が publish-or-hold decision を行えるところまで責務を絞ります。
 
 検査対象:
 
@@ -59,8 +59,8 @@
 
 典型的な流れ:
 
-1. local で health check を走らせる
-2. obvious な warning / block を確認する
+1. maintainer または agent が local で pre-agent / pre-publish check を走らせる
+2. obvious な warning / block を確認し、policy や docs を含めて差分を整える
 3. CI やその他 automation に repository を渡す
 
 周辺 workflow と補完関係にはありますが、直接結合はしていません。契約はシンプルで、「path を inspect して、短い report を返し、local に留まる」ことです。
@@ -96,7 +96,7 @@ CI の公開前 gate では、段階導入なら `--fail-on block`、warning も
 - finding は `rule_id`, `severity`, repository 相対 path, category を返し、raw の検知値は返しません
 - policy は scan 除外と finding 例外を分けて扱い、local policy の具体値を report に出しません
 
-これにより、生成物 directory を過剰に走査しにくくしつつ、挙動を予測しやすくしています。
+これにより、生成物 directory を過剰に走査しにくくしつつ、挙動を予測しやすくしています。詳細な redaction contract は [security-model.md](security-model.md)、評価の層は [evaluation-model.md](evaluation-model.md) を正本にします。
 
 ## 将来拡張候補
 

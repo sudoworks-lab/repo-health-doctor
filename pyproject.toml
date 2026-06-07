@@ -5,14 +5,23 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "repo-health-doctor"
 version = "0.1.0"
-description = "Minimal CLI to diagnose basic repository health signals."
+description = "Local-first preflight gate for maintainers reviewing repository changes."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}
 authors = [
-  {name = "Codex"}
+  {name = "repo-health-doctor contributors"}
 ]
-keywords = ["repository", "cli", "preflight", "ci"]
+keywords = [
+  "repository",
+  "cli",
+  "preflight",
+  "ci",
+  "oss",
+  "maintainer",
+  "public-safety",
+  "repository-health",
+]
 classifiers = [
   "Environment :: Console",
   "Intended Audience :: Developers",

@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -36,6 +39,7 @@ jobs:
           python3 -m repo_health_doctor --help
           repo-health-doctor .
           repo-health-doctor . --strict
+          repo-health-doctor . --fail-on block --public-safety
           repo-health-doctor . --strict --public-safety
           repo-health-doctor . --strict --public-safety --format json --output /tmp/repo-health-doctor-result.json
           test -s /tmp/repo-health-doctor-result.json

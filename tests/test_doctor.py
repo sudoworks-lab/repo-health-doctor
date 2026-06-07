@@ -31,6 +31,10 @@ FIXTURES_PATH = Path(__file__).resolve().parent / "fixtures"
 POLICY_FIXTURES_PATH = FIXTURES_PATH / "policies"
 VALID_POLICY_REPO_PATH = FIXTURES_PATH / "policy-valid-repo"
 DEMO_FIXTURE_PATH = FIXTURES_PATH / "demo-repo"
+MISSING_METADATA_FIXTURE_PATH = FIXTURES_PATH / "missing-metadata-repo"
+SECRET_LIKE_FIXTURE_PATH = FIXTURES_PATH / "secret-like-repo"
+PUBLIC_SAFETY_FIXTURE_PATH = FIXTURES_PATH / "public-safety-repo"
+TRACKED_ARTIFACT_FIXTURE_PATH = FIXTURES_PATH / "tracked-artifact-repo"
 GOLDEN_POLICY_REPORT_PATH = FIXTURES_PATH / "golden" / "valid-policy-report.json"
 GOLDEN_DEMO_PUBLIC_JSON_PATH = FIXTURES_PATH / "golden" / "public-safety-demo.json"
 GOLDEN_DEMO_POLICY_JSON_PATH = FIXTURES_PATH / "golden" / "policy-demo.json"
@@ -84,6 +88,21 @@ def _extract_fenced_block(content: str, language: str, occurrence: int = 0) -> s
     return matches[occurrence]
 
 
+def _iter_relative_markdown_links(content: str) -> list[str]:
+    links: list[str] = []
+    for raw_target in re.findall(r"\[[^\]]+\]\(([^)]+)\)", content):
+        target = raw_target.strip()
+        if target.startswith(("http://", "https://", "mailto:", "#")):
+            continue
+        if target.startswith("<") and target.endswith(">"):
+            target = target[1:-1]
+        target = target.split("#", 1)[0].strip()
+        if not target:
+            continue
+        links.append(target)
+    return links
+
+
 class RepoHealthDoctorBehaviorTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp_dir = tempfile.TemporaryDirectory()
@@ -111,22 +130,26 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         (self.tmp_path / "docs").mkdir(exist_ok=True)
         (self.tmp_path / "scripts").mkdir(exist_ok=True)
 
+    def _materialize_fixture_repo(self, fixture_path: Path, target_name: str, git_init: bool = False) -> Path:
+        repo_path = self.tmp_path / target_name
+        shutil.copytree(fixture_path, repo_path)
+        if git_init:
+            subprocess.run(
+                ["git", "-C", str(repo_path), "init"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(repo_path), "add", "."],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        return repo_path
+
     def _materialize_demo_repo(self) -> Path:
-        demo_repo = self.tmp_path / "demo-repo"
-        shutil.copytree(DEMO_FIXTURE_PATH, demo_repo)
-        subprocess.run(
-            ["git", "-C", str(demo_repo), "init"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        subprocess.run(
-            ["git", "-C", str(demo_repo), "add", "."],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        return demo_repo
+        return self._materialize_fixture_repo(DEMO_FIXTURE_PATH, "demo-repo", git_init=True)
 
     def _normalized_demo_reports(self) -> tuple[dict, dict, str]:
         public_report = diagnose_repo(self._materialize_demo_repo(), public_safety=True)
@@ -134,6 +157,113 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         public_report["repo_path"] = "<demo-repo>"
         policy_report["repo_path"] = "<demo-repo>"
         return public_report, policy_report, format_text(public_report)
+
+    def test_definition_of_done_docs_and_templates_exist(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+
+        required_paths = (
+            repo_root / "AGENTS.md",
+            repo_root / "CONTRIBUTING.md",
+            repo_root / "SECURITY.md",
+            repo_root / "CODE_OF_CONDUCT.md",
+            repo_root / ".github" / "ISSUE_TEMPLATE" / "bug_report.yml",
+            repo_root / ".github" / "ISSUE_TEMPLATE" / "rule_request.yml",
+            repo_root / ".github" / "ISSUE_TEMPLATE" / "false_positive.yml",
+            repo_root / ".github" / "ISSUE_TEMPLATE" / "docs_improvement.yml",
+            repo_root / ".github" / "pull_request_template.md",
+            repo_root / "docs" / "requirements.md",
+            repo_root / "docs" / "maintainer-guide.md",
+            repo_root / "docs" / "agent-guide.md",
+            repo_root / "docs" / "security-model.md",
+            repo_root / "docs" / "evaluation-model.md",
+            repo_root / "docs" / "project-pitch.md",
+            repo_root / "docs" / "roadmap.md",
+        )
+
+        for path in required_paths:
+            self.assertTrue(path.is_file(), f"missing required file: {path}")
+
+    def test_agents_file_stays_within_short_contract_limit(self) -> None:
+        agents_path = Path(__file__).resolve().parents[1] / "AGENTS.md"
+        content = agents_path.read_text(encoding="utf-8")
+
+        self.assertLessEqual(len(content.splitlines()), 200)
+        for required_text in (
+            "Do not add network calls.",
+            "Do not weaken redaction",
+            "Do not change `schema_version`",
+            "Update tests, fixtures, and docs together",
+            "Re-check golden outputs",
+            "publish",
+        ):
+            self.assertIn(required_text, content)
+
+    def test_markdown_links_resolve_for_readme_and_docs(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        markdown_paths = [repo_root / "README.md", *sorted((repo_root / "docs").glob("*.md"))]
+
+        for markdown_path in markdown_paths:
+            content = markdown_path.read_text(encoding="utf-8")
+            for target in _iter_relative_markdown_links(content):
+                resolved = (markdown_path.parent / target).resolve()
+                self.assertTrue(resolved.exists(), f"broken link in {markdown_path}: {target}")
+
+    def test_ci_permissions_and_pyproject_metadata_match_requirements(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        workflow = (repo_root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
+
+        self.assertIn("permissions:\n  contents: read", workflow)
+        self.assertIn('{name = "repo-health-doctor contributors"}', pyproject)
+        for keyword in ("maintainer", "public-safety", "repository-health"):
+            self.assertIn(f'"{keyword}"', pyproject)
+
+    def test_minimum_fixture_set_is_present(self) -> None:
+        for path in (
+            DEMO_FIXTURE_PATH,
+            MISSING_METADATA_FIXTURE_PATH,
+            SECRET_LIKE_FIXTURE_PATH,
+            PUBLIC_SAFETY_FIXTURE_PATH,
+            TRACKED_ARTIFACT_FIXTURE_PATH,
+            VALID_POLICY_REPO_PATH,
+            POLICY_FIXTURES_PATH,
+        ):
+            self.assertTrue(path.exists(), f"missing fixture path: {path}")
+
+    def test_missing_metadata_fixture_triggers_repository_warning(self) -> None:
+        repo_path = self._materialize_fixture_repo(MISSING_METADATA_FIXTURE_PATH, "missing-metadata-repo")
+        report = diagnose_repo(repo_path)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["readme"]["status"], "warn")
+        self.assertEqual(checks["readme"]["details"]["findings"][0]["rule_id"], "rhd.repository.missing_readme")
+
+    def test_secret_like_fixture_triggers_redacted_secret_block(self) -> None:
+        repo_path = self._materialize_fixture_repo(SECRET_LIKE_FIXTURE_PATH, "secret-like-repo")
+        report = diagnose_repo(repo_path)
+        checks = {check["name"]: check for check in report["checks"]}
+        rendered_json = format_json(report)
+
+        self.assertEqual(checks["secrets_scan"]["status"], "block")
+        self.assertEqual(checks["secrets_scan"]["details"]["findings"][0]["rule_id"], "rhd.secret.generic_api_key")
+        self.assertNotIn("aaaaaaaaaaaaaaaaaaaaaaaa", rendered_json)
+
+    def test_public_safety_fixture_triggers_expected_categories(self) -> None:
+        repo_path = self._materialize_fixture_repo(PUBLIC_SAFETY_FIXTURE_PATH, "public-safety-repo", git_init=True)
+        report = diagnose_repo(repo_path, public_safety=True)
+        checks = {check["name"]: check for check in report["checks"]}
+        patterns = {finding["pattern"] for finding in checks["public_text_safety"]["details"]["findings"]}
+
+        self.assertEqual(checks["public_text_safety"]["status"], "block")
+        self.assertTrue({"restricted_term", "private_path", "local_ip"}.issubset(patterns))
+
+    def test_tracked_artifact_fixture_triggers_block(self) -> None:
+        repo_path = self._materialize_fixture_repo(TRACKED_ARTIFACT_FIXTURE_PATH, "tracked-artifact-repo", git_init=True)
+        report = diagnose_repo(repo_path, public_safety=True)
+        checks = {check["name"]: check for check in report["checks"]}
+
+        self.assertEqual(checks["tracked_artifacts"]["status"], "block")
+        self.assertEqual(checks["tracked_artifacts"]["details"]["findings"][0]["rule_id"], "rhd.tracked_artifact.generated_dir")
 
     def test_diagnose_repo_detects_expected_checks(self) -> None:
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")

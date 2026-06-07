@@ -29,6 +29,13 @@ block 条件がある場合は通常の report と同じ JSON 契約で `overall
 
 config format の schema は [../schemas/policy-config.schema.json](../schemas/policy-config.schema.json) にあります。
 
+## Maintainer Workflow
+
+- まず scan を直すべきか、限定的な allow が妥当かを maintainer が判断する
+- 継続的な例外だけを `repo-health-doctor.yml` に置き、個人作業用の override は `.repo-health-doctor.local.yml` に寄せる
+- `allow_findings` を追加したら `validate-policy` と `--public-safety` の両方を通し、理由と期限を見直す
+- raw 値や組織固有の禁止語は policy comment や docs に転載しない
+
 ## Public Safetyとの使い分け
 
 - `repo-health-doctor . --public-safety`: repository 内容を走査し、公開前に確認すべき finding を検出します。
@@ -80,6 +87,13 @@ allow_findings:
 - 読み込めない、または解釈できない policy file
 
 secret 系 rule は原則 allow できません。test fixture として明確に分離された path のみ例外対象にできます。
+
+## False Positive Fix Flow
+
+- repo 内容を直せるなら、まず内容側を修正する
+- docs や fixture のように意図的な文字列を保持する必要がある場合だけ、scope を絞った `allow_findings` を付ける
+- path は最小単位に絞り、rule_id は 1 件ずつ明示する
+- allow 追加時は fixture または golden で理由を説明できる状態を維持する
 
 ## Report Safety
 
