@@ -1141,6 +1141,128 @@ def format_json(report: dict) -> str:
     return json.dumps(report, indent=2, ensure_ascii=False) + "\n"
 
 
+def _format_markdown_code(value: object) -> str:
+    text = str(value).replace("`", "\\`")
+    return f"`{text}`"
+
+
+def _format_markdown_table_row(values: list[object]) -> str:
+    cells = [str(value).replace("\n", " ").replace("|", "\\|") for value in values]
+    return "| " + " | ".join(cells) + " |"
+
+
+def _format_markdown_finding_notes(finding: dict) -> str:
+    notes: list[str] = []
+    if "line" in finding:
+        notes.append(f"line={finding['line']}")
+    if "size_bytes" in finding:
+        notes.append(f"size_bytes={finding['size_bytes']}")
+    if finding.get("allowed"):
+        notes.append("allowed")
+    if "matched_policy_id" in finding:
+        notes.append(f"policy_id={finding['matched_policy_id']}")
+    if "policy_source" in finding:
+        notes.append(f"policy_source={finding['policy_source']}")
+    if not notes:
+        return "-"
+    return ", ".join(notes)
+
+
+def format_markdown(report: dict) -> str:
+    lines = [
+        "# Repo Health Doctor Report",
+        "",
+        f"- Target Repo Path: {_format_markdown_code(report['repo_path'])}",
+        f"- Overall Status: {_format_markdown_code(report['overall_status'].upper())}",
+        f"- Schema Version: {_format_markdown_code(report['schema_version'])}",
+        "",
+        "## Summary Counts",
+        "",
+        "| PASS | WARN | BLOCK |",
+        "| --- | --- | --- |",
+        f"| {report['summary']['pass']} | {report['summary']['warn']} | {report['summary']['block']} |",
+        "",
+        "## Status Meanings",
+        "",
+        "- `PASS`: ok",
+        "- `WARN`: review",
+        "- `BLOCK`: release blocker",
+        "",
+        "## Checks",
+        "",
+        "| Status | Check | Summary |",
+        "| --- | --- | --- |",
+    ]
+
+    for check in report["checks"]:
+        lines.append(
+            _format_markdown_table_row(
+                [
+                    _format_markdown_code(check["status"].upper()),
+                    _format_markdown_code(check["name"]),
+                    check["summary"],
+                ]
+            )
+        )
+
+    for check in report["checks"]:
+        lines.extend(
+            [
+                "",
+                f"### {_format_markdown_code(check['name'])}",
+                "",
+                f"- Status: {_format_markdown_code(check['status'].upper())}",
+                f"- Summary: {check['summary']}",
+            ]
+        )
+        details = check["details"]
+        if details.get("found"):
+            found = ", ".join(_format_markdown_code(value) for value in details["found"])
+            lines.append(f"- Found: {found}")
+        if "scanned_files" in details:
+            lines.append(f"- Scanned Files: {_format_markdown_code(details['scanned_files'])}")
+        if "scan_scope" in details:
+            lines.append(f"- Scan Scope: {_format_markdown_code(details['scan_scope'])}")
+        if "threshold_mb" in details:
+            lines.append(f"- Threshold MB: {_format_markdown_code(details['threshold_mb'])}")
+        if "threshold_bytes" in details:
+            lines.append(f"- Threshold Bytes: {_format_markdown_code(details['threshold_bytes'])}")
+        if "policy_sources" in details:
+            policy_sources = ", ".join(_format_markdown_code(source) for source in details["policy_sources"])
+            lines.append(f"- Policy Sources: {policy_sources or _format_markdown_code('none')}")
+        if "ignore_path_count" in details:
+            lines.append(f"- Ignore Path Count: {_format_markdown_code(details['ignore_path_count'])}")
+        if "allow_finding_count" in details:
+            lines.append(f"- Allow Finding Count: {_format_markdown_code(details['allow_finding_count'])}")
+
+        findings = details.get("findings", [])
+        if findings:
+            lines.extend(
+                [
+                    "",
+                    "| Rule ID | Severity | File | Pattern | Redacted | Notes |",
+                    "| --- | --- | --- | --- | --- | --- |",
+                ]
+            )
+            for finding in findings:
+                lines.append(
+                    _format_markdown_table_row(
+                        [
+                            _format_markdown_code(finding["rule_id"]),
+                            _format_markdown_code(finding["severity"]),
+                            _format_markdown_code(finding["file"]),
+                            _format_markdown_code(finding["pattern"]),
+                            _format_markdown_code(str(finding["redacted"]).lower()),
+                            _format_markdown_finding_notes(finding),
+                        ]
+                    )
+                )
+        else:
+            lines.append("- Findings: none")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def determine_exit_code(report: dict, strict: bool = False, fail_on: str = STATUS_BLOCK) -> int:
     if fail_on not in {STATUS_BLOCK, STATUS_WARN}:
         raise ValueError("fail_on must be 'block' or 'warn'")

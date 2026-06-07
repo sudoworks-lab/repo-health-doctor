@@ -20,6 +20,7 @@ from repo_health_doctor.doctor import (
     determine_exit_code,
     diagnose_repo,
     format_json,
+    format_markdown,
     format_text,
     validate_policy,
 )
@@ -39,6 +40,7 @@ GOLDEN_POLICY_REPORT_PATH = FIXTURES_PATH / "golden" / "valid-policy-report.json
 GOLDEN_DEMO_PUBLIC_JSON_PATH = FIXTURES_PATH / "golden" / "public-safety-demo.json"
 GOLDEN_DEMO_POLICY_JSON_PATH = FIXTURES_PATH / "golden" / "policy-demo.json"
 GOLDEN_DEMO_PUBLIC_TEXT_PATH = FIXTURES_PATH / "golden" / "public-safety-demo.txt"
+GOLDEN_DEMO_PUBLIC_MARKDOWN_PATH = FIXTURES_PATH / "golden" / "public-safety-demo.md"
 
 
 def _assert_matches_schema(testcase: unittest.TestCase, value: object, schema: dict, path: str = "$") -> None:
@@ -151,12 +153,12 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
     def _materialize_demo_repo(self) -> Path:
         return self._materialize_fixture_repo(DEMO_FIXTURE_PATH, "demo-repo", git_init=True)
 
-    def _normalized_demo_reports(self) -> tuple[dict, dict, str]:
+    def _normalized_demo_reports(self) -> tuple[dict, dict, str, str]:
         public_report = diagnose_repo(self._materialize_demo_repo(), public_safety=True)
         policy_report = validate_policy(self.tmp_path / "demo-repo")
         public_report["repo_path"] = "<demo-repo>"
         policy_report["repo_path"] = "<demo-repo>"
-        return public_report, policy_report, format_text(public_report)
+        return public_report, policy_report, format_text(public_report), format_markdown(public_report)
 
     def test_definition_of_done_docs_and_templates_exist(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
@@ -176,6 +178,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             repo_root / "docs" / "agent-guide.md",
             repo_root / "docs" / "security-model.md",
             repo_root / "docs" / "evaluation-model.md",
+            repo_root / "docs" / "ci-integration.md",
             repo_root / "docs" / "project-pitch.md",
             repo_root / "docs" / "roadmap.md",
         )
@@ -353,6 +356,30 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertEqual(payload["schema_version"], "1.1")
         self.assertFalse(Path(payload["repo_path"]).is_absolute())
 
+    def test_cli_outputs_markdown(self) -> None:
+        self._write_complete_repo_baseline()
+
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor.cli",
+                str(self.tmp_path),
+                "--format",
+                "markdown",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        self.assertIn("# Repo Health Doctor Report", result.stdout)
+        self.assertIn("Overall Status: `PASS`", result.stdout)
+        self.assertIn("| Status | Check | Summary |", result.stdout)
+
     def test_block_exit_code_when_secret_detected(self) -> None:
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
         secret_line = 'to' + 'ken = "' + ("a" * 20) + '"\n'
@@ -456,6 +483,33 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertEqual(result.stdout, output_path.read_text(encoding="utf-8"))
         self.assertIn("Repo Health Doctor:", output_path.read_text(encoding="utf-8"))
 
+    def test_markdown_output_file_is_created(self) -> None:
+        self._write_complete_repo_baseline()
+        output_path = self.tmp_path / "report.md"
+
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor.cli",
+                str(self.tmp_path),
+                "--format",
+                "md",
+                "--output",
+                str(output_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        self.assertTrue(output_path.exists())
+        self.assertEqual(result.stdout, output_path.read_text(encoding="utf-8"))
+        self.assertIn("# Repo Health Doctor Report", output_path.read_text(encoding="utf-8"))
+
     def test_text_output_includes_cli_ux_context_without_raw_secret(self) -> None:
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
         secret_value = "s" * 24
@@ -468,6 +522,37 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertIn("Status: PASS ok, WARN review, BLOCK release blocker", rendered_text)
         self.assertIn("rule=rhd.secret.generic_api_key", rendered_text)
         self.assertNotIn(secret_value, rendered_text)
+
+    def test_markdown_output_includes_overall_status_and_redacts_raw_values(self) -> None:
+        self._write_complete_repo_baseline()
+        secret_value = "s" * 24
+        private_path = "/" + "home" + "/example/private"
+        local_ip = ".".join(("192", "168", "1", "25"))
+        (self.tmp_path / "app.py").write_text('api_' + 'key = "' + secret_value + '"\n', encoding="utf-8")
+        (self.tmp_path / "docs" / "public.md").write_text(
+            f"path: {private_path}\nip: {local_ip}\n",
+            encoding="utf-8",
+        )
+        self._init_git_repo()
+        subprocess.run(
+            ["git", "add", "README.md", "LICENSE", ".gitignore", ".github/workflows/ci.yml", "app.py", "docs/public.md"],
+            cwd=self.tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        report = diagnose_repo(self.tmp_path, public_safety=True)
+        rendered_markdown = format_markdown(report)
+
+        self.assertIn("Overall Status: `BLOCK`", rendered_markdown)
+        self.assertIn("| Rule ID | Severity | File | Pattern | Redacted | Notes |", rendered_markdown)
+        self.assertIn("`rhd.secret.generic_api_key`", rendered_markdown)
+        self.assertIn("`rhd.public_text.private_path`", rendered_markdown)
+        self.assertIn("`rhd.public_text.local_ip`", rendered_markdown)
+        self.assertNotIn(secret_value, rendered_markdown)
+        self.assertNotIn(private_path, rendered_markdown)
+        self.assertNotIn(local_ip, rendered_markdown)
 
     def test_default_ignored_directory_is_not_scanned_for_secrets(self) -> None:
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
@@ -1418,28 +1503,35 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertEqual(json.loads(policy_json_path.read_text(encoding="utf-8"))["overall_status"], "pass")
 
     def test_demo_public_safety_json_golden_fixture_is_stable(self) -> None:
-        public_report, _, _ = self._normalized_demo_reports()
+        public_report, _, _, _ = self._normalized_demo_reports()
         golden = json.loads(GOLDEN_DEMO_PUBLIC_JSON_PATH.read_text(encoding="utf-8"))
 
         self.assertEqual(public_report, golden)
 
     def test_demo_policy_json_golden_fixture_is_stable(self) -> None:
-        _, policy_report, _ = self._normalized_demo_reports()
+        _, policy_report, _, _ = self._normalized_demo_reports()
         golden = json.loads(GOLDEN_DEMO_POLICY_JSON_PATH.read_text(encoding="utf-8"))
 
         self.assertEqual(policy_report, golden)
 
     def test_demo_public_safety_text_golden_fixture_is_stable(self) -> None:
-        _, _, public_text = self._normalized_demo_reports()
+        _, _, public_text, _ = self._normalized_demo_reports()
         golden = GOLDEN_DEMO_PUBLIC_TEXT_PATH.read_text(encoding="utf-8")
 
         self.assertEqual(public_text, golden)
+
+    def test_demo_public_safety_markdown_golden_fixture_is_stable(self) -> None:
+        _, _, _, public_markdown = self._normalized_demo_reports()
+        golden = GOLDEN_DEMO_PUBLIC_MARKDOWN_PATH.read_text(encoding="utf-8")
+
+        self.assertEqual(public_markdown, golden)
 
     def test_golden_demo_outputs_do_not_contain_absolute_paths(self) -> None:
         for path in (
             GOLDEN_DEMO_PUBLIC_JSON_PATH,
             GOLDEN_DEMO_POLICY_JSON_PATH,
             GOLDEN_DEMO_PUBLIC_TEXT_PATH,
+            GOLDEN_DEMO_PUBLIC_MARKDOWN_PATH,
         ):
             content = path.read_text(encoding="utf-8")
             self.assertNotIn(str(self.tmp_path), content)
@@ -1458,6 +1550,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         repo_root = Path(__file__).resolve().parents[1]
         readme = (repo_root / "README.md").read_text(encoding="utf-8")
         demo_doc = (repo_root / "docs" / "demo.md").read_text(encoding="utf-8")
+        ci_doc = (repo_root / "docs" / "ci-integration.md").read_text(encoding="utf-8")
         release_checklist = (repo_root / "docs" / "release-checklist.md").read_text(encoding="utf-8")
 
         for command in (
@@ -1478,6 +1571,12 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             "PYTHONPATH=src python3 -m repo_health_doctor validate-policy .",
         ):
             self.assertIn(command, release_checklist)
+        for command in (
+            "repo-health-doctor . --strict --public-safety --format json --output /tmp/repo-health-doctor-result.json",
+            "repo-health-doctor . --strict --public-safety --format markdown --output /tmp/repo-health-doctor-summary.md",
+            'cat /tmp/repo-health-doctor-summary.md >> "$GITHUB_STEP_SUMMARY"',
+        ):
+            self.assertIn(command, ci_doc)
 
     def test_readme_and_release_checklist_describe_offline_and_packaging_verify(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
@@ -1520,6 +1619,31 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["overall_status"], "pass")
         self.assertEqual([check["name"] for check in payload["checks"]], ["policy"])
+
+    def test_validate_policy_cli_outputs_markdown(self) -> None:
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "validate-policy",
+                str(self.tmp_path),
+                "--format",
+                "markdown",
+                "--config",
+                str(POLICY_FIXTURES_PATH / "valid-policy.yml"),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        self.assertIn("# Repo Health Doctor Report", result.stdout)
+        self.assertIn("Overall Status: `PASS`", result.stdout)
+        self.assertIn("### `policy`", result.stdout)
 
     def test_scan_cli_fail_on_controls_warn_exit_code(self) -> None:
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")

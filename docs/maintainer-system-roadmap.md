@@ -52,10 +52,16 @@ Phase 2 では CLI を maintainer の日常作業へ結び付けます。
 - maintainer guide、release checklist、review recipe の整備
 - review 前後で使う標準 command set の固定化
 - policy ownership、expiry、exception handling の運用導線整理
-- CI での text / JSON gate の扱いの明確化
+- CI での text / JSON / Markdown gate の扱いの明確化
 - docs と tests を揃えた rule change workflow の定着
 
 狙いは、tool 単体ではなく maintainer workflow の一部として再現性を持たせることです。
+
+### Phase 2A Completion Candidates
+
+- `--format markdown` / `--format md` による maintainer-readable report を追加する
+- `--output` を使って CI artifact と GitHub Step Summary へ同じ Markdown report を渡せるようにする
+- text / JSON 契約を維持したまま report consumption を改善する
 
 ## Phase 3: Multi-Repo Maintainer Kit
 

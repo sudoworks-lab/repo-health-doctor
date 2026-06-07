@@ -2,7 +2,7 @@
 
 ## What This Tool Protects
 
-- Raw secret candidates are not printed in text or JSON output
+- Raw secret candidates are not printed in text, JSON, or Markdown output
 - Private paths are reported as neutral categories
 - Local IPs are reported as neutral categories
 - Policy allow targets are not echoed back as raw values
@@ -20,7 +20,7 @@
 
 ## Redaction Contract
 
-- Secret candidates, token candidates, private paths, local IPs, and policy allow target raw values must not appear in text output or JSON output
+- Secret candidates, token candidates, private paths, local IPs, and policy allow target raw values must not appear in text, JSON, or Markdown output
 - Reports should expose `rule_id`, `severity`, repo-relative path, line number, size, category, and safe policy metadata only
 - `redacted: true` means the raw value was replaced by a category or fixed mask
 - Debugging output must not print raw values to stdout, JSON, CI artifacts, or issue templates

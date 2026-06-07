@@ -6,7 +6,7 @@
 | --- | --- |
 | unit tests | CLI logic and contract regression checks |
 | fixtures | reusable repository examples for common scenarios |
-| golden outputs | drift detection for text and JSON output |
+| golden outputs | drift detection for text, Markdown, and JSON output |
 | smoke commands | README and CI command validation |
 | public-safety scan | publish-before-share gate |
 | policy validation | allow / ignore policy integrity |
@@ -37,3 +37,13 @@ Current minimum fixture set:
 ## Smoke Contract
 
 The README, demo doc, release checklist, and CLI help should all describe commands that run on the current codebase.
+
+## Markdown Report Smoke
+
+Maintain at least one smoke path for Markdown output so CI-facing formatting drift is visible.
+
+```bash
+PYTHONPATH=src python3 -m repo_health_doctor . --public-safety --format markdown --output /tmp/repo-health-doctor-summary.md
+test -s /tmp/repo-health-doctor-summary.md
+grep -E "Repo Health Doctor|PASS|WARN|BLOCK|Checks" /tmp/repo-health-doctor-summary.md
+```

@@ -10,6 +10,7 @@ from .doctor import (
     determine_exit_code,
     diagnose_repo,
     format_json,
+    format_markdown,
     format_text,
     validate_policy,
 )
@@ -25,7 +26,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             else "Diagnose basic repository health signals."
         ),
         epilog=(
-            "Policy-only mode: repo-health-doctor validate-policy <path> [--format json]"
+            "Policy-only mode: repo-health-doctor validate-policy <path> [--format json|markdown]"
             if not validate_mode
             else None
         ),
@@ -33,7 +34,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
     parser.add_argument("path", nargs="?", default=".", help="Repository path to inspect.")
     parser.add_argument(
         "--format",
-        choices=("text", "json"),
+        choices=("text", "json", "markdown", "md"),
         default="text",
         help="Output format.",
     )
@@ -126,7 +127,12 @@ def main(argv: list[str] | None = None) -> int:
             load_local_config=not args.no_local_config,
         )
         fail_on = "warn" if args.strict else args.fail_on
-    output = format_json(report) if args.format == "json" else format_text(report)
+    if args.format == "json":
+        output = format_json(report)
+    elif args.format in {"markdown", "md"}:
+        output = format_markdown(report)
+    else:
+        output = format_text(report)
     if args.output:
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
