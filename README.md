@@ -28,6 +28,7 @@ repo-health-doctor is a local-first preflight gate for maintainers deciding whet
 - maintainer 向けの運用導線は [docs/maintainer-guide.md](docs/maintainer-guide.md) に分離しています
 - agent 向けの短い作業契約は [AGENTS.md](AGENTS.md)、詳細手順は [docs/agent-guide.md](docs/agent-guide.md) に置いています
 - redaction 境界は [docs/security-model.md](docs/security-model.md)、fixture と golden の考え方は [docs/evaluation-model.md](docs/evaluation-model.md) で管理します
+- phase 設計は [docs/maintainer-system-roadmap.md](docs/maintainer-system-roadmap.md) にまとめています
 
 ## Quickstart
 
