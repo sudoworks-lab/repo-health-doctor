@@ -17,6 +17,7 @@ from .doctor import (
     format_markdown,
     format_text,
     list_policy_allows,
+    release_check,
     validate_policy,
 )
 
@@ -25,10 +26,14 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
     validate_mode = command == "validate-policy"
     list_allows_mode = command == "list-allows"
     diff_reports_mode = command == "diff-reports"
+    release_check_mode = command == "release-check"
     parser = argparse.ArgumentParser(
         prog=(
             "repo-health-doctor diff-reports"
             if diff_reports_mode
+            else
+            "repo-health-doctor release-check"
+            if release_check_mode
             else
             "repo-health-doctor validate-policy"
             if validate_mode
@@ -40,6 +45,9 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             "Compare two repo-health-doctor JSON reports."
             if diff_reports_mode
             else
+            "Summarize release readiness across scan, policy, allow inventory, and optional report diff."
+            if release_check_mode
+            else
             "Validate policy configuration without scanning repository contents."
             if validate_mode
             else "List allow entries with stale-policy status."
@@ -49,6 +57,9 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
         epilog=(
             "Report diff mode: repo-health-doctor diff-reports before.json after.json [--format json|markdown]"
             if diff_reports_mode
+            else
+            "Release mode: repo-health-doctor release-check <path> [--baseline-report before.json] [--format json|markdown]"
+            if release_check_mode
             else
             "Policy-only mode: repo-health-doctor validate-policy <path> [--format json|markdown]"
             if not validate_mode and not list_allows_mode
@@ -89,6 +100,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             action="store_true",
             help="Alias for --fail-on warn.",
         )
+    if not validate_mode and not list_allows_mode and not diff_reports_mode:
         parser.add_argument(
             "--large-file-threshold-mb",
             type=int,
@@ -101,10 +113,16 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             default=[],
             help="Ignore a path prefix during secrets scanning. Can be passed multiple times.",
         )
+    if not validate_mode and not list_allows_mode and not diff_reports_mode and not release_check_mode:
         parser.add_argument(
             "--public-safety",
             action="store_true",
             help="Enable extra checks for public release safety.",
+        )
+    if release_check_mode:
+        parser.add_argument(
+            "--baseline-report",
+            help="Optional earlier scan JSON report to summarize current changes against.",
         )
     if list_allows_mode:
         parser.add_argument(
@@ -146,6 +164,9 @@ def main(argv: list[str] | None = None) -> int:
     elif raw_args and raw_args[0] == "diff-reports":
         command = "diff-reports"
         raw_args = raw_args[1:]
+    elif raw_args and raw_args[0] == "release-check":
+        command = "release-check"
+        raw_args = raw_args[1:]
 
     parser = build_parser(command)
     args = parser.parse_args(raw_args)
@@ -174,6 +195,26 @@ def main(argv: list[str] | None = None) -> int:
                 load_local_config=not args.no_local_config,
             )
             fail_on = "block"
+        elif command == "release-check":
+            if args.large_file_threshold_mb <= 0:
+                parser.error("--large-file-threshold-mb must be greater than 0")
+            if args.baseline_report:
+                baseline_report = Path(args.baseline_report)
+                if not baseline_report.exists():
+                    parser.error(f"path does not exist: {baseline_report}")
+            try:
+                report = release_check(
+                    target,
+                    large_file_threshold_mb=args.large_file_threshold_mb,
+                    secrets_ignores=tuple(args.secrets_ignore),
+                    config_path=args.config,
+                    local_config_path=args.local_config,
+                    load_local_config=not args.no_local_config,
+                    baseline_report_path=args.baseline_report,
+                )
+            except ValueError as exc:
+                parser.error(str(exc))
+            fail_on = "warn" if args.strict else args.fail_on
         elif command == "list-allows":
             report = list_policy_allows(
                 target,

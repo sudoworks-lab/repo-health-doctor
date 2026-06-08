@@ -19,6 +19,7 @@ POLICY_ALLOW_EXPIRING_SOON_DAYS = 30
 REPORT_SCHEMA_VERSION = "1.1"
 TOOL_VERSION = "0.1.0"
 REPORT_KIND_DIFF = "report_diff"
+REPORT_KIND_RELEASE_CHECK = "release_check"
 
 README_NAMES = ("README", "README.md", "README.rst", "README.txt")
 LICENSE_NAMES = ("LICENSE", "LICENSE.txt", "LICENSE.md", "COPYING")
@@ -838,7 +839,7 @@ def _validate_loaded_report(payload: object) -> dict:
         raise ValueError("report payload must be a JSON object")
     if payload.get("tool") != "repo-health-doctor":
         raise ValueError("report payload must be produced by repo-health-doctor")
-    if payload.get("report_kind") == REPORT_KIND_DIFF:
+    if payload.get("report_kind") is not None:
         raise ValueError("diff-reports expects scan, validate-policy, or list-allows JSON reports")
     if payload.get("schema_version") != REPORT_SCHEMA_VERSION:
         raise ValueError("report schema_version does not match the current CLI")
@@ -942,9 +943,7 @@ def _report_status_map(report: dict) -> dict[str, str]:
     }
 
 
-def diff_reports(before_report_path: str | Path, after_report_path: str | Path) -> dict:
-    before_report = _load_report_file(before_report_path)
-    after_report = _load_report_file(after_report_path)
+def _diff_loaded_reports(before_report: dict, after_report: dict) -> dict:
     before_findings, before_counts = _flatten_report_findings(before_report)
     after_findings, after_counts = _flatten_report_findings(after_report)
     before_statuses = _report_status_map(before_report)
@@ -1011,6 +1010,12 @@ def diff_reports(before_report_path: str | Path, after_report_path: str | Path) 
         },
         "status_changes": status_changes,
     }
+
+
+def diff_reports(before_report_path: str | Path, after_report_path: str | Path) -> dict:
+    before_report = _load_report_file(before_report_path)
+    after_report = _load_report_file(after_report_path)
+    return _diff_loaded_reports(before_report, after_report)
 
 
 def _scan_secrets(root: Path, ignore_patterns: tuple[str, ...]) -> tuple[list[dict], int]:
@@ -1393,9 +1398,200 @@ def list_policy_allows(
     return _build_report(root, checks)
 
 
+def _report_check(report: dict, name: str) -> dict:
+    for check in report["checks"]:
+        if check["name"] == name:
+            return check
+    raise ValueError(f"missing expected check: {name}")
+
+
+def _report_finding_count(report: dict) -> int:
+    return sum(
+        len(check.get("details", {}).get("findings", []))
+        for check in report.get("checks", [])
+        if isinstance(check, dict)
+    )
+
+
+def _report_check_names(report: dict, status: str) -> list[str]:
+    return [
+        check["name"]
+        for check in report.get("checks", [])
+        if isinstance(check, dict) and check.get("status") == status and isinstance(check.get("name"), str)
+    ]
+
+
+def _release_diff_status(diff_report: dict) -> tuple[str, str]:
+    summary = diff_report["summary"]
+    has_review_changes = (
+        summary["added_findings"] > 0
+        or summary["severity_changes"] > 0
+        or summary["status_changes"] > 0
+        or diff_report["overall_status"]["changed"]
+    )
+    if has_review_changes:
+        return STATUS_WARN, "Current scan differs from baseline and should be reviewed."
+    return STATUS_PASS, "Current scan matches baseline or only resolves prior findings."
+
+
+def _recommended_release_action(overall_status: str, checks: list[CheckResult]) -> str:
+    if overall_status == STATUS_BLOCK:
+        if any(check.name == "policy_validation" and check.status == STATUS_BLOCK for check in checks):
+            return "Do not release. Fix policy validation blockers and rerun release-check."
+        return "Do not release. Resolve blocking findings and rerun release-check."
+    if overall_status == STATUS_WARN:
+        if any(check.name == "allow_inventory" and check.status == STATUS_WARN for check in checks):
+            return "Review expiring allow entries before release."
+        if any(check.name == "report_diff" and check.status == STATUS_WARN for check in checks):
+            return "Review changes since the baseline report before release."
+        return "Review warnings and rerun release-check before release."
+    return "Release readiness checks passed. Proceed with maintainer release review."
+
+
+def release_check(
+    repo_path: str | Path,
+    large_file_threshold_mb: int = DEFAULT_LARGE_FILE_THRESHOLD_MB,
+    secrets_ignores: tuple[str, ...] = (),
+    config_path: str | Path | None = None,
+    local_config_path: str | Path | None = None,
+    load_local_config: bool = True,
+    baseline_report_path: str | Path | None = None,
+) -> dict:
+    root = Path(repo_path).resolve()
+    scan_report = diagnose_repo(
+        root,
+        large_file_threshold_mb=large_file_threshold_mb,
+        secrets_ignores=secrets_ignores,
+        public_safety=True,
+        config_path=config_path,
+        local_config_path=local_config_path,
+        load_local_config=load_local_config,
+    )
+    policy_report = validate_policy(
+        root,
+        config_path=config_path,
+        local_config_path=local_config_path,
+        load_local_config=load_local_config,
+    )
+    allows_report = list_policy_allows(
+        root,
+        config_path=config_path,
+        local_config_path=local_config_path,
+        load_local_config=load_local_config,
+    )
+
+    scan_warning_checks = _report_check_names(scan_report, STATUS_WARN)
+    scan_blocking_checks = _report_check_names(scan_report, STATUS_BLOCK)
+    policy_check = _report_check(policy_report, "policy")
+    inventory_check = _report_check(allows_report, "policy_allow_inventory")
+
+    checks = [
+        CheckResult(
+            name="repo_scan",
+            status=scan_report["overall_status"],
+            summary=(
+                "Repository scan passed release checks."
+                if scan_report["overall_status"] == STATUS_PASS
+                else "Repository scan has release warnings."
+                if scan_report["overall_status"] == STATUS_WARN
+                else "Repository scan has release blockers."
+            ),
+            details={
+                "report_overall_status": scan_report["overall_status"],
+                "pass_count": scan_report["summary"]["pass"],
+                "warn_count": scan_report["summary"]["warn"],
+                "block_count": scan_report["summary"]["block"],
+                "finding_count": _report_finding_count(scan_report),
+                "warning_checks": scan_warning_checks,
+                "blocking_checks": scan_blocking_checks,
+            },
+        ),
+        CheckResult(
+            name="policy_validation",
+            status=policy_check["status"],
+            summary=policy_check["summary"],
+            details={
+                "report_overall_status": policy_report["overall_status"],
+                "policy_sources": policy_check["details"].get("policy_sources", []),
+                "ignore_path_count": policy_check["details"].get("ignore_path_count", 0),
+                "allow_finding_count": policy_check["details"].get("allow_finding_count", 0),
+                "issue_count": len(policy_check["details"].get("findings", [])),
+                "issue_rule_ids": sorted(
+                    {
+                        finding["rule_id"]
+                        for finding in policy_check["details"].get("findings", [])
+                        if isinstance(finding, dict) and isinstance(finding.get("rule_id"), str)
+                    }
+                ),
+            },
+        ),
+        CheckResult(
+            name="allow_inventory",
+            status=inventory_check["status"],
+            summary=inventory_check["summary"],
+            details={
+                "report_overall_status": inventory_check["status"],
+                "policy_sources": inventory_check["details"].get("policy_sources", []),
+                "allow_finding_count": inventory_check["details"].get("allow_finding_count", 0),
+                "active_count": inventory_check["details"].get("active_count", 0),
+                "expiring_soon_count": inventory_check["details"].get("expiring_soon_count", 0),
+                "expired_count": inventory_check["details"].get("expired_count", 0),
+                "displayed_allow_count": inventory_check["details"].get("displayed_allow_count", 0),
+            },
+        ),
+    ]
+
+    if baseline_report_path is None:
+        checks.append(
+            CheckResult(
+                name="report_diff",
+                status=STATUS_PASS,
+                summary="Baseline report not provided; diff summary skipped.",
+                details={"comparison_available": False},
+            )
+        )
+    else:
+        baseline_report = _load_report_file(baseline_report_path)
+        diff_report = _diff_loaded_reports(baseline_report, scan_report)
+        diff_status, diff_summary = _release_diff_status(diff_report)
+        checks.append(
+            CheckResult(
+                name="report_diff",
+                status=diff_status,
+                summary=diff_summary,
+                details={
+                    "comparison_available": True,
+                    "report_overall_status": diff_report["overall_status"]["after"],
+                    "added_findings": diff_report["summary"]["added_findings"],
+                    "resolved_findings": diff_report["summary"]["resolved_findings"],
+                    "unchanged_findings": diff_report["summary"]["unchanged_findings"],
+                    "severity_changes": diff_report["summary"]["severity_changes"],
+                    "status_changes": diff_report["summary"]["status_changes"],
+                },
+            )
+        )
+
+    report = _build_report(root, checks)
+    report["report_kind"] = REPORT_KIND_RELEASE_CHECK
+    report["release_readiness"] = {
+        "status": report["overall_status"],
+        "summary": (
+            "Release readiness checks passed."
+            if report["overall_status"] == STATUS_PASS
+            else "Release readiness requires review."
+            if report["overall_status"] == STATUS_WARN
+            else "Release readiness is blocked."
+        ),
+    }
+    report["recommended_next_action"] = _recommended_release_action(report["overall_status"], checks)
+    return report
+
+
 def format_text(report: dict) -> str:
     if report.get("report_kind") == REPORT_KIND_DIFF:
         return _format_diff_text(report)
+    if report.get("report_kind") == REPORT_KIND_RELEASE_CHECK:
+        return _format_release_check_text(report)
     lines = [
         f"Repo Health Doctor: {report['overall_status'].upper()}",
         f"Target: {report['repo_path']}",
@@ -1604,9 +1800,80 @@ def _format_diff_text(report: dict) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _format_release_check_text(report: dict) -> str:
+    lines = [
+        f"Repo Health Doctor Release Check: {report['overall_status'].upper()}",
+        f"Target: {report['repo_path']}",
+        f"Schema: {report['schema_version']}",
+        f"Release Readiness: {report['release_readiness']['status'].upper()}",
+        f"Recommended Next Action: {report['recommended_next_action']}",
+        (
+            "Summary: "
+            f"{report['summary']['pass']} pass, "
+            f"{report['summary']['warn']} warn, "
+            f"{report['summary']['block']} block"
+        ),
+        "",
+        "Checks:",
+    ]
+
+    for check in report["checks"]:
+        lines.append(f"- [{check['status'].upper()}] {check['name']}: {check['summary']}")
+        details = check["details"]
+        if "report_overall_status" in details:
+            lines.append(f"    report_overall_status: {details['report_overall_status']}")
+        if "pass_count" in details:
+            lines.append(f"    pass_count: {details['pass_count']}")
+        if "warn_count" in details:
+            lines.append(f"    warn_count: {details['warn_count']}")
+        if "block_count" in details:
+            lines.append(f"    block_count: {details['block_count']}")
+        if "finding_count" in details:
+            lines.append(f"    finding_count: {details['finding_count']}")
+        if "warning_checks" in details:
+            lines.append(f"    warning_checks: {', '.join(details['warning_checks']) or 'none'}")
+        if "blocking_checks" in details:
+            lines.append(f"    blocking_checks: {', '.join(details['blocking_checks']) or 'none'}")
+        if "policy_sources" in details:
+            lines.append(f"    policy_sources: {', '.join(details['policy_sources']) or 'none'}")
+        if "ignore_path_count" in details:
+            lines.append(f"    ignore_path_count: {details['ignore_path_count']}")
+        if "allow_finding_count" in details:
+            lines.append(f"    allow_finding_count: {details['allow_finding_count']}")
+        if "issue_count" in details:
+            lines.append(f"    issue_count: {details['issue_count']}")
+        if "issue_rule_ids" in details:
+            lines.append(f"    issue_rule_ids: {', '.join(details['issue_rule_ids']) or 'none'}")
+        if "active_count" in details:
+            lines.append(f"    active_count: {details['active_count']}")
+        if "expiring_soon_count" in details:
+            lines.append(f"    expiring_soon_count: {details['expiring_soon_count']}")
+        if "expired_count" in details:
+            lines.append(f"    expired_count: {details['expired_count']}")
+        if "displayed_allow_count" in details:
+            lines.append(f"    displayed_allow_count: {details['displayed_allow_count']}")
+        if "comparison_available" in details:
+            lines.append(f"    comparison_available: {'true' if details['comparison_available'] else 'false'}")
+        if "added_findings" in details:
+            lines.append(f"    added_findings: {details['added_findings']}")
+        if "resolved_findings" in details:
+            lines.append(f"    resolved_findings: {details['resolved_findings']}")
+        if "unchanged_findings" in details:
+            lines.append(f"    unchanged_findings: {details['unchanged_findings']}")
+        if "severity_changes" in details:
+            lines.append(f"    severity_changes: {details['severity_changes']}")
+        if "status_changes" in details:
+            lines.append(f"    status_changes: {details['status_changes']}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def format_markdown(report: dict) -> str:
     if report.get("report_kind") == REPORT_KIND_DIFF:
         return _format_diff_markdown(report)
+    if report.get("report_kind") == REPORT_KIND_RELEASE_CHECK:
+        return _format_release_check_markdown(report)
     lines = [
         "# Repo Health Doctor Report",
         "",
@@ -1847,6 +2114,104 @@ def _format_diff_markdown(report: dict) -> str:
             f"- Count: {_format_markdown_code(report['findings']['unchanged_count'])}",
         ]
     )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _format_release_check_markdown(report: dict) -> str:
+    lines = [
+        "# Repo Health Doctor Release Check",
+        "",
+        f"- Target Repo Path: {_format_markdown_code(report['repo_path'])}",
+        f"- Overall Release Readiness: {_format_markdown_code(report['release_readiness']['status'].upper())}",
+        f"- Readiness Summary: {report['release_readiness']['summary']}",
+        f"- Schema Version: {_format_markdown_code(report['schema_version'])}",
+        f"- Recommended Next Action: {report['recommended_next_action']}",
+        "",
+        "## Summary Counts",
+        "",
+        "| PASS | WARN | BLOCK |",
+        "| --- | --- | --- |",
+        f"| {report['summary']['pass']} | {report['summary']['warn']} | {report['summary']['block']} |",
+        "",
+        "## Checks",
+        "",
+        "| Status | Check | Summary |",
+        "| --- | --- | --- |",
+    ]
+
+    for check in report["checks"]:
+        lines.append(
+            _format_markdown_table_row(
+                [
+                    _format_markdown_code(check["status"].upper()),
+                    _format_markdown_code(check["name"]),
+                    check["summary"],
+                ]
+            )
+        )
+
+    for check in report["checks"]:
+        details = check["details"]
+        lines.extend(
+            [
+                "",
+                f"### {_format_markdown_code(check['name'])}",
+                "",
+                f"- Status: {_format_markdown_code(check['status'].upper())}",
+                f"- Summary: {check['summary']}",
+            ]
+        )
+        if "report_overall_status" in details:
+            lines.append(f"- Report Overall Status: {_format_markdown_code(details['report_overall_status'].upper())}")
+        if "pass_count" in details:
+            lines.append(f"- Pass Count: {_format_markdown_code(details['pass_count'])}")
+        if "warn_count" in details:
+            lines.append(f"- Warn Count: {_format_markdown_code(details['warn_count'])}")
+        if "block_count" in details:
+            lines.append(f"- Block Count: {_format_markdown_code(details['block_count'])}")
+        if "finding_count" in details:
+            lines.append(f"- Finding Count: {_format_markdown_code(details['finding_count'])}")
+        if "warning_checks" in details:
+            warning_checks = ", ".join(_format_markdown_code(value) for value in details["warning_checks"])
+            lines.append(f"- Warning Checks: {warning_checks or _format_markdown_code('none')}")
+        if "blocking_checks" in details:
+            blocking_checks = ", ".join(_format_markdown_code(value) for value in details["blocking_checks"])
+            lines.append(f"- Blocking Checks: {blocking_checks or _format_markdown_code('none')}")
+        if "policy_sources" in details:
+            policy_sources = ", ".join(_format_markdown_code(value) for value in details["policy_sources"])
+            lines.append(f"- Policy Sources: {policy_sources or _format_markdown_code('none')}")
+        if "ignore_path_count" in details:
+            lines.append(f"- Ignore Path Count: {_format_markdown_code(details['ignore_path_count'])}")
+        if "allow_finding_count" in details:
+            lines.append(f"- Allow Finding Count: {_format_markdown_code(details['allow_finding_count'])}")
+        if "issue_count" in details:
+            lines.append(f"- Issue Count: {_format_markdown_code(details['issue_count'])}")
+        if "issue_rule_ids" in details:
+            issue_rule_ids = ", ".join(_format_markdown_code(value) for value in details["issue_rule_ids"])
+            lines.append(f"- Issue Rule IDs: {issue_rule_ids or _format_markdown_code('none')}")
+        if "active_count" in details:
+            lines.append(f"- Active Count: {_format_markdown_code(details['active_count'])}")
+        if "expiring_soon_count" in details:
+            lines.append(f"- Expiring Soon Count: {_format_markdown_code(details['expiring_soon_count'])}")
+        if "expired_count" in details:
+            lines.append(f"- Expired Count: {_format_markdown_code(details['expired_count'])}")
+        if "displayed_allow_count" in details:
+            lines.append(f"- Displayed Allow Count: {_format_markdown_code(details['displayed_allow_count'])}")
+        if "comparison_available" in details:
+            lines.append(
+                f"- Comparison Available: {_format_markdown_code(str(details['comparison_available']).lower())}"
+            )
+        if "added_findings" in details:
+            lines.append(f"- Added Findings: {_format_markdown_code(details['added_findings'])}")
+        if "resolved_findings" in details:
+            lines.append(f"- Resolved Findings: {_format_markdown_code(details['resolved_findings'])}")
+        if "unchanged_findings" in details:
+            lines.append(f"- Unchanged Findings: {_format_markdown_code(details['unchanged_findings'])}")
+        if "severity_changes" in details:
+            lines.append(f"- Severity Changes: {_format_markdown_code(details['severity_changes'])}")
+        if "status_changes" in details:
+            lines.append(f"- Status Changes: {_format_markdown_code(details['status_changes'])}")
+
     return "\n".join(lines).rstrip() + "\n"
 
 

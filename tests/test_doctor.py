@@ -25,6 +25,7 @@ from repo_health_doctor.doctor import (
     format_markdown,
     format_text,
     list_policy_allows,
+    release_check,
     validate_policy,
 )
 
@@ -32,6 +33,7 @@ from repo_health_doctor.doctor import (
 SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "public-safety-report.schema.json"
 DIFF_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "report-diff.schema.json"
 POLICY_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "policy-config.schema.json"
+RELEASE_CHECK_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "release-check-report.schema.json"
 FIXTURES_PATH = Path(__file__).resolve().parent / "fixtures"
 POLICY_FIXTURES_PATH = FIXTURES_PATH / "policies"
 VALID_POLICY_REPO_PATH = FIXTURES_PATH / "policy-valid-repo"
@@ -1067,6 +1069,13 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertEqual(tuple(severity_change_schema["before_severity"]["enum"]), RUNTIME_FINDING_SEVERITY_VALUES)
         self.assertEqual(tuple(severity_change_schema["after_severity"]["enum"]), RUNTIME_FINDING_SEVERITY_VALUES)
 
+    def test_release_check_schema_contract_matches_runtime_constants(self) -> None:
+        schema = json.loads(RELEASE_CHECK_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+        self.assertEqual(schema["properties"]["schema_version"]["enum"], [REPORT_SCHEMA_VERSION])
+        self.assertEqual(schema["properties"]["report_kind"]["enum"], ["release_check"])
+        self.assertEqual(tuple(schema["$defs"]["runtime_status"]["enum"]), RUNTIME_STATUS_VALUES)
+
     def test_runtime_and_policy_findings_follow_common_contract(self) -> None:
         policy_marker = "ignore_pathz"
         (self.tmp_path / "app.py").write_text('api_' + 'key = "' + ("a" * 24) + '"\n', encoding="utf-8")
@@ -2011,6 +2020,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             "repo-health-doctor list-allows .",
             "repo-health-doctor list-allows . --fail-on expiring-soon",
             "repo-health-doctor diff-reports before.json after.json",
+            "repo-health-doctor release-check .",
         ):
             self.assertIn(command, readme)
         for command in (
@@ -2023,6 +2033,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             "repo-health-doctor --version",
             "PYTHONPATH=src python3 -m repo_health_doctor . --fail-on warn --public-safety",
             "PYTHONPATH=src python3 -m repo_health_doctor validate-policy .",
+            "PYTHONPATH=src python3 -m repo_health_doctor release-check . --format markdown --output /tmp/release-check.md",
         ):
             self.assertIn(command, release_checklist)
         for command in (
@@ -2475,6 +2486,212 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             self.assertNotIn(str(before_path), content)
             self.assertNotIn(str(after_path), content)
 
+    def test_release_check_report_matches_json_schema(self) -> None:
+        payload = release_check(self._materialize_demo_repo())
+        schema = json.loads(RELEASE_CHECK_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+        _assert_matches_schema(self, payload, schema)
+
+    def test_release_check_cli_outputs_text(self) -> None:
+        demo_repo = self._materialize_demo_repo()
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "release-check",
+                str(demo_repo),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=self._cli_env(),
+        )
+
+        self.assertIn("Repo Health Doctor Release Check: PASS", result.stdout)
+        self.assertIn("Recommended Next Action:", result.stdout)
+        self.assertIn("comparison_available: false", result.stdout)
+
+    def test_release_check_cli_outputs_json(self) -> None:
+        demo_repo = self._materialize_demo_repo()
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "release-check",
+                str(demo_repo),
+                "--format",
+                "json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=self._cli_env(),
+        )
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["report_kind"], "release_check")
+        self.assertEqual(payload["overall_status"], "pass")
+        self.assertEqual(payload["release_readiness"]["status"], "pass")
+        self.assertEqual(
+            [check["name"] for check in payload["checks"]],
+            ["repo_scan", "policy_validation", "allow_inventory", "report_diff"],
+        )
+
+    def test_release_check_cli_outputs_markdown(self) -> None:
+        demo_repo = self._materialize_demo_repo()
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "release-check",
+                str(demo_repo),
+                "--format",
+                "markdown",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=self._cli_env(),
+        )
+
+        self.assertIn("# Repo Health Doctor Release Check", result.stdout)
+        self.assertIn("Overall Release Readiness: `PASS`", result.stdout)
+        self.assertIn("### `allow_inventory`", result.stdout)
+
+    def test_release_check_policy_failure_sets_block_status(self) -> None:
+        self._init_git_repo()
+        self._write_complete_repo_baseline()
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "release-check",
+                str(self.tmp_path),
+                "--format",
+                "json",
+                "--config",
+                str(POLICY_FIXTURES_PATH / "missing-required.yml"),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=self._cli_env(),
+        )
+
+        payload = json.loads(result.stdout)
+        checks = {check["name"]: check for check in payload["checks"]}
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(payload["overall_status"], "block")
+        self.assertEqual(checks["policy_validation"]["status"], "block")
+        self.assertGreater(checks["policy_validation"]["details"]["issue_count"], 0)
+
+    def test_release_check_allow_inventory_summary_includes_status_counts(self) -> None:
+        self._init_git_repo()
+        self._write_complete_repo_baseline()
+        self._write_allow_inventory_policy(
+            [
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/active.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": "2999-01-01",
+                },
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/soon.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": (date.today() + timedelta(days=10)).isoformat(),
+                },
+            ]
+        )
+
+        payload = release_check(self.tmp_path)
+        inventory = {check["name"]: check for check in payload["checks"]}["allow_inventory"]["details"]
+
+        self.assertEqual(payload["overall_status"], "warn")
+        self.assertEqual(inventory["active_count"], 1)
+        self.assertEqual(inventory["expiring_soon_count"], 1)
+        self.assertEqual(inventory["expired_count"], 0)
+        self.assertEqual(inventory["displayed_allow_count"], 2)
+
+    def test_release_check_outputs_do_not_leak_raw_values(self) -> None:
+        repo_path = self._materialize_demo_repo()
+        secret_value = "s" * 24
+        private_path = "/" + "home" + "/" + "example" + "/private"
+        local_ip = ".".join(("192", "168", "1", "25"))
+        raw_policy_path = "docs/raw-release-check.bin"
+        raw_policy_owner = "owner@example.com"
+        raw_policy_reason = "release ticket 123"
+
+        (repo_path / "app.py").write_text('api_' + 'key = "' + secret_value + '"\n', encoding="utf-8")
+        (repo_path / "docs" / "public.md").write_text(
+            f"path: {private_path}\nip: {local_ip}\n",
+            encoding="utf-8",
+        )
+        (repo_path / "repo-health-doctor.yml").write_text(
+            "\n".join(
+                [
+                    "allow_findings:",
+                    "  - rule_id: rhd.repository.large_file",
+                    f"    path: {raw_policy_path}",
+                    f"    reason: {raw_policy_reason}",
+                    f"    owner: {raw_policy_owner}",
+                    "    expires: 2999-01-01",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["git", "-C", str(repo_path), "add", "app.py", "docs/public.md", "repo-health-doctor.yml"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        report = release_check(repo_path)
+        rendered_json = format_json(report)
+        rendered_text = format_text(report)
+        rendered_markdown = format_markdown(report)
+
+        for content in (rendered_json, rendered_text, rendered_markdown):
+            self.assertNotIn(secret_value, content)
+            self.assertNotIn(private_path, content)
+            self.assertNotIn(local_ip, content)
+            self.assertNotIn(raw_policy_path, content)
+            self.assertNotIn(raw_policy_owner, content)
+            self.assertNotIn(raw_policy_reason, content)
+
+    def test_release_check_with_baseline_report_summarizes_diff(self) -> None:
+        repo_path = self._materialize_demo_repo()
+        baseline_report = diagnose_repo(repo_path, public_safety=True)
+        baseline_path = self._write_report_json("baseline-scan.json", baseline_report)
+
+        (repo_path / "docs" / "public.md").write_text(
+            "ip: " + ".".join(("192", "168", "1", "25")) + "\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["git", "-C", str(repo_path), "add", "docs/public.md"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        payload = release_check(repo_path, baseline_report_path=baseline_path)
+        diff_check = {check["name"]: check for check in payload["checks"]}["report_diff"]
+
+        self.assertEqual(diff_check["status"], "warn")
+        self.assertTrue(diff_check["details"]["comparison_available"])
+        self.assertEqual(diff_check["details"]["added_findings"], 1)
+        self.assertEqual(diff_check["details"]["resolved_findings"], 0)
+
     def test_list_allows_cli_filters_json_by_status(self) -> None:
         self._write_allow_inventory_policy(
             [
@@ -2717,6 +2934,26 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertIn("after_report", result.stdout)
         self.assertNotIn("--public-safety", result.stdout)
         self.assertNotIn("--config", result.stdout)
+
+    def test_release_check_help_is_release_focused(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "release-check",
+                "--help",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=self._cli_env(),
+        )
+
+        self.assertIn("release-check", result.stdout)
+        self.assertIn("--baseline-report", result.stdout)
+        self.assertIn("--fail-on", result.stdout)
+        self.assertNotIn("--public-safety", result.stdout)
 
     def test_validate_policy_cli_blocks_invalid_policy_without_scanning(self) -> None:
         env = os.environ.copy()

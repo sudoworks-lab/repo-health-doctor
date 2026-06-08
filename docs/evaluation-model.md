@@ -11,6 +11,7 @@
 | public-safety scan | publish-before-share gate |
 | policy validation | allow / ignore policy integrity |
 | report diff | before/after report regression and redaction-safe comparison |
+| release readiness report | release decision summary over scan, policy, allow inventory, and optional diff |
 
 ## Fixture Strategy
 
@@ -57,3 +58,11 @@ Maintain at least one test path for `diff-reports` so maintainer review output d
 - cover added finding, resolved finding, unchanged count, severity change, and check status change
 - validate JSON output against `schemas/report-diff.schema.json` and keep a stable golden in `tests/fixtures/golden/report-diff-demo.json`
 - verify text, JSON, and Markdown diff output do not introduce raw values or input report paths
+
+## Release Check Smoke
+
+Maintain at least one test path for `release-check` so the release summary stays aligned with scan, policy validation, allow inventory, and Markdown Step Summary output.
+
+- cover text, JSON, and Markdown output
+- cover policy failure and allow inventory summary states
+- verify redaction-safe output does not introduce raw values from findings or policy inputs

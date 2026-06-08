@@ -1,7 +1,7 @@
 """repo-health-doctor package."""
 
-from .doctor import TOOL_VERSION, diagnose_repo, diff_reports, list_policy_allows, validate_policy
+from .doctor import TOOL_VERSION, diagnose_repo, diff_reports, list_policy_allows, release_check, validate_policy
 
 __version__ = TOOL_VERSION
 
-__all__ = ["__version__", "diagnose_repo", "diff_reports", "list_policy_allows", "validate_policy"]
+__all__ = ["__version__", "diagnose_repo", "diff_reports", "list_policy_allows", "release_check", "validate_policy"]

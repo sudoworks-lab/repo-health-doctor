@@ -40,6 +40,7 @@ PYTHONPATH=src python3 -m repo_health_doctor --help
 PYTHONPATH=src python3 -m repo_health_doctor --version
 PYTHONPATH=src python3 -m repo_health_doctor . --fail-on block --public-safety
 PYTHONPATH=src python3 -m repo_health_doctor validate-policy .
+PYTHONPATH=src python3 -m repo_health_doctor release-check .
 PYTHONPATH=src python3 -m repo_health_doctor . --public-safety --format json --output /tmp/repo-health-doctor-result.json
 PYTHONPATH=src python3 -m repo_health_doctor . --public-safety --format markdown --output /tmp/repo-health-doctor-summary.md
 python3 -m json.tool /tmp/repo-health-doctor-result.json >/dev/null
@@ -55,6 +56,7 @@ repo-health-doctor --version
 repo-health-doctor . --fail-on block --public-safety
 repo-health-doctor validate-policy .
 repo-health-doctor . --public-safety --format json --output /tmp/repo-health-doctor-result.json
+repo-health-doctor release-check . --format markdown --output /tmp/release-check.md
 ```
 
 network-restricted な local 環境では build-system dependency の解決前に packaging verify が止まることがあります。その場合でも offline local verify を正本として回し、packaging verify は CI または build dependency 解決済み環境で維持します。
@@ -182,6 +184,21 @@ repo-health-doctor diff-reports before.json after.json --format markdown --outpu
 既存 scan report の `schema_version`、rule_id、text / JSON / Markdown 契約は変えません。
 diff JSON は同じ `schema_version: 1.1` を維持しつつ `report_kind: report_diff` で区別し、contract は `schemas/report-diff.schema.json` に固定します。
 golden fixture は `tests/fixtures/golden/report-diff-demo.json` で drift を確認します。
+
+## Release Check
+
+release 前に scan、policy validation、allow inventory、optional report diff を 1 つの summary にまとめたい場合は `release-check` を使います。
+report には overall release readiness、repo scan status、policy validation status、allow inventory summary、recommended next action を含めます。
+
+```bash
+repo-health-doctor release-check .
+repo-health-doctor release-check . --format json --output /tmp/release-check.json
+repo-health-doctor release-check . --format markdown --output /tmp/release-check.md
+repo-health-doctor release-check . --baseline-report before.json --format markdown
+```
+
+`release-check` は `--public-safety` scan を内部で実行し、baseline scan JSON report がある場合だけ redacted diff summary を追加します。
+JSON contract は `schema_version: 1.1` を維持しつつ `report_kind: release_check` で区別し、schema は [schemas/release-check-report.schema.json](schemas/release-check-report.schema.json) に固定します。
 
 ## Policy
 

@@ -11,6 +11,7 @@
 - `wc -l AGENTS.md` が 200 行以内であることを示すこと
 - `PYTHONPATH=src python3 -m repo_health_doctor . --fail-on warn --public-safety` が期待どおりの exit code を返すこと
 - `PYTHONPATH=src python3 -m repo_health_doctor validate-policy .` が policy 破損を独立して検出できること
+- `PYTHONPATH=src python3 -m repo_health_doctor release-check . --format markdown --output /tmp/release-check.md` が成功し、GitHub Step Summary 向け summary を生成できること
 - JSON 出力が `python3 -m json.tool` で parse できること
 - README の Quickstart と `docs/demo.md` の主要コマンドが現行 CLI と一致していること
 
@@ -33,6 +34,7 @@
 
 - `--public-safety` は repository 内容を走査し、公開前の block/warn を検出する
 - `validate-policy` は scan を実行せず、policy file の形式、期限、rule_id、allow 制約を検証する
+- `release-check` は scan、policy validation、allow inventory、optional report diff を 1 つの release readiness summary にまとめる
 - CI では `--public-safety` と `validate-policy` の両方を実行する
 
 ## Redaction And Docs
