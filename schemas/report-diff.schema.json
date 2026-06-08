@@ -1,0 +1,327 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repo-health-doctor://schemas/report-diff.schema.json",
+  "title": "repo-health-doctor report diff",
+  "type": "object",
+  "required": [
+    "tool",
+    "version",
+    "schema_version",
+    "report_kind",
+    "reports",
+    "overall_status",
+    "summary",
+    "findings",
+    "status_changes"
+  ],
+  "properties": {
+    "tool": {
+      "type": "string",
+      "enum": [
+        "repo-health-doctor"
+      ]
+    },
+    "version": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "string",
+      "enum": [
+        "1.1"
+      ]
+    },
+    "report_kind": {
+      "type": "string",
+      "enum": [
+        "report_diff"
+      ]
+    },
+    "reports": {
+      "type": "object",
+      "required": [
+        "before",
+        "after"
+      ],
+      "properties": {
+        "before": {
+          "$ref": "#/$defs/report_reference"
+        },
+        "after": {
+          "$ref": "#/$defs/report_reference"
+        }
+      },
+      "additionalProperties": false
+    },
+    "overall_status": {
+      "type": "object",
+      "required": [
+        "before",
+        "after",
+        "changed"
+      ],
+      "properties": {
+        "before": {
+          "$ref": "#/$defs/runtime_status"
+        },
+        "after": {
+          "$ref": "#/$defs/runtime_status"
+        },
+        "changed": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "added_findings",
+        "resolved_findings",
+        "unchanged_findings",
+        "severity_changes",
+        "status_changes"
+      ],
+      "properties": {
+        "added_findings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resolved_findings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unchanged_findings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "severity_changes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status_changes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "findings": {
+      "type": "object",
+      "required": [
+        "added",
+        "resolved",
+        "severity_changes",
+        "unchanged_count"
+      ],
+      "properties": {
+        "added": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        },
+        "resolved": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        },
+        "severity_changes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/severity_change_finding"
+          }
+        },
+        "unchanged_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "status_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "check",
+          "before_status",
+          "after_status"
+        ],
+        "properties": {
+          "check": {
+            "type": "string"
+          },
+          "before_status": {
+            "$ref": "#/$defs/diff_status"
+          },
+          "after_status": {
+            "$ref": "#/$defs/diff_status"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "$defs": {
+    "runtime_status": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "block"
+      ]
+    },
+    "diff_status": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "block",
+        "missing"
+      ]
+    },
+    "summary_counts": {
+      "type": "object",
+      "required": [
+        "pass",
+        "warn",
+        "block"
+      ],
+      "properties": {
+        "pass": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warn": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "block": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "report_reference": {
+      "type": "object",
+      "required": [
+        "repo_path",
+        "overall_status",
+        "summary"
+      ],
+      "properties": {
+        "repo_path": {
+          "type": "string"
+        },
+        "overall_status": {
+          "$ref": "#/$defs/runtime_status"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary_counts"
+        }
+      },
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "required": [
+        "rule_id",
+        "severity",
+        "file",
+        "pattern",
+        "redacted"
+      ],
+      "properties": {
+        "rule_id": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "warn",
+            "block"
+          ]
+        },
+        "file": {
+          "type": "string"
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "redacted": {
+          "type": "boolean"
+        },
+        "allowed": {
+          "type": "boolean"
+        },
+        "matched_policy_id": {
+          "type": "string"
+        },
+        "policy_source": {
+          "type": "string",
+          "enum": [
+            "repo",
+            "local"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "severity_change_finding": {
+      "type": "object",
+      "required": [
+        "rule_id",
+        "file",
+        "pattern",
+        "redacted",
+        "before_severity",
+        "after_severity"
+      ],
+      "properties": {
+        "rule_id": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "redacted": {
+          "type": "boolean"
+        },
+        "allowed": {
+          "type": "boolean"
+        },
+        "matched_policy_id": {
+          "type": "string"
+        },
+        "policy_source": {
+          "type": "string",
+          "enum": [
+            "repo",
+            "local"
+          ]
+        },
+        "before_severity": {
+          "type": "string",
+          "enum": [
+            "warn",
+            "block"
+          ]
+        },
+        "after_severity": {
+          "type": "string",
+          "enum": [
+            "warn",
+            "block"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

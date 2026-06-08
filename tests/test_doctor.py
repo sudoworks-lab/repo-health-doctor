@@ -30,6 +30,7 @@ from repo_health_doctor.doctor import (
 
 
 SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "public-safety-report.schema.json"
+DIFF_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "report-diff.schema.json"
 POLICY_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "policy-config.schema.json"
 FIXTURES_PATH = Path(__file__).resolve().parent / "fixtures"
 POLICY_FIXTURES_PATH = FIXTURES_PATH / "policies"
@@ -44,9 +45,26 @@ GOLDEN_DEMO_PUBLIC_JSON_PATH = FIXTURES_PATH / "golden" / "public-safety-demo.js
 GOLDEN_DEMO_POLICY_JSON_PATH = FIXTURES_PATH / "golden" / "policy-demo.json"
 GOLDEN_DEMO_PUBLIC_TEXT_PATH = FIXTURES_PATH / "golden" / "public-safety-demo.txt"
 GOLDEN_DEMO_PUBLIC_MARKDOWN_PATH = FIXTURES_PATH / "golden" / "public-safety-demo.md"
+GOLDEN_DIFF_REPORT_PATH = FIXTURES_PATH / "golden" / "report-diff-demo.json"
 
 
-def _assert_matches_schema(testcase: unittest.TestCase, value: object, schema: dict, path: str = "$") -> None:
+def _assert_matches_schema(
+    testcase: unittest.TestCase,
+    value: object,
+    schema: dict,
+    path: str = "$",
+    root_schema: dict | None = None,
+) -> None:
+    if root_schema is None:
+        root_schema = schema
+    if "$ref" in schema:
+        ref = schema["$ref"]
+        testcase.assertTrue(ref.startswith("#/"), f"{path} uses unsupported ref: {ref}")
+        resolved_schema = root_schema
+        for part in ref[2:].split("/"):
+            resolved_schema = resolved_schema[part]
+        schema = {**resolved_schema, **{key: value for key, value in schema.items() if key != "$ref"}}
+
     expected_type = schema.get("type")
     if expected_type == "object":
         testcase.assertIsInstance(value, dict, f"{path} should be an object")
@@ -56,7 +74,7 @@ def _assert_matches_schema(testcase: unittest.TestCase, value: object, schema: d
         properties = schema.get("properties", {})
         for key, child_schema in properties.items():
             if key in value:
-                _assert_matches_schema(testcase, value[key], child_schema, f"{path}.{key}")
+                _assert_matches_schema(testcase, value[key], child_schema, f"{path}.{key}", root_schema)
         if schema.get("additionalProperties") is False:
             extra_keys = sorted(set(value) - set(properties))
             testcase.assertEqual(extra_keys, [], f"{path} has unexpected keys")
@@ -66,7 +84,7 @@ def _assert_matches_schema(testcase: unittest.TestCase, value: object, schema: d
         item_schema = schema.get("items")
         if item_schema:
             for index, item in enumerate(value):
-                _assert_matches_schema(testcase, item, item_schema, f"{path}[{index}]")
+                _assert_matches_schema(testcase, item, item_schema, f"{path}[{index}]", root_schema)
     elif expected_type == "string":
         testcase.assertIsInstance(value, str, f"{path} should be a string")
     elif expected_type == "integer":
@@ -179,6 +197,102 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         report_path = self.tmp_path / name
         report_path.write_text(format_json(report), encoding="utf-8")
         return report_path
+
+    def _make_diff_fixture_report(self) -> dict:
+        before_report = self._make_report_payload(
+            repo_path="<before-repo>",
+            checks=[
+                self._make_report_check(
+                    name="readme",
+                    status="warn",
+                    findings=[
+                        {
+                            "rule_id": "rhd.repository.missing_readme",
+                            "severity": "warn",
+                            "file": ".",
+                            "pattern": "missing_readme",
+                            "redacted": False,
+                        }
+                    ],
+                ),
+                self._make_report_check(
+                    name="public_text_safety",
+                    status="block",
+                    findings=[
+                        {
+                            "rule_id": "rhd.public_text.private_path",
+                            "severity": "block",
+                            "file": "docs/public.md",
+                            "pattern": "private_path",
+                            "redacted": True,
+                        }
+                    ],
+                ),
+                self._make_report_check(
+                    name="large_files",
+                    status="warn",
+                    findings=[
+                        {
+                            "rule_id": "rhd.repository.large_file",
+                            "severity": "warn",
+                            "file": "dist/bundle.bin",
+                            "pattern": "large_file",
+                            "redacted": False,
+                        }
+                    ],
+                ),
+                self._make_report_check(name="secrets_scan", status="pass"),
+            ],
+        )
+        after_report = self._make_report_payload(
+            repo_path="<after-repo>",
+            checks=[
+                self._make_report_check(
+                    name="readme",
+                    status="block",
+                    findings=[
+                        {
+                            "rule_id": "rhd.repository.missing_readme",
+                            "severity": "block",
+                            "file": ".",
+                            "pattern": "missing_readme",
+                            "redacted": False,
+                        }
+                    ],
+                ),
+                self._make_report_check(
+                    name="public_text_safety",
+                    status="block",
+                    findings=[
+                        {
+                            "rule_id": "rhd.public_text.private_path",
+                            "severity": "block",
+                            "file": "docs/public.md",
+                            "pattern": "private_path",
+                            "redacted": True,
+                        }
+                    ],
+                ),
+                self._make_report_check(name="large_files", status="pass"),
+                self._make_report_check(
+                    name="secrets_scan",
+                    status="block",
+                    findings=[
+                        {
+                            "rule_id": "rhd.secret.generic_api_key",
+                            "severity": "block",
+                            "file": "app.py",
+                            "pattern": "generic_api_key",
+                            "redacted": True,
+                        }
+                    ],
+                ),
+            ],
+        )
+        return diff_reports(
+            self._write_report_json("before-golden.json", before_report),
+            self._write_report_json("after-golden.json", after_report),
+        )
 
     def _write_allow_inventory_policy(self, entries: list[dict[str, str]]) -> None:
         lines = ["allow_findings:"]
@@ -940,6 +1054,18 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertEqual(tuple(schema["properties"]["overall_status"]["enum"]), RUNTIME_STATUS_VALUES)
         self.assertEqual(tuple(checks_schema["status"]["enum"]), RUNTIME_STATUS_VALUES)
         self.assertEqual(tuple(finding_schema["severity"]["enum"]), RUNTIME_FINDING_SEVERITY_VALUES)
+
+    def test_diff_report_schema_contract_matches_runtime_constants(self) -> None:
+        schema = json.loads(DIFF_SCHEMA_PATH.read_text(encoding="utf-8"))
+        finding_schema = schema["$defs"]["finding"]["properties"]
+        severity_change_schema = schema["$defs"]["severity_change_finding"]["properties"]
+
+        self.assertEqual(schema["properties"]["schema_version"]["enum"], [REPORT_SCHEMA_VERSION])
+        self.assertEqual(schema["properties"]["report_kind"]["enum"], ["report_diff"])
+        self.assertEqual(tuple(schema["$defs"]["runtime_status"]["enum"]), RUNTIME_STATUS_VALUES)
+        self.assertEqual(tuple(finding_schema["severity"]["enum"]), RUNTIME_FINDING_SEVERITY_VALUES)
+        self.assertEqual(tuple(severity_change_schema["before_severity"]["enum"]), RUNTIME_FINDING_SEVERITY_VALUES)
+        self.assertEqual(tuple(severity_change_schema["after_severity"]["enum"]), RUNTIME_FINDING_SEVERITY_VALUES)
 
     def test_runtime_and_policy_findings_follow_common_contract(self) -> None:
         policy_marker = "ignore_pathz"
@@ -1855,6 +1981,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             GOLDEN_DEMO_POLICY_JSON_PATH,
             GOLDEN_DEMO_PUBLIC_TEXT_PATH,
             GOLDEN_DEMO_PUBLIC_MARKDOWN_PATH,
+            GOLDEN_DIFF_REPORT_PATH,
         ):
             content = path.read_text(encoding="utf-8")
             self.assertNotIn(str(self.tmp_path), content)
@@ -2259,6 +2386,18 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertEqual(payload["summary"]["unchanged_findings"], 0)
         self.assertEqual(payload["status_changes"], [])
 
+    def test_diff_report_matches_json_schema(self) -> None:
+        payload = self._make_diff_fixture_report()
+        schema = json.loads(DIFF_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+        _assert_matches_schema(self, payload, schema)
+
+    def test_diff_report_golden_json_fixture_is_stable(self) -> None:
+        payload = self._make_diff_fixture_report()
+        golden = json.loads(GOLDEN_DIFF_REPORT_PATH.read_text(encoding="utf-8"))
+
+        self.assertEqual(payload, golden)
+
     def test_diff_reports_output_does_not_leak_raw_values_or_report_paths(self) -> None:
         repo_path = self._materialize_demo_repo()
         secret_value = "s" * 24
@@ -2282,6 +2421,22 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         before_path = self._write_report_json("before-redaction.json", before_report)
         after_path = self._write_report_json("after-redaction.json", after_report)
 
+        json_result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "diff-reports",
+                str(before_path),
+                str(after_path),
+                "--format",
+                "json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=self._cli_env(),
+        )
         text_result = subprocess.run(
             [
                 sys.executable,
@@ -2313,7 +2468,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             env=self._cli_env(),
         )
 
-        for content in (text_result.stdout, markdown_result.stdout):
+        for content in (json_result.stdout, text_result.stdout, markdown_result.stdout):
             self.assertNotIn(secret_value, content)
             self.assertNotIn(private_path, content)
             self.assertNotIn(local_ip, content)

@@ -1,0 +1,86 @@
+{
+  "tool": "repo-health-doctor",
+  "version": "0.1.0",
+  "schema_version": "1.1",
+  "report_kind": "report_diff",
+  "reports": {
+    "before": {
+      "repo_path": "<before-repo>",
+      "overall_status": "block",
+      "summary": {
+        "pass": 1,
+        "warn": 2,
+        "block": 1
+      }
+    },
+    "after": {
+      "repo_path": "<after-repo>",
+      "overall_status": "block",
+      "summary": {
+        "pass": 1,
+        "warn": 0,
+        "block": 3
+      }
+    }
+  },
+  "overall_status": {
+    "before": "block",
+    "after": "block",
+    "changed": false
+  },
+  "summary": {
+    "added_findings": 1,
+    "resolved_findings": 1,
+    "unchanged_findings": 1,
+    "severity_changes": 1,
+    "status_changes": 3
+  },
+  "findings": {
+    "added": [
+      {
+        "rule_id": "rhd.secret.generic_api_key",
+        "severity": "block",
+        "file": "app.py",
+        "pattern": "generic_api_key",
+        "redacted": true
+      }
+    ],
+    "resolved": [
+      {
+        "rule_id": "rhd.repository.large_file",
+        "severity": "warn",
+        "file": "dist/bundle.bin",
+        "pattern": "large_file",
+        "redacted": false
+      }
+    ],
+    "severity_changes": [
+      {
+        "rule_id": "rhd.repository.missing_readme",
+        "file": ".",
+        "pattern": "missing_readme",
+        "redacted": false,
+        "before_severity": "warn",
+        "after_severity": "block"
+      }
+    ],
+    "unchanged_count": 1
+  },
+  "status_changes": [
+    {
+      "check": "large_files",
+      "before_status": "warn",
+      "after_status": "pass"
+    },
+    {
+      "check": "readme",
+      "before_status": "warn",
+      "after_status": "block"
+    },
+    {
+      "check": "secrets_scan",
+      "before_status": "pass",
+      "after_status": "block"
+    }
+  ]
+}

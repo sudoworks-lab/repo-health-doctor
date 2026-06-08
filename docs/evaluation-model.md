@@ -55,4 +55,5 @@ Maintain at least one test path for `diff-reports` so maintainer review output d
 
 - compare two existing JSON reports instead of rescanning when the review question is "what changed since last run"
 - cover added finding, resolved finding, unchanged count, severity change, and check status change
+- validate JSON output against `schemas/report-diff.schema.json` and keep a stable golden in `tests/fixtures/golden/report-diff-demo.json`
 - verify text, JSON, and Markdown diff output do not introduce raw values or input report paths

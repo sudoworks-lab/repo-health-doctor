@@ -180,6 +180,8 @@ repo-health-doctor diff-reports before.json after.json --format markdown --outpu
 
 `diff-reports` は既存 scan / validate-policy / list-allows の JSON report を入力として扱う comparison command です。
 既存 scan report の `schema_version`、rule_id、text / JSON / Markdown 契約は変えません。
+diff JSON は同じ `schema_version: 1.1` を維持しつつ `report_kind: report_diff` で区別し、contract は `schemas/report-diff.schema.json` に固定します。
+golden fixture は `tests/fixtures/golden/report-diff-demo.json` で drift を確認します。
 
 ## Policy
 
