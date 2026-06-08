@@ -71,6 +71,13 @@ Phase 2 では CLI を maintainer の日常作業へ結び付けます。
 - `--fail-on expired|expiring-soon` で stale allow gate を scan gate から独立運用できるようにする
 - validate-policy を壊さずに allow expiry review を独立運用できるようにする
 
+### Phase 2C Progress
+
+- `diff-reports` により 2 つの redacted JSON report を比較できるようにする
+- overall status before / after、added findings、resolved findings、unchanged count、severity change、check status change を maintainer 向けに返す
+- text / JSON / Markdown で同じ comparison surface を持ち、既存 scan / validate-policy / list-allows の contract は壊さない
+- review の問いを "今の repo はどうか" から "前回から何が変わったか" へ広げる
+
 ## Phase 3: Multi-Repo Maintainer Kit
 
 Phase 3 では single-repo CLI を複数 repository を見る maintainer 向けに広げます。

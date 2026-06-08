@@ -20,6 +20,7 @@ from repo_health_doctor.doctor import (
     TOOL_VERSION,
     determine_exit_code,
     diagnose_repo,
+    diff_reports,
     format_json,
     format_markdown,
     format_text,
@@ -138,6 +139,46 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         env = os.environ.copy()
         env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
         return env
+
+    def _make_report_check(
+        self,
+        *,
+        name: str,
+        status: str,
+        findings: list[dict] | None = None,
+        details: dict | None = None,
+    ) -> dict:
+        payload = {"findings": list(findings or [])}
+        if details:
+            payload.update(details)
+        return {
+            "name": name,
+            "status": status,
+            "summary": f"{name} status is {status}.",
+            "details": payload,
+        }
+
+    def _make_report_payload(self, *, repo_path: str, checks: list[dict]) -> dict:
+        summary = {
+            "pass": sum(1 for check in checks if check["status"] == "pass"),
+            "warn": sum(1 for check in checks if check["status"] == "warn"),
+            "block": sum(1 for check in checks if check["status"] == "block"),
+        }
+        overall_status = "block" if summary["block"] else "warn" if summary["warn"] else "pass"
+        return {
+            "tool": "repo-health-doctor",
+            "version": TOOL_VERSION,
+            "schema_version": REPORT_SCHEMA_VERSION,
+            "repo_path": repo_path,
+            "overall_status": overall_status,
+            "summary": summary,
+            "checks": checks,
+        }
+
+    def _write_report_json(self, name: str, report: dict) -> Path:
+        report_path = self.tmp_path / name
+        report_path.write_text(format_json(report), encoding="utf-8")
+        return report_path
 
     def _write_allow_inventory_policy(self, entries: list[dict[str, str]]) -> None:
         lines = ["allow_findings:"]
@@ -1842,6 +1883,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             "repo-health-doctor . --fail-on block --public-safety",
             "repo-health-doctor list-allows .",
             "repo-health-doctor list-allows . --fail-on expiring-soon",
+            "repo-health-doctor diff-reports before.json after.json",
         ):
             self.assertIn(command, readme)
         for command in (
@@ -1987,6 +2029,296 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertIn("# Repo Health Doctor Report", result.stdout)
         self.assertIn("### `policy_allow_inventory`", result.stdout)
         self.assertIn("| Policy Source | Policy ID | Rule ID | Path Scope | Expires | Status | Redacted |", result.stdout)
+
+    def test_diff_reports_detects_added_finding(self) -> None:
+        before_report = self._make_report_payload(
+            repo_path="<before-repo>",
+            checks=[self._make_report_check(name="secrets_scan", status="pass")],
+        )
+        after_report = self._make_report_payload(
+            repo_path="<after-repo>",
+            checks=[
+                self._make_report_check(
+                    name="secrets_scan",
+                    status="block",
+                    findings=[
+                        {
+                            "rule_id": "rhd.secret.generic_api_key",
+                            "severity": "block",
+                            "file": "app.py",
+                            "pattern": "generic_api_key",
+                            "redacted": True,
+                        }
+                    ],
+                )
+            ],
+        )
+
+        report = diff_reports(
+            self._write_report_json("before-added.json", before_report),
+            self._write_report_json("after-added.json", after_report),
+        )
+
+        self.assertEqual(report["overall_status"]["before"], "pass")
+        self.assertEqual(report["overall_status"]["after"], "block")
+        self.assertEqual(report["summary"]["added_findings"], 1)
+        self.assertEqual(report["summary"]["resolved_findings"], 0)
+        self.assertEqual(report["findings"]["added"][0]["rule_id"], "rhd.secret.generic_api_key")
+
+    def test_diff_reports_detects_resolved_finding(self) -> None:
+        before_report = self._make_report_payload(
+            repo_path="<before-repo>",
+            checks=[
+                self._make_report_check(
+                    name="large_files",
+                    status="warn",
+                    findings=[
+                        {
+                            "rule_id": "rhd.repository.large_file",
+                            "severity": "warn",
+                            "file": "dist/bundle.bin",
+                            "pattern": "large_file",
+                            "redacted": False,
+                        }
+                    ],
+                )
+            ],
+        )
+        after_report = self._make_report_payload(
+            repo_path="<after-repo>",
+            checks=[self._make_report_check(name="large_files", status="pass")],
+        )
+
+        report = diff_reports(
+            self._write_report_json("before-resolved.json", before_report),
+            self._write_report_json("after-resolved.json", after_report),
+        )
+
+        self.assertEqual(report["summary"]["added_findings"], 0)
+        self.assertEqual(report["summary"]["resolved_findings"], 1)
+        self.assertEqual(report["findings"]["resolved"][0]["rule_id"], "rhd.repository.large_file")
+
+    def test_diff_reports_tracks_unchanged_finding_count(self) -> None:
+        finding = {
+            "rule_id": "rhd.public_text.private_path",
+            "severity": "block",
+            "file": "docs/public.md",
+            "pattern": "private_path",
+            "redacted": True,
+        }
+        before_report = self._make_report_payload(
+            repo_path="<before-repo>",
+            checks=[self._make_report_check(name="public_text_safety", status="block", findings=[finding])],
+        )
+        after_report = self._make_report_payload(
+            repo_path="<after-repo>",
+            checks=[self._make_report_check(name="public_text_safety", status="block", findings=[finding])],
+        )
+
+        report = diff_reports(
+            self._write_report_json("before-unchanged.json", before_report),
+            self._write_report_json("after-unchanged.json", after_report),
+        )
+
+        self.assertEqual(report["summary"]["unchanged_findings"], 1)
+        self.assertEqual(report["findings"]["unchanged_count"], 1)
+        self.assertEqual(report["summary"]["added_findings"], 0)
+        self.assertEqual(report["summary"]["resolved_findings"], 0)
+
+    def test_diff_reports_detects_check_status_and_severity_changes(self) -> None:
+        before_report = self._make_report_payload(
+            repo_path="<before-repo>",
+            checks=[
+                self._make_report_check(
+                    name="readme",
+                    status="warn",
+                    findings=[
+                        {
+                            "rule_id": "rhd.repository.missing_readme",
+                            "severity": "warn",
+                            "file": ".",
+                            "pattern": "missing_readme",
+                            "redacted": False,
+                        }
+                    ],
+                )
+            ],
+        )
+        after_report = self._make_report_payload(
+            repo_path="<after-repo>",
+            checks=[
+                self._make_report_check(
+                    name="readme",
+                    status="block",
+                    findings=[
+                        {
+                            "rule_id": "rhd.repository.missing_readme",
+                            "severity": "block",
+                            "file": ".",
+                            "pattern": "missing_readme",
+                            "redacted": False,
+                        }
+                    ],
+                )
+            ],
+        )
+
+        report = diff_reports(
+            self._write_report_json("before-status.json", before_report),
+            self._write_report_json("after-status.json", after_report),
+        )
+
+        self.assertTrue(report["overall_status"]["changed"])
+        self.assertEqual(report["summary"]["status_changes"], 1)
+        self.assertEqual(report["status_changes"][0]["check"], "readme")
+        self.assertEqual(report["status_changes"][0]["before_status"], "warn")
+        self.assertEqual(report["status_changes"][0]["after_status"], "block")
+        self.assertEqual(report["summary"]["severity_changes"], 1)
+        self.assertEqual(report["findings"]["severity_changes"][0]["before_severity"], "warn")
+        self.assertEqual(report["findings"]["severity_changes"][0]["after_severity"], "block")
+
+    def test_diff_reports_cli_outputs_markdown(self) -> None:
+        before_report = self._make_report_payload(
+            repo_path="<before-repo>",
+            checks=[self._make_report_check(name="public_text_safety", status="pass")],
+        )
+        after_report = self._make_report_payload(
+            repo_path="<after-repo>",
+            checks=[
+                self._make_report_check(
+                    name="public_text_safety",
+                    status="block",
+                    findings=[
+                        {
+                            "rule_id": "rhd.public_text.local_ip",
+                            "severity": "block",
+                            "file": "docs/public.md",
+                            "pattern": "local_ip",
+                            "redacted": True,
+                        }
+                    ],
+                )
+            ],
+        )
+        before_path = self._write_report_json("before-markdown.json", before_report)
+        after_path = self._write_report_json("after-markdown.json", after_report)
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "diff-reports",
+                str(before_path),
+                str(after_path),
+                "--format",
+                "markdown",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=self._cli_env(),
+        )
+
+        self.assertIn("# Repo Health Doctor Report Diff", result.stdout)
+        self.assertIn("## Added Findings", result.stdout)
+        self.assertIn("| Rule ID | Severity | File | Pattern | Redacted | Notes |", result.stdout)
+        self.assertIn("`rhd.public_text.local_ip`", result.stdout)
+
+    def test_diff_reports_cli_outputs_parseable_json(self) -> None:
+        before_report = self._make_report_payload(
+            repo_path="<before-repo>",
+            checks=[self._make_report_check(name="secrets_scan", status="pass")],
+        )
+        after_report = self._make_report_payload(
+            repo_path="<after-repo>",
+            checks=[self._make_report_check(name="secrets_scan", status="pass")],
+        )
+        before_path = self._write_report_json("before-json.json", before_report)
+        after_path = self._write_report_json("after-json.json", after_report)
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "diff-reports",
+                str(before_path),
+                str(after_path),
+                "--format",
+                "json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=self._cli_env(),
+        )
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["report_kind"], "report_diff")
+        self.assertEqual(payload["summary"]["unchanged_findings"], 0)
+        self.assertEqual(payload["status_changes"], [])
+
+    def test_diff_reports_output_does_not_leak_raw_values_or_report_paths(self) -> None:
+        repo_path = self._materialize_demo_repo()
+        secret_value = "s" * 24
+        private_path = "/" + "home" + "/" + "example" + "/private"
+        local_ip = ".".join(("192", "168", "1", "25"))
+
+        before_report = diagnose_repo(repo_path, public_safety=True)
+        (repo_path / "app.py").write_text('api_' + 'key = "' + secret_value + '"\n', encoding="utf-8")
+        (repo_path / "docs" / "public.md").write_text(
+            f"path: {private_path}\nip: {local_ip}\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["git", "-C", str(repo_path), "add", "app.py", "docs/public.md"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        after_report = diagnose_repo(repo_path, public_safety=True)
+
+        before_path = self._write_report_json("before-redaction.json", before_report)
+        after_path = self._write_report_json("after-redaction.json", after_report)
+
+        text_result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "diff-reports",
+                str(before_path),
+                str(after_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=self._cli_env(),
+        )
+        markdown_result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "diff-reports",
+                str(before_path),
+                str(after_path),
+                "--format",
+                "markdown",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=self._cli_env(),
+        )
+
+        for content in (text_result.stdout, markdown_result.stdout):
+            self.assertNotIn(secret_value, content)
+            self.assertNotIn(private_path, content)
+            self.assertNotIn(local_ip, content)
+            self.assertNotIn(str(before_path), content)
+            self.assertNotIn(str(after_path), content)
 
     def test_list_allows_cli_filters_json_by_status(self) -> None:
         self._write_allow_inventory_policy(
@@ -2207,6 +2539,29 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertIn("--status", result.stdout)
         self.assertIn("--fail-on", result.stdout)
         self.assertNotIn("--public-safety", result.stdout)
+
+    def test_diff_reports_help_is_report_diff_focused(self) -> None:
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "diff-reports",
+                "--help",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        self.assertIn("diff-reports", result.stdout)
+        self.assertIn("before_report", result.stdout)
+        self.assertIn("after_report", result.stdout)
+        self.assertNotIn("--public-safety", result.stdout)
+        self.assertNotIn("--config", result.stdout)
 
     def test_validate_policy_cli_blocks_invalid_policy_without_scanning(self) -> None:
         env = os.environ.copy()

@@ -167,6 +167,20 @@ repo-health-doctor . --public-safety --format md --output /tmp/repo-health-docto
 report には title、target repo path、overall status、summary counts、status meanings、checks、redacted findings を含めます。
 CI での貼り付け例は [docs/ci-integration.md](docs/ci-integration.md) を参照してください。
 
+## Report Diff
+
+前回 report と今回 report の差分を maintainer が見たい場合は `diff-reports` を使います。
+2 つの JSON report を比較し、overall status の変化、added / resolved findings、unchanged count、severity change、check status change を redacted のまま確認できます。
+
+```bash
+repo-health-doctor diff-reports before.json after.json
+repo-health-doctor diff-reports before.json after.json --format json
+repo-health-doctor diff-reports before.json after.json --format markdown --output /tmp/repo-health-doctor-diff.md
+```
+
+`diff-reports` は既存 scan / validate-policy / list-allows の JSON report を入力として扱う comparison command です。
+既存 scan report の `schema_version`、rule_id、text / JSON / Markdown 契約は変えません。
+
 ## Policy
 
 policy は `repo-health-doctor.yml` と `.repo-health-doctor.local.yml` から読み込みます。

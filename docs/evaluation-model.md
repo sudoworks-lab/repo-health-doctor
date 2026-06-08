@@ -10,6 +10,7 @@
 | smoke commands | README and CI command validation |
 | public-safety scan | publish-before-share gate |
 | policy validation | allow / ignore policy integrity |
+| report diff | before/after report regression and redaction-safe comparison |
 
 ## Fixture Strategy
 
@@ -47,3 +48,11 @@ PYTHONPATH=src python3 -m repo_health_doctor . --public-safety --format markdown
 test -s /tmp/repo-health-doctor-summary.md
 grep -E "Repo Health Doctor|PASS|WARN|BLOCK|Checks" /tmp/repo-health-doctor-summary.md
 ```
+
+## Report Diff Smoke
+
+Maintain at least one test path for `diff-reports` so maintainer review output does not drift away from the redacted scan contract.
+
+- compare two existing JSON reports instead of rescanning when the review question is "what changed since last run"
+- cover added finding, resolved finding, unchanged count, severity change, and check status change
+- verify text, JSON, and Markdown diff output do not introduce raw values or input report paths

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from datetime import date
 import fnmatch
+from collections import Counter
 from pathlib import Path
 import json
 import re
@@ -17,6 +18,7 @@ MAX_SCANNED_FILES = 200
 POLICY_ALLOW_EXPIRING_SOON_DAYS = 30
 REPORT_SCHEMA_VERSION = "1.1"
 TOOL_VERSION = "0.1.0"
+REPORT_KIND_DIFF = "report_diff"
 
 README_NAMES = ("README", "README.md", "README.rst", "README.txt")
 LICENSE_NAMES = ("LICENSE", "LICENSE.txt", "LICENSE.md", "COPYING")
@@ -831,6 +833,186 @@ def _build_report(root: Path, checks: list[CheckResult]) -> dict:
     }
 
 
+def _validate_loaded_report(payload: object) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("report payload must be a JSON object")
+    if payload.get("tool") != "repo-health-doctor":
+        raise ValueError("report payload must be produced by repo-health-doctor")
+    if payload.get("report_kind") == REPORT_KIND_DIFF:
+        raise ValueError("diff-reports expects scan, validate-policy, or list-allows JSON reports")
+    if payload.get("schema_version") != REPORT_SCHEMA_VERSION:
+        raise ValueError("report schema_version does not match the current CLI")
+    if payload.get("overall_status") not in RUNTIME_STATUS_VALUES:
+        raise ValueError("report overall_status is invalid")
+    summary = payload.get("summary")
+    if not isinstance(summary, dict):
+        raise ValueError("report summary must be an object")
+    for key in RUNTIME_STATUS_VALUES:
+        if not isinstance(summary.get(key), int):
+            raise ValueError("report summary counts are invalid")
+    checks = payload.get("checks")
+    if not isinstance(checks, list):
+        raise ValueError("report checks must be an array")
+    for check in checks:
+        if not isinstance(check, dict):
+            raise ValueError("report checks must contain objects")
+        if not isinstance(check.get("name"), str):
+            raise ValueError("report check name is invalid")
+        if check.get("status") not in RUNTIME_STATUS_VALUES:
+            raise ValueError("report check status is invalid")
+        details = check.get("details")
+        if details is not None and not isinstance(details, dict):
+            raise ValueError("report check details must be an object")
+    return payload
+
+
+def _load_report_file(report_path: str | Path) -> dict:
+    path = Path(report_path)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ValueError(f"report file not found: {path}") from exc
+    except OSError as exc:
+        raise ValueError(f"could not read report file: {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid JSON report: {path}") from exc
+    return _validate_loaded_report(payload)
+
+
+def _finding_identity(finding: dict) -> tuple[str, str, str, bool, str, str]:
+    return (
+        str(finding.get("rule_id", "")),
+        str(finding.get("file", "")),
+        str(finding.get("pattern", "")),
+        bool(finding.get("redacted", False)),
+        str(finding.get("matched_policy_id", "")),
+        str(finding.get("policy_source", "")),
+    )
+
+
+def _diff_finding_entry(finding: dict) -> dict:
+    entry = {
+        "rule_id": finding["rule_id"],
+        "severity": finding["severity"],
+        "file": finding["file"],
+        "pattern": finding["pattern"],
+        "redacted": bool(finding["redacted"]),
+    }
+    if "allowed" in finding:
+        entry["allowed"] = bool(finding["allowed"])
+    if "matched_policy_id" in finding:
+        entry["matched_policy_id"] = finding["matched_policy_id"]
+    if "policy_source" in finding:
+        entry["policy_source"] = finding["policy_source"]
+    return entry
+
+
+def _diff_severity_change_entry(before_finding: dict, after_finding: dict) -> dict:
+    entry = _diff_finding_entry(after_finding)
+    entry["before_severity"] = before_finding["severity"]
+    entry["after_severity"] = after_finding["severity"]
+    entry.pop("severity", None)
+    return entry
+
+
+def _flatten_report_findings(report: dict) -> tuple[dict, Counter[tuple[str, str, str, bool, str, str]]]:
+    finding_map: dict[tuple[str, str, str, bool, str, str], dict] = {}
+    finding_counts: Counter[tuple[str, str, str, bool, str, str]] = Counter()
+    for check in report["checks"]:
+        details = check.get("details", {})
+        findings = details.get("findings", [])
+        if not isinstance(findings, list):
+            continue
+        for finding in findings:
+            if not isinstance(finding, dict):
+                continue
+            if not all(key in finding for key in ("rule_id", "severity", "file", "pattern", "redacted")):
+                continue
+            key = _finding_identity(finding)
+            finding_counts[key] += 1
+            finding_map.setdefault(key, _diff_finding_entry(finding))
+    return finding_map, finding_counts
+
+
+def _report_status_map(report: dict) -> dict[str, str]:
+    return {
+        check["name"]: check["status"]
+        for check in report["checks"]
+        if isinstance(check, dict) and isinstance(check.get("name"), str) and check.get("status") in RUNTIME_STATUS_VALUES
+    }
+
+
+def diff_reports(before_report_path: str | Path, after_report_path: str | Path) -> dict:
+    before_report = _load_report_file(before_report_path)
+    after_report = _load_report_file(after_report_path)
+    before_findings, before_counts = _flatten_report_findings(before_report)
+    after_findings, after_counts = _flatten_report_findings(after_report)
+    before_statuses = _report_status_map(before_report)
+    after_statuses = _report_status_map(after_report)
+
+    shared_keys = sorted(before_findings.keys() & after_findings.keys())
+    added_keys = sorted(after_findings.keys() - before_findings.keys())
+    resolved_keys = sorted(before_findings.keys() - after_findings.keys())
+
+    severity_changes = [
+        _diff_severity_change_entry(before_findings[key], after_findings[key])
+        for key in shared_keys
+        if before_findings[key]["severity"] != after_findings[key]["severity"]
+    ]
+    unchanged_findings_count = sum(
+        min(before_counts[key], after_counts[key])
+        for key in shared_keys
+        if before_findings[key]["severity"] == after_findings[key]["severity"]
+    )
+    status_changes = [
+        {
+            "check": check_name,
+            "before_status": before_statuses.get(check_name, "missing"),
+            "after_status": after_statuses.get(check_name, "missing"),
+        }
+        for check_name in sorted(set(before_statuses) | set(after_statuses))
+        if before_statuses.get(check_name, "missing") != after_statuses.get(check_name, "missing")
+    ]
+
+    return {
+        "tool": "repo-health-doctor",
+        "version": TOOL_VERSION,
+        "schema_version": REPORT_SCHEMA_VERSION,
+        "report_kind": REPORT_KIND_DIFF,
+        "reports": {
+            "before": {
+                "repo_path": before_report["repo_path"],
+                "overall_status": before_report["overall_status"],
+                "summary": before_report["summary"],
+            },
+            "after": {
+                "repo_path": after_report["repo_path"],
+                "overall_status": after_report["overall_status"],
+                "summary": after_report["summary"],
+            },
+        },
+        "overall_status": {
+            "before": before_report["overall_status"],
+            "after": after_report["overall_status"],
+            "changed": before_report["overall_status"] != after_report["overall_status"],
+        },
+        "summary": {
+            "added_findings": len(added_keys),
+            "resolved_findings": len(resolved_keys),
+            "unchanged_findings": unchanged_findings_count,
+            "severity_changes": len(severity_changes),
+            "status_changes": len(status_changes),
+        },
+        "findings": {
+            "added": [after_findings[key] for key in added_keys],
+            "resolved": [before_findings[key] for key in resolved_keys],
+            "severity_changes": severity_changes,
+            "unchanged_count": unchanged_findings_count,
+        },
+        "status_changes": status_changes,
+    }
+
+
 def _scan_secrets(root: Path, ignore_patterns: tuple[str, ...]) -> tuple[list[dict], int]:
     findings: list[dict] = []
     scanned_files = 0
@@ -1212,6 +1394,8 @@ def list_policy_allows(
 
 
 def format_text(report: dict) -> str:
+    if report.get("report_kind") == REPORT_KIND_DIFF:
+        return _format_diff_text(report)
     lines = [
         f"Repo Health Doctor: {report['overall_status'].upper()}",
         f"Target: {report['repo_path']}",
@@ -1344,7 +1528,85 @@ def _format_markdown_finding_notes(finding: dict) -> str:
     return ", ".join(notes)
 
 
+def _format_diff_text_finding(finding: dict) -> str:
+    notes: list[str] = [f"severity={finding['severity']}"]
+    if "allowed" in finding:
+        notes.append(f"allowed={'true' if finding['allowed'] else 'false'}")
+    if "matched_policy_id" in finding:
+        notes.append(f"policy_id={finding['matched_policy_id']}")
+    if "policy_source" in finding:
+        notes.append(f"policy_source={finding['policy_source']}")
+    return (
+        f"    finding: file={finding['file']} "
+        f"rule={finding['rule_id']} category={finding['pattern']} "
+        f"redacted={'true' if finding['redacted'] else 'false'} "
+        f"{' '.join(notes)}"
+    )
+
+
+def _format_diff_text(report: dict) -> str:
+    lines = [
+        "Repo Health Doctor Report Diff",
+        f"Schema: {report['schema_version']}",
+        (
+            "Overall Status: "
+            f"{report['overall_status']['before'].upper()} -> {report['overall_status']['after'].upper()}"
+        ),
+        f"Before Target: {report['reports']['before']['repo_path']}",
+        f"After Target: {report['reports']['after']['repo_path']}",
+        (
+            "Diff Summary: "
+            f"{report['summary']['added_findings']} added, "
+            f"{report['summary']['resolved_findings']} resolved, "
+            f"{report['summary']['unchanged_findings']} unchanged, "
+            f"{report['summary']['severity_changes']} severity changed, "
+            f"{report['summary']['status_changes']} status changed"
+        ),
+        "",
+        "Status Changes:",
+    ]
+
+    if report["status_changes"]:
+        for change in report["status_changes"]:
+            lines.append(
+                f"- {change['check']}: {change['before_status'].upper()} -> {change['after_status'].upper()}"
+            )
+    else:
+        lines.append("- none")
+
+    lines.extend(["", "Added Findings:"])
+    if report["findings"]["added"]:
+        for finding in report["findings"]["added"]:
+            lines.append(_format_diff_text_finding(finding))
+    else:
+        lines.append("- none")
+
+    lines.extend(["", "Resolved Findings:"])
+    if report["findings"]["resolved"]:
+        for finding in report["findings"]["resolved"]:
+            lines.append(_format_diff_text_finding(finding))
+    else:
+        lines.append("- none")
+
+    lines.extend(["", "Severity Changes:"])
+    if report["findings"]["severity_changes"]:
+        for finding in report["findings"]["severity_changes"]:
+            lines.append(
+                f"    finding: file={finding['file']} "
+                f"rule={finding['rule_id']} category={finding['pattern']} "
+                f"redacted={'true' if finding['redacted'] else 'false'} "
+                f"severity={finding['before_severity']}->{finding['after_severity']}"
+            )
+    else:
+        lines.append("- none")
+
+    lines.extend(["", f"Unchanged Findings Count: {report['findings']['unchanged_count']}"])
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def format_markdown(report: dict) -> str:
+    if report.get("report_kind") == REPORT_KIND_DIFF:
+        return _format_diff_markdown(report)
     lines = [
         "# Repo Health Doctor Report",
         "",
@@ -1477,7 +1739,120 @@ def format_markdown(report: dict) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _format_diff_markdown(report: dict) -> str:
+    lines = [
+        "# Repo Health Doctor Report Diff",
+        "",
+        f"- Before Target Repo Path: {_format_markdown_code(report['reports']['before']['repo_path'])}",
+        f"- After Target Repo Path: {_format_markdown_code(report['reports']['after']['repo_path'])}",
+        (
+            "- Overall Status: "
+            f"{_format_markdown_code(report['overall_status']['before'].upper())} -> "
+            f"{_format_markdown_code(report['overall_status']['after'].upper())}"
+        ),
+        f"- Schema Version: {_format_markdown_code(report['schema_version'])}",
+        "",
+        "## Diff Summary",
+        "",
+        "| Added | Resolved | Unchanged | Severity Changes | Status Changes |",
+        "| --- | --- | --- | --- | --- |",
+        (
+            f"| {report['summary']['added_findings']} | {report['summary']['resolved_findings']} | "
+            f"{report['summary']['unchanged_findings']} | {report['summary']['severity_changes']} | "
+            f"{report['summary']['status_changes']} |"
+        ),
+        "",
+        "## Status Changes",
+        "",
+    ]
+
+    if report["status_changes"]:
+        lines.extend(
+            [
+                "| Check | Before | After |",
+                "| --- | --- | --- |",
+            ]
+        )
+        for change in report["status_changes"]:
+            lines.append(
+                _format_markdown_table_row(
+                    [
+                        _format_markdown_code(change["check"]),
+                        _format_markdown_code(change["before_status"]),
+                        _format_markdown_code(change["after_status"]),
+                    ]
+                )
+            )
+    else:
+        lines.append("- none")
+
+    for heading, findings in (
+        ("Added Findings", report["findings"]["added"]),
+        ("Resolved Findings", report["findings"]["resolved"]),
+    ):
+        lines.extend(["", f"## {heading}", ""])
+        if findings:
+            lines.extend(
+                [
+                    "| Rule ID | Severity | File | Pattern | Redacted | Notes |",
+                    "| --- | --- | --- | --- | --- | --- |",
+                ]
+            )
+            for finding in findings:
+                lines.append(
+                    _format_markdown_table_row(
+                        [
+                            _format_markdown_code(finding["rule_id"]),
+                            _format_markdown_code(finding["severity"]),
+                            _format_markdown_code(finding["file"]),
+                            _format_markdown_code(finding["pattern"]),
+                            _format_markdown_code(str(finding["redacted"]).lower()),
+                            _format_markdown_finding_notes(finding),
+                        ]
+                    )
+                )
+        else:
+            lines.append("- none")
+
+    lines.extend(["", "## Severity Changes", ""])
+    if report["findings"]["severity_changes"]:
+        lines.extend(
+            [
+                "| Rule ID | File | Pattern | Redacted | Before Severity | After Severity | Notes |",
+                "| --- | --- | --- | --- | --- | --- | --- |",
+            ]
+        )
+        for finding in report["findings"]["severity_changes"]:
+            lines.append(
+                _format_markdown_table_row(
+                    [
+                        _format_markdown_code(finding["rule_id"]),
+                        _format_markdown_code(finding["file"]),
+                        _format_markdown_code(finding["pattern"]),
+                        _format_markdown_code(str(finding["redacted"]).lower()),
+                        _format_markdown_code(finding["before_severity"]),
+                        _format_markdown_code(finding["after_severity"]),
+                        _format_markdown_finding_notes(finding),
+                    ]
+                )
+            )
+    else:
+        lines.append("- none")
+
+    lines.extend(
+        [
+            "",
+            "## Unchanged Findings",
+            "",
+            f"- Count: {_format_markdown_code(report['findings']['unchanged_count'])}",
+        ]
+    )
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def determine_exit_code(report: dict, strict: bool = False, fail_on: str = STATUS_BLOCK) -> int:
+    if report.get("report_kind") == REPORT_KIND_DIFF:
+        return 0
     if fail_on not in {STATUS_BLOCK, STATUS_WARN, POLICY_ALLOW_STATUS_EXPIRED, POLICY_ALLOW_STATUS_EXPIRING_SOON}:
         raise ValueError("fail_on must be 'block', 'warn', 'expired', or 'expiring-soon'")
     if report["summary"]["block"] > 0:
