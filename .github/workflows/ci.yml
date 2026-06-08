@@ -48,3 +48,6 @@ jobs:
           repo-health-doctor validate-policy . --format json --output /tmp/repo-health-doctor-policy.json
           test -s /tmp/repo-health-doctor-policy.json
           python -m json.tool /tmp/repo-health-doctor-policy.json >/dev/null
+
+      - name: Run release-check smoke
+        run: bash scripts/release-check-smoke.sh
