@@ -456,7 +456,13 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertTrue({"restricted_term", "private_path", "local_ip"}.issubset(patterns))
 
     def test_tracked_artifact_fixture_triggers_block(self) -> None:
-        repo_path = self._materialize_fixture_repo(TRACKED_ARTIFACT_FIXTURE_PATH, "tracked-artifact-repo", git_init=True)
+        repo_path = self._materialize_fixture_repo(TRACKED_ARTIFACT_FIXTURE_PATH, "tracked-artifact-repo")
+        (repo_path / "artifacts").mkdir(exist_ok=True)
+        (repo_path / "artifacts" / "build.log").write_text("log\n", encoding="utf-8")
+        self._init_git_repo(repo_path)
+        self._git(repo_path, "add", "README.md")
+        self._git(repo_path, "add", "-f", "artifacts/build.log")
+        self._stage_and_commit(repo_path=repo_path, message="Materialize tracked artifact fixture")
         tracked_files = self._git(repo_path, "ls-files").stdout.splitlines()
 
         self.assertIn("artifacts/build.log", tracked_files)
