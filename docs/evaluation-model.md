@@ -64,5 +64,7 @@ Maintain at least one test path for `diff-reports` so maintainer review output d
 Maintain at least one test path for `release-check` so the release summary stays aligned with scan, policy validation, allow inventory, and Markdown Step Summary output.
 
 - cover text, JSON, and Markdown output
+- validate CLI JSON output against `schemas/release-check-report.schema.json`
+- keep a stable golden in `tests/fixtures/golden/release-check-demo.json`
 - cover policy failure and allow inventory summary states
-- verify redaction-safe output does not introduce raw values from findings or policy inputs
+- verify redaction-safe output does not introduce raw values from findings, policy inputs, or baseline report paths

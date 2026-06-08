@@ -199,6 +199,7 @@ repo-health-doctor release-check . --baseline-report before.json --format markdo
 
 `release-check` は `--public-safety` scan を内部で実行し、baseline scan JSON report がある場合だけ redacted diff summary を追加します。
 JSON contract は `schema_version: 1.1` を維持しつつ `report_kind: release_check` で区別し、schema は [schemas/release-check-report.schema.json](schemas/release-check-report.schema.json) に固定します。
+回帰確認用の stable golden fixture は [tests/fixtures/golden/release-check-demo.json](tests/fixtures/golden/release-check-demo.json) に置きます。
 
 ## Policy
 

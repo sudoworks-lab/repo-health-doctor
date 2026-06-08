@@ -1,0 +1,73 @@
+{
+  "tool": "repo-health-doctor",
+  "version": "0.1.0",
+  "schema_version": "1.1",
+  "repo_path": "<demo-repo>",
+  "overall_status": "pass",
+  "summary": {
+    "pass": 4,
+    "warn": 0,
+    "block": 0
+  },
+  "checks": [
+    {
+      "name": "repo_scan",
+      "status": "pass",
+      "summary": "Repository scan passed release checks.",
+      "details": {
+        "report_overall_status": "pass",
+        "pass_count": 12,
+        "warn_count": 0,
+        "block_count": 0,
+        "finding_count": 0,
+        "warning_checks": [],
+        "blocking_checks": []
+      }
+    },
+    {
+      "name": "policy_validation",
+      "status": "pass",
+      "summary": "Policy configuration loaded.",
+      "details": {
+        "report_overall_status": "pass",
+        "policy_sources": [
+          "repo"
+        ],
+        "ignore_path_count": 1,
+        "allow_finding_count": 0,
+        "issue_count": 0,
+        "issue_rule_ids": []
+      }
+    },
+    {
+      "name": "allow_inventory",
+      "status": "pass",
+      "summary": "No allow entries found.",
+      "details": {
+        "report_overall_status": "pass",
+        "policy_sources": [
+          "repo"
+        ],
+        "allow_finding_count": 0,
+        "active_count": 0,
+        "expiring_soon_count": 0,
+        "expired_count": 0,
+        "displayed_allow_count": 0
+      }
+    },
+    {
+      "name": "report_diff",
+      "status": "pass",
+      "summary": "Baseline report not provided; diff summary skipped.",
+      "details": {
+        "comparison_available": false
+      }
+    }
+  ],
+  "report_kind": "release_check",
+  "release_readiness": {
+    "status": "pass",
+    "summary": "Release readiness checks passed."
+  },
+  "recommended_next_action": "Release readiness checks passed. Proceed with maintainer release review."
+}
