@@ -137,13 +137,34 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmp_dir.cleanup()
 
-    def _init_git_repo(self) -> None:
-        subprocess.run(
-            ["git", "init"],
-            cwd=self.tmp_path,
+    def _git(self, repo_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", "-C", str(repo_path), *args],
             check=True,
             capture_output=True,
             text=True,
+        )
+
+    def _init_git_repo(self, repo_path: Path | None = None) -> None:
+        target_repo = repo_path or self.tmp_path
+        self._git(target_repo, "init")
+
+    def _stage_and_commit(self, *paths: str, repo_path: Path | None = None, message: str = "Create test fixture") -> None:
+        target_repo = repo_path or self.tmp_path
+        if paths:
+            self._git(target_repo, "add", *paths)
+        else:
+            self._git(target_repo, "add", "--all")
+        self._git(
+            target_repo,
+            "-c",
+            "user.name=Repo Health Doctor Tests",
+            "-c",
+            "user.email=repo-health-doctor@example.invalid",
+            "commit",
+            "--no-gpg-sign",
+            "-m",
+            message,
         )
 
     def _write_complete_repo_baseline(self) -> None:
@@ -313,20 +334,10 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
 
     def _materialize_fixture_repo(self, fixture_path: Path, target_name: str, git_init: bool = False) -> Path:
         repo_path = self.tmp_path / target_name
-        shutil.copytree(fixture_path, repo_path)
+        shutil.copytree(fixture_path, repo_path, ignore=shutil.ignore_patterns(".git"))
         if git_init:
-            subprocess.run(
-                ["git", "-C", str(repo_path), "init"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            subprocess.run(
-                ["git", "-C", str(repo_path), "add", "."],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
+            self._init_git_repo(repo_path)
+            self._stage_and_commit(repo_path=repo_path, message="Materialize test fixture")
         return repo_path
 
     def _materialize_demo_repo(self) -> Path:
@@ -446,6 +457,9 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
 
     def test_tracked_artifact_fixture_triggers_block(self) -> None:
         repo_path = self._materialize_fixture_repo(TRACKED_ARTIFACT_FIXTURE_PATH, "tracked-artifact-repo", git_init=True)
+        tracked_files = self._git(repo_path, "ls-files").stdout.splitlines()
+
+        self.assertIn("artifacts/build.log", tracked_files)
         report = diagnose_repo(repo_path, public_safety=True)
         checks = {check["name"]: check for check in report["checks"]}
         findings = checks["tracked_artifacts"]["details"]["findings"]
@@ -725,12 +739,13 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             encoding="utf-8",
         )
         self._init_git_repo()
-        subprocess.run(
-            ["git", "add", "README.md", "LICENSE", ".gitignore", ".github/workflows/ci.yml", "app.py", "docs/public.md"],
-            cwd=self.tmp_path,
-            check=True,
-            capture_output=True,
-            text=True,
+        self._stage_and_commit(
+            "README.md",
+            "LICENSE",
+            ".gitignore",
+            ".github/workflows/ci.yml",
+            "app.py",
+            "docs/public.md",
         )
 
         report = diagnose_repo(self.tmp_path, public_safety=True)
@@ -845,13 +860,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
         restricted_text = "public note: " + "Fi" + "nd" + "y" + "\n"
         (self.tmp_path / "notes.txt").write_text(restricted_text, encoding="utf-8")
-        subprocess.run(
-            ["git", "add", "README.md", "notes.txt"],
-            cwd=self.tmp_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        self._stage_and_commit("README.md", "notes.txt")
 
         report = diagnose_repo(self.tmp_path, public_safety=True)
         checks = {check["name"]: check for check in report["checks"]}
@@ -870,13 +879,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
         private_path = "/" + "ho" + "me" + "/" + "user" + "/" + "work" + "\n"
         (self.tmp_path / "notes.txt").write_text(private_path, encoding="utf-8")
-        subprocess.run(
-            ["git", "add", "README.md", "notes.txt"],
-            cwd=self.tmp_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        self._stage_and_commit("README.md", "notes.txt")
 
         report = diagnose_repo(self.tmp_path, public_safety=True)
         checks = {check["name"]: check for check in report["checks"]}
@@ -895,13 +898,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
         local_ip = ".".join(("19" + "2", "16" + "8", "1", "25"))
         (self.tmp_path / "notes.txt").write_text(f"endpoint={local_ip}\n", encoding="utf-8")
-        subprocess.run(
-            ["git", "add", "README.md", "notes.txt"],
-            cwd=self.tmp_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        self._stage_and_commit("README.md", "notes.txt")
 
         report = diagnose_repo(self.tmp_path, public_safety=True)
         checks = {check["name"]: check for check in report["checks"]}
@@ -923,13 +920,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
         (self.tmp_path / "artifacts").mkdir()
         (self.tmp_path / "artifacts" / "build.log").write_text("log\n", encoding="utf-8")
-        subprocess.run(
-            ["git", "add", "README.md", "artifacts/build.log"],
-            cwd=self.tmp_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        self._stage_and_commit("README.md", "artifacts/build.log")
 
         report = diagnose_repo(self.tmp_path, public_safety=True)
         checks = {check["name"]: check for check in report["checks"]}
@@ -949,13 +940,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             target_dir = self.tmp_path / directory
             target_dir.mkdir()
             (target_dir / "output.txt").write_text("artifact\n", encoding="utf-8")
-        subprocess.run(
-            ["git", "add", "README.md", "build/output.txt", "generated/output.txt"],
-            cwd=self.tmp_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        self._stage_and_commit("README.md", "build/output.txt", "generated/output.txt")
 
         report = diagnose_repo(self.tmp_path, public_safety=True)
         checks = {check["name"]: check for check in report["checks"]}
@@ -971,13 +956,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self._init_git_repo()
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
         (self.tmp_path / ".env.example").write_text("NAME=value\n", encoding="utf-8")
-        subprocess.run(
-            ["git", "add", "README.md", ".env.example"],
-            cwd=self.tmp_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        self._stage_and_commit("README.md", ".env.example")
 
         report = diagnose_repo(self.tmp_path, public_safety=True)
         checks = {check["name"]: check for check in report["checks"]}
@@ -1006,13 +985,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         (self.tmp_path / "large.bin").write_bytes(b"x" * (2 * 1024 * 1024))
         (self.tmp_path / "artifacts").mkdir()
         (self.tmp_path / "artifacts" / "build.log").write_text("log\n", encoding="utf-8")
-        subprocess.run(
-            ["git", "add", "README.md", "artifacts/build.log"],
-            cwd=self.tmp_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        self._stage_and_commit("README.md", "artifacts/build.log")
 
         report = diagnose_repo(self.tmp_path, large_file_threshold_mb=1, public_safety=True)
         payload = json.loads(format_json(report))
@@ -1155,13 +1128,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             "  - artifacts/\n",
             encoding="utf-8",
         )
-        subprocess.run(
-            ["git", "add", "README.md", "artifacts/build.log"],
-            cwd=self.tmp_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        self._stage_and_commit("README.md", "artifacts/build.log")
 
         report = diagnose_repo(self.tmp_path, public_safety=True, large_file_threshold_mb=1)
         checks = {check["name"]: check for check in report["checks"]}
@@ -1205,13 +1172,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             "  - '*'\n",
             encoding="utf-8",
         )
-        subprocess.run(
-            ["git", "add", "README.md", "docs/public.md"],
-            cwd=self.tmp_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        self._stage_and_commit("README.md", "docs/public.md")
 
         report = diagnose_repo(self.tmp_path, public_safety=True)
         checks = {check["name"]: check for check in report["checks"]}
@@ -1231,13 +1192,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             "  - '*'\n",
             encoding="utf-8",
         )
-        subprocess.run(
-            ["git", "add", "README.md", "artifacts/build.log"],
-            cwd=self.tmp_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        self._stage_and_commit("README.md", "artifacts/build.log")
 
         report = diagnose_repo(self.tmp_path, public_safety=True)
         checks = {check["name"]: check for check in report["checks"]}
@@ -1264,13 +1219,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             "  - '*'\n",
             encoding="utf-8",
         )
-        subprocess.run(
-            ["git", "add", "README.md", "app.py", "docs/public.md"],
-            cwd=self.tmp_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        self._stage_and_commit("README.md", "app.py", "docs/public.md")
 
         report = diagnose_repo(self.tmp_path, public_safety=True)
         rendered_json = format_json(report)
