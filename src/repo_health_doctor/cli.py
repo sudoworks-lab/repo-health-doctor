@@ -6,6 +6,9 @@ import sys
 
 from .doctor import (
     DEFAULT_LARGE_FILE_THRESHOLD_MB,
+    POLICY_ALLOW_STATUS_EXPIRED,
+    POLICY_ALLOW_STATUS_EXPIRING_SOON,
+    POLICY_ALLOW_STATUS_VALUES,
     TOOL_VERSION,
     determine_exit_code,
     diagnose_repo,
@@ -88,6 +91,17 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             action="store_true",
             help="Enable extra checks for public release safety.",
         )
+    if list_allows_mode:
+        parser.add_argument(
+            "--status",
+            choices=POLICY_ALLOW_STATUS_VALUES,
+            help="Only display allow entries with this status.",
+        )
+        parser.add_argument(
+            "--fail-on",
+            choices=(POLICY_ALLOW_STATUS_EXPIRED, POLICY_ALLOW_STATUS_EXPIRING_SOON),
+            help="Exit with code 1 when stale allow entries meet this threshold.",
+        )
     parser.add_argument(
         "--config",
         help="Read policy from this file. Defaults to repo-health-doctor.yml when present.",
@@ -135,8 +149,10 @@ def main(argv: list[str] | None = None) -> int:
             config_path=args.config,
             local_config_path=args.local_config,
             load_local_config=not args.no_local_config,
+            status_filter=args.status,
+            fail_on=args.fail_on,
         )
-        fail_on = "block"
+        fail_on = args.fail_on or "block"
     else:
         if args.large_file_threshold_mb <= 0:
             parser.error("--large-file-threshold-mb must be greater than 0")

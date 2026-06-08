@@ -105,10 +105,13 @@ allow entry ごとに safe policy id、rule_id、path scope、expires、`active`
 ```bash
 repo-health-doctor list-allows .
 repo-health-doctor list-allows . --format json
+repo-health-doctor list-allows . --status expiring-soon
+repo-health-doctor list-allows . --fail-on expiring-soon
 repo-health-doctor list-allows . --format markdown --output /tmp/repo-health-doctor-allows.md
 ```
 
 `expiring-soon` は残り 30 日以内の allow、`expired` は期限切れの allow です。
+`--status` は表示対象だけを絞り、`--fail-on expiring-soon` は `expiring-soon` または `expired` があれば CI を fail させます。
 path pattern、reason、owner などの raw policy value は report に出しません。
 
 ## JSON Output

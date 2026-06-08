@@ -63,10 +63,12 @@ Phase 2 では CLI を maintainer の日常作業へ結び付けます。
 - `--output` を使って CI artifact と GitHub Step Summary へ同じ Markdown report を渡せるようにする
 - text / JSON 契約を維持したまま report consumption を改善する
 
-### Phase 2B Progress
+### Phase 2B Completion Candidates
 
 - `list-allows` により stale allow inventory を一覧できるようにする
 - allow entry ごとに safe policy id、rule_id、path scope、expires、stale status を返す
+- `--status active|expiring-soon|expired` で CI review 向けに表示対象を絞れるようにする
+- `--fail-on expired|expiring-soon` で stale allow gate を scan gate から独立運用できるようにする
 - validate-policy を壊さずに allow expiry review を独立運用できるようにする
 
 ## Phase 3: Multi-Repo Maintainer Kit

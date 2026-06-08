@@ -91,6 +91,11 @@ STATUS_BLOCK = "block"
 POLICY_ALLOW_STATUS_ACTIVE = "active"
 POLICY_ALLOW_STATUS_EXPIRING_SOON = "expiring-soon"
 POLICY_ALLOW_STATUS_EXPIRED = "expired"
+POLICY_ALLOW_STATUS_VALUES = (
+    POLICY_ALLOW_STATUS_ACTIVE,
+    POLICY_ALLOW_STATUS_EXPIRING_SOON,
+    POLICY_ALLOW_STATUS_EXPIRED,
+)
 RUNTIME_STATUS_VALUES = (STATUS_PASS, STATUS_WARN, STATUS_BLOCK)
 RUNTIME_FINDING_SEVERITY_VALUES = (STATUS_WARN, STATUS_BLOCK)
 RULE_ID_LARGE_FILE = "rhd.repository.large_file"
@@ -712,12 +717,25 @@ def _policy_check(policy: PolicyConfig) -> CheckResult:
 
 
 def _policy_allow_inventory_check(policy: PolicyConfig) -> CheckResult:
-    allows = [asdict(entry) for entry in policy.allow_inventory]
+    return _policy_allow_inventory_check_with_filter(policy)
+
+
+def _policy_allow_inventory_check_with_filter(
+    policy: PolicyConfig,
+    *,
+    status_filter: str | None = None,
+    fail_on: str | None = None,
+) -> CheckResult:
     active_count = sum(1 for entry in policy.allow_inventory if entry.status == POLICY_ALLOW_STATUS_ACTIVE)
     expiring_soon_count = sum(
         1 for entry in policy.allow_inventory if entry.status == POLICY_ALLOW_STATUS_EXPIRING_SOON
     )
     expired_count = sum(1 for entry in policy.allow_inventory if entry.status == POLICY_ALLOW_STATUS_EXPIRED)
+    allows = [
+        asdict(entry)
+        for entry in policy.allow_inventory
+        if status_filter is None or entry.status == status_filter
+    ]
 
     if expired_count:
         status = STATUS_BLOCK
@@ -725,6 +743,9 @@ def _policy_allow_inventory_check(policy: PolicyConfig) -> CheckResult:
     elif expiring_soon_count:
         status = STATUS_WARN
         summary = "Some allow entries are expiring soon."
+    elif policy.allow_inventory and status_filter is not None and not allows:
+        status = STATUS_PASS
+        summary = "No allow entries matched filter."
     elif allows:
         status = STATUS_PASS
         summary = "Allow inventory loaded."
@@ -732,18 +753,25 @@ def _policy_allow_inventory_check(policy: PolicyConfig) -> CheckResult:
         status = STATUS_PASS
         summary = "No allow entries found."
 
+    details = {
+        "policy_sources": list(policy.sources),
+        "allow_finding_count": policy.allow_finding_count,
+        "active_count": active_count,
+        "expiring_soon_count": expiring_soon_count,
+        "expired_count": expired_count,
+        "displayed_allow_count": len(allows),
+        "allows": allows,
+    }
+    if status_filter is not None:
+        details["filter"] = status_filter
+    if fail_on is not None:
+        details["fail_on"] = fail_on
+
     return CheckResult(
         name="policy_allow_inventory",
         status=status,
         summary=summary,
-        details={
-            "policy_sources": list(policy.sources),
-            "allow_finding_count": policy.allow_finding_count,
-            "active_count": active_count,
-            "expiring_soon_count": expiring_soon_count,
-            "expired_count": expired_count,
-            "allows": allows,
-        },
+        details=details,
     )
 
 
@@ -1166,6 +1194,8 @@ def list_policy_allows(
     config_path: str | Path | None = None,
     local_config_path: str | Path | None = None,
     load_local_config: bool = True,
+    status_filter: str | None = None,
+    fail_on: str | None = None,
 ) -> dict:
     root = Path(repo_path).resolve()
     policy = _load_policy_config(
@@ -1174,7 +1204,10 @@ def list_policy_allows(
         local_config_path=local_config_path,
         load_local_config=load_local_config,
     )
-    checks = [_policy_check(policy), _policy_allow_inventory_check(policy)]
+    checks = [
+        _policy_check(policy),
+        _policy_allow_inventory_check_with_filter(policy, status_filter=status_filter, fail_on=fail_on),
+    ]
     return _build_report(root, checks)
 
 
@@ -1249,6 +1282,12 @@ def format_text(report: dict) -> str:
             lines.append(f"    active_count: {details['active_count']}")
             lines.append(f"    expiring_soon_count: {details['expiring_soon_count']}")
             lines.append(f"    expired_count: {details['expired_count']}")
+            if "displayed_allow_count" in details:
+                lines.append(f"    displayed_allow_count: {details['displayed_allow_count']}")
+            if "filter" in details:
+                lines.append(f"    filter: status={details['filter']}")
+            if "fail_on" in details:
+                lines.append(f"    fail_on: {details['fail_on']}")
             for allow in details["allows"][:10]:
                 lines.append(
                     f"    allow: policy_source={allow['policy_source']} "
@@ -1377,6 +1416,12 @@ def format_markdown(report: dict) -> str:
             lines.append(f"- Expiring Soon Count: {_format_markdown_code(details['expiring_soon_count'])}")
         if "expired_count" in details:
             lines.append(f"- Expired Count: {_format_markdown_code(details['expired_count'])}")
+        if "displayed_allow_count" in details:
+            lines.append(f"- Displayed Allow Count: {_format_markdown_code(details['displayed_allow_count'])}")
+        if "filter" in details:
+            lines.append(f"- Filter: {_format_markdown_code(details['filter'])}")
+        if "fail_on" in details:
+            lines.append(f"- Fail On: {_format_markdown_code(details['fail_on'])}")
 
         findings = details.get("findings", [])
         if findings:
@@ -1433,10 +1478,20 @@ def format_markdown(report: dict) -> str:
 
 
 def determine_exit_code(report: dict, strict: bool = False, fail_on: str = STATUS_BLOCK) -> int:
-    if fail_on not in {STATUS_BLOCK, STATUS_WARN}:
-        raise ValueError("fail_on must be 'block' or 'warn'")
+    if fail_on not in {STATUS_BLOCK, STATUS_WARN, POLICY_ALLOW_STATUS_EXPIRED, POLICY_ALLOW_STATUS_EXPIRING_SOON}:
+        raise ValueError("fail_on must be 'block', 'warn', 'expired', or 'expiring-soon'")
     if report["summary"]["block"] > 0:
         return 1
     if (strict or fail_on == STATUS_WARN) and report["summary"]["warn"] > 0:
         return 1
+    if fail_on in {POLICY_ALLOW_STATUS_EXPIRED, POLICY_ALLOW_STATUS_EXPIRING_SOON}:
+        inventory_details = next(
+            (check["details"] for check in report.get("checks", []) if check.get("name") == "policy_allow_inventory"),
+            {},
+        )
+        expired_count = inventory_details.get("expired_count", 0)
+        expiring_soon_count = inventory_details.get("expiring_soon_count", 0)
+        if fail_on == POLICY_ALLOW_STATUS_EXPIRED:
+            return 1 if expired_count > 0 else 0
+        return 1 if expired_count > 0 or expiring_soon_count > 0 else 0
     return 0

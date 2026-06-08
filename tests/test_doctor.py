@@ -134,6 +134,25 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         (self.tmp_path / "docs").mkdir(exist_ok=True)
         (self.tmp_path / "scripts").mkdir(exist_ok=True)
 
+    def _cli_env(self) -> dict[str, str]:
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+        return env
+
+    def _write_allow_inventory_policy(self, entries: list[dict[str, str]]) -> None:
+        lines = ["allow_findings:"]
+        for entry in entries:
+            lines.extend(
+                [
+                    f"  - rule_id: {entry['rule_id']}",
+                    f"    path: {entry['path']}",
+                    f"    reason: {entry['reason']}",
+                    f"    owner: {entry['owner']}",
+                    f"    expires: {entry['expires']}",
+                ]
+            )
+        (self.tmp_path / "repo-health-doctor.yml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
     def _materialize_fixture_repo(self, fixture_path: Path, target_name: str, git_init: bool = False) -> Path:
         repo_path = self.tmp_path / target_name
         shutil.copytree(fixture_path, repo_path)
@@ -1347,6 +1366,190 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertNotIn(raw_path, rendered_text)
         self.assertNotIn(raw_path, rendered_markdown)
 
+    def test_list_policy_allows_filters_active_status(self) -> None:
+        self._write_allow_inventory_policy(
+            [
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/active.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": "2999-01-01",
+                },
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/soon.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": (date.today() + timedelta(days=10)).isoformat(),
+                },
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/expired.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": (date.today() - timedelta(days=1)).isoformat(),
+                },
+            ]
+        )
+
+        report = list_policy_allows(self.tmp_path, status_filter="active")
+        inventory = {check["name"]: check for check in report["checks"]}["policy_allow_inventory"]["details"]
+
+        self.assertEqual(inventory["filter"], "active")
+        self.assertEqual(inventory["displayed_allow_count"], 1)
+        self.assertEqual(inventory["active_count"], 1)
+        self.assertEqual(inventory["expiring_soon_count"], 1)
+        self.assertEqual(inventory["expired_count"], 1)
+        self.assertEqual([allow["status"] for allow in inventory["allows"]], ["active"])
+
+    def test_list_policy_allows_filters_expiring_soon_status(self) -> None:
+        self._write_allow_inventory_policy(
+            [
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/active.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": "2999-01-01",
+                },
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/soon.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": (date.today() + timedelta(days=10)).isoformat(),
+                },
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/expired.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": (date.today() - timedelta(days=1)).isoformat(),
+                },
+            ]
+        )
+
+        report = list_policy_allows(self.tmp_path, status_filter="expiring-soon")
+        inventory = {check["name"]: check for check in report["checks"]}["policy_allow_inventory"]["details"]
+
+        self.assertEqual(inventory["filter"], "expiring-soon")
+        self.assertEqual(inventory["displayed_allow_count"], 1)
+        self.assertEqual([allow["status"] for allow in inventory["allows"]], ["expiring-soon"])
+
+    def test_list_policy_allows_filters_expired_status(self) -> None:
+        self._write_allow_inventory_policy(
+            [
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/active.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": "2999-01-01",
+                },
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/soon.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": (date.today() + timedelta(days=10)).isoformat(),
+                },
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/expired.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": (date.today() - timedelta(days=1)).isoformat(),
+                },
+            ]
+        )
+
+        report = list_policy_allows(self.tmp_path, status_filter="expired")
+        inventory = {check["name"]: check for check in report["checks"]}["policy_allow_inventory"]["details"]
+
+        self.assertEqual(inventory["filter"], "expired")
+        self.assertEqual(inventory["displayed_allow_count"], 1)
+        self.assertEqual([allow["status"] for allow in inventory["allows"]], ["expired"])
+
+    def test_list_policy_allows_filtered_report_redacts_raw_policy_values(self) -> None:
+        marker = "POLICY_MARKER_VALUE"
+        raw_path = "private-policy-area/generated.bin"
+        self._write_allow_inventory_policy(
+            [
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": raw_path,
+                    "reason": marker,
+                    "owner": marker,
+                    "expires": "2999-01-01",
+                }
+            ]
+        )
+
+        report = list_policy_allows(self.tmp_path, status_filter="active", fail_on="expiring-soon")
+        rendered_json = format_json(report)
+        rendered_text = format_text(report)
+        rendered_markdown = format_markdown(report)
+        inventory = {check["name"]: check for check in report["checks"]}["policy_allow_inventory"]["details"]
+
+        self.assertEqual(inventory["filter"], "active")
+        self.assertEqual(inventory["fail_on"], "expiring-soon")
+        self.assertNotIn(marker, rendered_json)
+        self.assertNotIn(marker, rendered_text)
+        self.assertNotIn(marker, rendered_markdown)
+        self.assertNotIn(raw_path, rendered_json)
+        self.assertNotIn(raw_path, rendered_text)
+        self.assertNotIn(raw_path, rendered_markdown)
+
+    def test_list_policy_allows_filter_without_matches_reports_empty_subset(self) -> None:
+        self._write_allow_inventory_policy(
+            [
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/active.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": "2999-01-01",
+                }
+            ]
+        )
+
+        report = list_policy_allows(self.tmp_path, status_filter="expiring-soon")
+        inventory = {check["name"]: check for check in report["checks"]}["policy_allow_inventory"]
+
+        self.assertEqual(inventory["status"], "pass")
+        self.assertEqual(inventory["summary"], "No allow entries matched filter.")
+        self.assertEqual(inventory["details"]["displayed_allow_count"], 0)
+        self.assertEqual(inventory["details"]["allows"], [])
+
+    def test_list_policy_allows_default_behavior_is_unfiltered(self) -> None:
+        self._write_allow_inventory_policy(
+            [
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/active.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": "2999-01-01",
+                },
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/soon.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": (date.today() + timedelta(days=10)).isoformat(),
+                },
+            ]
+        )
+
+        report = list_policy_allows(self.tmp_path)
+        inventory = {check["name"]: check for check in report["checks"]}["policy_allow_inventory"]["details"]
+
+        self.assertNotIn("filter", inventory)
+        self.assertNotIn("fail_on", inventory)
+        self.assertEqual(inventory["displayed_allow_count"], 2)
+        self.assertEqual(len(inventory["allows"]), 2)
+
     def test_list_policy_allows_report_matches_public_report_schema(self) -> None:
         report = list_policy_allows(self.tmp_path, config_path=POLICY_FIXTURES_PATH / "valid-policy.yml")
         payload = json.loads(format_json(report))
@@ -1638,6 +1841,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             "repo-health-doctor validate-policy .",
             "repo-health-doctor . --fail-on block --public-safety",
             "repo-health-doctor list-allows .",
+            "repo-health-doctor list-allows . --fail-on expiring-soon",
         ):
             self.assertIn(command, readme)
         for command in (
@@ -1655,6 +1859,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         for command in (
             "repo-health-doctor . --strict --public-safety --format json --output /tmp/repo-health-doctor-result.json",
             "repo-health-doctor . --strict --public-safety --format markdown --output /tmp/repo-health-doctor-summary.md",
+            "repo-health-doctor list-allows . --fail-on expiring-soon --format json --output /tmp/repo-health-doctor-allows.json",
             'cat /tmp/repo-health-doctor-summary.md >> "$GITHUB_STEP_SUMMARY"',
         ):
             self.assertIn(command, ci_doc)
@@ -1662,6 +1867,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             "repo-health-doctor validate-policy .",
             "repo-health-doctor list-allows .",
             "repo-health-doctor list-allows . --format json",
+            "repo-health-doctor list-allows . --fail-on expiring-soon",
         ):
             self.assertIn(command, policy_doc)
 
@@ -1782,6 +1988,144 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         self.assertIn("### `policy_allow_inventory`", result.stdout)
         self.assertIn("| Policy Source | Policy ID | Rule ID | Path Scope | Expires | Status | Redacted |", result.stdout)
 
+    def test_list_allows_cli_filters_json_by_status(self) -> None:
+        self._write_allow_inventory_policy(
+            [
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/active.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": "2999-01-01",
+                },
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/soon.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": (date.today() + timedelta(days=10)).isoformat(),
+                },
+            ]
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "list-allows",
+                str(self.tmp_path),
+                "--format",
+                "json",
+                "--status",
+                "expiring-soon",
+                "--fail-on",
+                "expiring-soon",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=self._cli_env(),
+        )
+
+        payload = json.loads(result.stdout)
+        inventory = {check["name"]: check for check in payload["checks"]}["policy_allow_inventory"]["details"]
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(inventory["filter"], "expiring-soon")
+        self.assertEqual(inventory["fail_on"], "expiring-soon")
+        self.assertEqual(inventory["displayed_allow_count"], 1)
+        self.assertEqual([allow["status"] for allow in inventory["allows"]], ["expiring-soon"])
+
+    def test_list_allows_cli_fail_on_expired(self) -> None:
+        self._write_allow_inventory_policy(
+            [
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/expired.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": (date.today() - timedelta(days=1)).isoformat(),
+                }
+            ]
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "list-allows",
+                str(self.tmp_path),
+                "--fail-on",
+                "expired",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=self._cli_env(),
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("expired_count: 1", result.stdout)
+
+    def test_list_allows_cli_fail_on_expiring_soon(self) -> None:
+        self._write_allow_inventory_policy(
+            [
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/soon.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": (date.today() + timedelta(days=10)).isoformat(),
+                }
+            ]
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "list-allows",
+                str(self.tmp_path),
+                "--fail-on",
+                "expiring-soon",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=self._cli_env(),
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("expiring_soon_count: 1", result.stdout)
+
+    def test_list_allows_cli_default_exit_code_does_not_fail_on_expiring_soon(self) -> None:
+        self._write_allow_inventory_policy(
+            [
+                {
+                    "rule_id": "rhd.repository.large_file",
+                    "path": "docs/soon.bin",
+                    "reason": "reviewed",
+                    "owner": "team-a",
+                    "expires": (date.today() + timedelta(days=10)).isoformat(),
+                }
+            ]
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor",
+                "list-allows",
+                str(self.tmp_path),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=self._cli_env(),
+        )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Repo Health Doctor: WARN", result.stdout)
+
     def test_scan_cli_fail_on_controls_warn_exit_code(self) -> None:
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
         env = os.environ.copy()
@@ -1860,8 +2204,9 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
 
         self.assertIn("list-allows", result.stdout)
         self.assertIn("--no-local-config", result.stdout)
+        self.assertIn("--status", result.stdout)
+        self.assertIn("--fail-on", result.stdout)
         self.assertNotIn("--public-safety", result.stdout)
-        self.assertNotIn("--fail-on", result.stdout)
 
     def test_validate_policy_cli_blocks_invalid_policy_without_scanning(self) -> None:
         env = os.environ.copy()
