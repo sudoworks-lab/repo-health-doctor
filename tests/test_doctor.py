@@ -448,9 +448,16 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         repo_path = self._materialize_fixture_repo(TRACKED_ARTIFACT_FIXTURE_PATH, "tracked-artifact-repo", git_init=True)
         report = diagnose_repo(repo_path, public_safety=True)
         checks = {check["name"]: check for check in report["checks"]}
+        findings = checks["tracked_artifacts"]["details"]["findings"]
 
+        self.assertEqual(report["overall_status"], "block")
         self.assertEqual(checks["tracked_artifacts"]["status"], "block")
-        self.assertEqual(checks["tracked_artifacts"]["details"]["findings"][0]["rule_id"], "rhd.tracked_artifact.generated_dir")
+        self.assertEqual(checks["tracked_artifacts"]["details"]["scan_scope"], "tracked")
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["rule_id"], "rhd.tracked_artifact.generated_dir")
+        self.assertEqual(findings[0]["file"], "artifacts/build.log")
+        self.assertEqual(findings[0]["pattern"], "generated_dir")
+        self.assertTrue(findings[0]["redacted"])
 
     def test_diagnose_repo_detects_expected_checks(self) -> None:
         (self.tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
