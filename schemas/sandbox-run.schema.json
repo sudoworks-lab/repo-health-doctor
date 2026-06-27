@@ -36,7 +36,48 @@
     "approval": {"type": "object"},
     "sandbox_profile": {"type": "object"},
     "command": {"type": "object"},
-    "docker": {"type": "object"},
+    "docker": {
+      "type": "object",
+      "required": [
+        "image",
+        "pull_policy",
+        "network",
+        "argv_redacted",
+        "runner",
+        "invoked",
+        "docker_invoked",
+        "exit_code",
+        "failure_class",
+        "diagnostic_redacted",
+        "stdout_preview_redacted",
+        "stderr_preview_redacted"
+      ],
+      "properties": {
+        "image": {"type": "string"},
+        "image_digest_pinned": {"type": "boolean"},
+        "latest_tag": {"type": "boolean"},
+        "pull_policy": {"type": "string", "enum": ["never"]},
+        "network": {"type": "string"},
+        "workdir": {"type": "string"},
+        "mounts_summary": {"type": "object"},
+        "resource_limits": {"type": "object"},
+        "security_options": {"type": "object"},
+        "user": {"type": "string"},
+        "root_container_user": {"type": "boolean"},
+        "rootless_docker_detected": {"type": "string"},
+        "userns_remap_detected": {"type": "string"},
+        "argv_redacted": {"type": "array", "items": {"type": "string"}},
+        "runner": {"type": "string"},
+        "invoked": {"type": "boolean"},
+        "docker_invoked": {"type": "boolean"},
+        "exit_code": {"type": ["integer", "null"]},
+        "failure_class": {"type": ["string", "null"]},
+        "diagnostic_redacted": {"type": ["string", "null"]},
+        "stdout_preview_redacted": {"type": "string"},
+        "stderr_preview_redacted": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
     "disposable_workspace": {"type": "object"},
     "workspace_diff": {"type": "object"},
     "result": {
@@ -61,7 +102,28 @@
       },
       "additionalProperties": false
     },
-    "output_summary": {"type": "object"},
+    "output_summary": {
+      "type": "object",
+      "required": [
+        "stdout_preview_redacted",
+        "stderr_preview_redacted",
+        "stdout_truncated",
+        "stderr_truncated",
+        "redaction_applied",
+        "redaction_failure",
+        "raw_stdout_stderr_persisted"
+      ],
+      "properties": {
+        "stdout_preview_redacted": {"type": "string"},
+        "stderr_preview_redacted": {"type": "string"},
+        "stdout_truncated": {"type": "boolean"},
+        "stderr_truncated": {"type": "boolean"},
+        "redaction_applied": {"type": "boolean"},
+        "redaction_failure": {"type": ["string", "null"]},
+        "raw_stdout_stderr_persisted": {"type": "boolean", "const": false}
+      },
+      "additionalProperties": false
+    },
     "boundary_statement": {"type": "object"},
     "limitations": {"type": "array", "items": {"type": "string"}},
     "next_actions": {"type": "array", "items": {"type": "string"}},

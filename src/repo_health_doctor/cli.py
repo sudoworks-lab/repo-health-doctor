@@ -147,11 +147,19 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
         "--format",
         choices=("text", "json", "markdown", "md"),
         default="text",
-        help="Output format.",
+        help=(
+            "Stdout format. --output always writes the machine-readable JSON report."
+            if sandbox_run_mode
+            else "Output format."
+        ),
     )
     parser.add_argument(
         "--output",
-        help="Write the rendered report to a file while also printing to stdout.",
+        help=(
+            "Write the sandbox-run JSON report to a file while also printing the selected stdout format."
+            if sandbox_run_mode
+            else "Write the rendered report to a file while also printing to stdout."
+        ),
     )
     parser.add_argument(
         "--version",
@@ -555,7 +563,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.output:
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(output, encoding="utf-8")
+        file_output = format_sandbox_run_json(report) if command == "sandbox-run" else output
+        output_path.write_text(file_output, encoding="utf-8")
     if command == "scan" and getattr(args, "gate_decision_output", None) and gate_decision is not None:
         gate_output_path = Path(args.gate_decision_output)
         gate_output_path.parent.mkdir(parents=True, exist_ok=True)

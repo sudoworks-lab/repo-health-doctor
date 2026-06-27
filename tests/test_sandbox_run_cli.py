@@ -40,17 +40,42 @@ def _write_approval(path: Path, approval: dict[str, object]) -> Path:
     return path
 
 
-def _run_cli(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def _run_cli(repo: Path, *args: str, format_json: bool = True) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
     env["PYTHONPATH"] = str(ROOT / "src")
+    command = [sys.executable, "-m", "repo_health_doctor", "sandbox-run", str(repo)]
+    if format_json:
+        command.extend(["--format", "json"])
+    command.extend(args)
     return subprocess.run(
-        [sys.executable, "-m", "repo_health_doctor", "sandbox-run", str(repo), "--format", "json", *args],
+        command,
         cwd=ROOT,
         env=env,
         check=False,
         capture_output=True,
         text=True,
     )
+
+
+def _assert_json_tool_parses(path: Path) -> None:
+    completed = subprocess.run(
+        [sys.executable, "-m", "json.tool", str(path)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
+def _assert_sandbox_run_schema_valid(report: dict[str, object]) -> None:
+    schema = json.loads((ROOT / "schemas" / "sandbox-run.schema.json").read_text(encoding="utf-8"))
+    try:
+        from jsonschema import Draft202012Validator
+    except ModuleNotFoundError:
+        assert set(schema["required"]).issubset(report)
+        assert report["result"]["status"] in schema["properties"]["result"]["properties"]["status"]["enum"]  # type: ignore[index]
+    else:
+        Draft202012Validator(schema).validate(report)
 
 
 def _base_args(approval_path: Path, runner: str = "fake") -> list[str]:
@@ -179,3 +204,127 @@ def test_cli_fake_runner_successful_synthetic_run(tmp_path: Path) -> None:
     assert report["docker"]["docker_invoked"] is False
     assert report["output_summary"]["raw_stdout_stderr_persisted"] is False
     assert "not proof that the repository is safe" in report["safety_statement"]
+
+
+def test_output_path_defaults_to_json_while_stdout_remains_text(tmp_path: Path) -> None:
+    repo = _repo(tmp_path / "repo")
+    approval_path = _write_approval(tmp_path / "approval.json", _approval(repo))
+    output_path = tmp_path / "sandbox-run.json"
+
+    result = _run_cli(
+        repo,
+        "--approval",
+        str(approval_path),
+        "--image",
+        IMAGE,
+        "--profile",
+        "no-network-default",
+        "--runner",
+        "fake",
+        "--output",
+        str(output_path),
+        "--",
+        *COMMAND,
+        format_json=False,
+    )
+    report = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert result.returncode == 0
+    assert result.stdout.startswith("Repo Health Doctor Sandbox-Run: COMPLETED")
+    assert not output_path.read_text(encoding="utf-8").startswith("Repo Health Doctor Sandbox-Run")
+    _assert_json_tool_parses(output_path)
+    _assert_sandbox_run_schema_valid(report)
+    assert report["result"]["status"] == "completed"
+    assert report["docker"]["invoked"] is False
+
+
+def test_missing_approval_writes_valid_json_output_when_stdout_is_text(tmp_path: Path) -> None:
+    repo = _repo(tmp_path / "repo")
+    output_path = tmp_path / "missing-approval.json"
+
+    result = _run_cli(
+        repo,
+        "--image",
+        IMAGE,
+        "--profile",
+        "no-network-default",
+        "--runner",
+        "fake",
+        "--output",
+        str(output_path),
+        "--",
+        *COMMAND,
+        format_json=False,
+    )
+    report = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert result.returncode == 1
+    assert result.stdout.startswith("Repo Health Doctor Sandbox-Run: BLOCKED")
+    _assert_json_tool_parses(output_path)
+    _assert_sandbox_run_schema_valid(report)
+    assert report["result"]["status"] == "blocked"
+    assert "approval_missing" in report["approval"]["refusal_reasons"]
+
+
+def test_command_mismatch_writes_valid_json_output_when_stdout_is_text(tmp_path: Path) -> None:
+    repo = _repo(tmp_path / "repo")
+    approval = deepcopy(_approval(repo))
+    approval["command"] = {"argv": ["python3", "-c", "print('other')"], "shell": False}
+    approval_path = _write_approval(tmp_path / "approval.json", approval)
+    output_path = tmp_path / "command-mismatch.json"
+
+    result = _run_cli(
+        repo,
+        "--approval",
+        str(approval_path),
+        "--image",
+        IMAGE,
+        "--profile",
+        "no-network-default",
+        "--runner",
+        "fake",
+        "--output",
+        str(output_path),
+        "--",
+        *COMMAND,
+        format_json=False,
+    )
+    report = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert result.returncode == 1
+    assert result.stdout.startswith("Repo Health Doctor Sandbox-Run: BLOCKED")
+    _assert_json_tool_parses(output_path)
+    _assert_sandbox_run_schema_valid(report)
+    assert report["result"]["status"] == "blocked"
+    assert "command_argv_mismatch" in report["approval"]["refusal_reasons"]
+
+
+def test_failed_runner_writes_valid_json_output_and_human_diagnostic(tmp_path: Path) -> None:
+    repo = _repo(tmp_path / "repo")
+    approval_path = _write_approval(tmp_path / "approval.json", _approval(repo))
+    output_path = tmp_path / "runner-failure.json"
+
+    result = _run_cli(
+        repo,
+        "--approval",
+        str(approval_path),
+        "--image",
+        IMAGE,
+        "--profile",
+        "no-network-default",
+        "--runner",
+        "fake-failure",
+        "--output",
+        str(output_path),
+        "--",
+        *COMMAND,
+        format_json=False,
+    )
+    report = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert result.returncode == 1
+    assert "Docker diagnostic:" in result.stdout
+    _assert_json_tool_parses(output_path)
+    _assert_sandbox_run_schema_valid(report)
+    assert report["result"]["status"] == "failed"
+    assert report["docker"]["failure_class"] == "sandbox_command_or_runner_failure"

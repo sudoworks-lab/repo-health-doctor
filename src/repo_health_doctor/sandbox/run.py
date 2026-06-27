@@ -35,6 +35,7 @@ STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"
 STATUS_TIMED_OUT = "timed_out"
 STATUS_CLEANUP_UNCERTAIN = "cleanup_uncertain"
+DOCKER_INFRASTRUCTURE_EXIT_CODES = {125}
 
 SECRET_PATTERNS = (
     re.compile(
@@ -46,10 +47,13 @@ SECRET_PATTERNS = (
     re.compile(r"(?<![A-Z0-9])AKIA[0-9A-Z]{16}(?![A-Z0-9])"),
     re.compile(r"(?i)\b(?:password|token|api[_-]?key|secret)\b\s*[:=]\s*[^\s,;}\]\r\n]+"),
 )
+_POSIX_HOME_PREFIX = "/" + "home"
+_POSIX_USERS_PREFIX = "/" + "Users"
+_MNT_PREFIX = "/" + "mnt"
 PRIVATE_PATH_PATTERNS = (
-    re.compile(r"/home/[^/\s]+"),
-    re.compile(r"/Users/[^/\s]+"),
-    re.compile(r"/mnt/[A-Za-z]/Users/[^/\s]+"),
+    re.compile(_POSIX_HOME_PREFIX + r"/[^/\s]+"),
+    re.compile(_POSIX_USERS_PREFIX + r"/[^/\s]+"),
+    re.compile(_MNT_PREFIX + r"/[A-Za-z]" + _POSIX_USERS_PREFIX + r"/[^/\s]+"),
     re.compile(r"[A-Za-z]:\\Users\\[^\\\s]+"),
 )
 
@@ -198,12 +202,19 @@ def run_sandbox_run(
             workspace=workspace,
             limit=output_preview_chars,
         )
+        docker_with_result = _docker_report_with_result(
+            base_report["docker"],
+            run_result,
+            output_summary,
+            runner=runner,
+        )
         status = run_result.status
         if run_result.timed_out:
             status = STATUS_TIMED_OUT
         elif run_result.exit_code not in {0, None}:
             status = STATUS_FAILED
         report = dict(base_report)
+        report["docker"] = docker_with_result
         report["workspace_diff"] = summarize_workspace_diff(before_snapshot, after_snapshot)
         report["output_summary"] = output_summary
         report["result"] = {
@@ -217,15 +228,25 @@ def run_sandbox_run(
             approval_validation=approval_validation,
             refusal_reasons=[],
         )
-        if runner.runner_name.startswith("fake"):
+        if runner.runner_name.startswith("fake") and not runner.docker_invoked:
             report["limitations"].append(
                 "Fake runner mode did not invoke Docker and is only suitable for tests or documentation smoke checks."
             )
-        report["next_actions"] = _next_actions_for_status(status)
+        if _is_docker_infrastructure_failure(run_result, runner=runner):
+            report["limitations"].extend(_docker_infrastructure_limitations())
+            report["next_actions"] = _next_actions_for_docker_infrastructure_failure()
+        else:
+            report["next_actions"] = _next_actions_for_status(status)
         return _finalize_report(report, workspace=workspace)
     except Exception as exc:
         report = dict(base_report)
         report["limitations"].append(_redact_text(f"sandbox-run infrastructure error: {exc.__class__.__name__}", target=target, workspace=workspace))
+        report["docker"] = _docker_report_with_infrastructure_error(
+            report["docker"],
+            diagnostic=f"sandbox-run infrastructure error: {exc.__class__.__name__}",
+            target=target,
+            workspace=workspace,
+        )
         report["result"] = {
             "status": STATUS_FAILED,
             "exit_code": None,
@@ -438,6 +459,71 @@ def _empty_output_summary() -> dict[str, Any]:
     }
 
 
+def _docker_report_with_result(
+    docker_report: dict[str, Any],
+    run_result: Any,
+    output_summary: dict[str, Any],
+    *,
+    runner: SandboxDockerRunner,
+) -> dict[str, Any]:
+    report = dict(docker_report)
+    report["invoked"] = bool(runner.docker_invoked)
+    report["docker_invoked"] = bool(runner.docker_invoked)
+    report["exit_code"] = run_result.exit_code
+    report["stdout_preview_redacted"] = output_summary["stdout_preview_redacted"]
+    report["stderr_preview_redacted"] = output_summary["stderr_preview_redacted"]
+    report["failure_class"] = None
+    report["diagnostic_redacted"] = None
+    if run_result.timed_out:
+        report["failure_class"] = "timeout"
+        report["diagnostic_redacted"] = (
+            "Docker runner timed out before complete bounded evidence was available."
+            if runner.docker_invoked
+            else "Sandbox runner timed out before complete bounded evidence was available."
+        )
+    elif _is_docker_infrastructure_failure(run_result, runner=runner):
+        report["failure_class"] = "docker_infrastructure_failure"
+        report["diagnostic_redacted"] = (
+            "Docker run failed before the approved command could be confirmed as executed "
+            f"(exit code {run_result.exit_code}). Review bounded redacted Docker stderr/stdout previews before retrying."
+        )
+    elif run_result.exit_code not in {0, None}:
+        report["failure_class"] = "sandbox_command_or_runner_failure"
+        report["diagnostic_redacted"] = (
+            "Docker run returned a nonzero exit code after invocation; review bounded redacted output previews before "
+            "inferring whether the approved command started."
+            if runner.docker_invoked
+            else "Sandbox runner returned a nonzero exit code; review bounded redacted output previews."
+        )
+    return report
+
+
+def _docker_report_with_infrastructure_error(
+    docker_report: dict[str, Any],
+    *,
+    diagnostic: str,
+    target: Path,
+    workspace: DisposableWorkspace | None,
+) -> dict[str, Any]:
+    report = dict(docker_report)
+    report["failure_class"] = "sandbox_run_infrastructure_error"
+    report["diagnostic_redacted"] = _redact_text(diagnostic, target=target, workspace=workspace)
+    return report
+
+
+def _is_docker_infrastructure_failure(run_result: Any, *, runner: SandboxDockerRunner) -> bool:
+    if not runner.docker_invoked or run_result.timed_out:
+        return False
+    return run_result.exit_code in DOCKER_INFRASTRUCTURE_EXIT_CODES or run_result.exit_code is None
+
+
+def _docker_infrastructure_limitations() -> list[str]:
+    return [
+        "Docker infrastructure failed before the approved command could be confirmed as executed.",
+        "Docker diagnostics are bounded and redacted; raw Docker stdout/stderr was not persisted.",
+    ]
+
+
 def _bounded_redacted_preview(
     value: str,
     *,
@@ -538,4 +624,12 @@ def _next_actions_for_status(status: str) -> list[str]:
     return [
         "Treat the sandbox-run report as non-authorizing evidence.",
         "Review refusal reasons, limitations, and approval binding before retrying.",
+    ]
+
+
+def _next_actions_for_docker_infrastructure_failure() -> list[str]:
+    return [
+        "Treat this as failed sandbox-run infrastructure evidence, not as command completion.",
+        "Review docker.diagnostic_redacted and bounded redacted Docker stderr/stdout previews before retrying.",
+        "Do not run the repository-derived command directly on the host as a fallback.",
     ]

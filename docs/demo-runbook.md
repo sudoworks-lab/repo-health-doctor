@@ -96,7 +96,6 @@ env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synth
   --image python:3.12-slim \
   --profile no-network-default \
   --runner fake \
-  --format json \
   --output /tmp/rhd-sandbox-run.json \
   -- python3 -c "print('hello from sandbox')"
 python3 -m json.tool /tmp/rhd-sandbox-run.json
@@ -106,6 +105,8 @@ Expected lesson:
 
 - the approval binds exact argv, target fingerprint, image, profile, network
   mode, timeout, and resource limits.
+- `--output` writes machine-readable JSON; stdout remains human-readable unless
+  `--format json` or `--format markdown` is selected.
 - fake runner mode is for tests and docs only and does not invoke Docker.
 - real Docker mode omits `--runner fake`, uses `--pull=never`, and blocks when
   the approved image is not already available locally.

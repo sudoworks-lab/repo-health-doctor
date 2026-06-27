@@ -95,15 +95,16 @@ env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synth
   --image python:3.12-slim \
   --profile no-network-default \
   --runner fake \
-  --format json \
   --output /tmp/rhd-sandbox-run.json \
   -- python3 -c "print('hello from sandbox')"
 python3 -m json.tool /tmp/rhd-sandbox-run.json
 ```
 
-Real Docker mode omits `--runner fake`, does not pull images, requires the
-approved image to exist locally, and still does not prove safety or grant
-unrestricted execution authorization. See [sandbox-run.md](sandbox-run.md).
+`--output` writes the machine-readable JSON report while stdout stays
+human-readable by default. Real Docker mode omits `--runner fake`, does not
+pull images, requires the approved image to exist locally, and still does not
+prove safety or grant unrestricted execution authorization. See
+[sandbox-run.md](sandbox-run.md).
 
 ## Sample Outputs
 

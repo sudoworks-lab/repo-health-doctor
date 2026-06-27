@@ -26,6 +26,9 @@ def test_no_network_default_docker_argv_includes_required_constraints(tmp_path: 
     assert "--cpus" in argv
     assert "--pids-limit" in argv
     assert "--mount" in argv
+    mount_spec = argv[argv.index("--mount") + 1]
+    assert mount_spec == f"type=bind,src={tmp_path / 'workspace'},dst=/workspace"
+    assert ",rw" not in mount_spec
     assert "python:3.12-slim" in argv
     assert argv[-3:] == ["python3", "-c", "print('hello')"]
 

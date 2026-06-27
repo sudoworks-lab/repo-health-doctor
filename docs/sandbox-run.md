@@ -24,6 +24,11 @@ The default workflow remains:
 
 ## CLI Usage
 
+Stdout defaults to a human-readable text summary. `--format json` or
+`--format markdown` changes stdout only. `--output` always writes the
+machine-readable sandbox-run JSON report, including blocked, failed, timed-out,
+or cleanup-uncertain results when a report can be produced.
+
 Safe synthetic fake-runner smoke, requiring no Docker daemon:
 
 ```bash
@@ -32,7 +37,6 @@ env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synth
   --image python:3.12-slim \
   --profile no-network-default \
   --runner fake \
-  --format json \
   --output /tmp/rhd-sandbox-run.json \
   -- python3 -c "print('hello from sandbox')"
 python3 -m json.tool /tmp/rhd-sandbox-run.json
@@ -46,13 +50,14 @@ env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synth
   --approval examples/approvals/demo-sandbox-run-approval.json \
   --image python:3.12-slim \
   --profile no-network-default \
-  --format json \
   --output /tmp/rhd-sandbox-run.json \
   -- python3 -c "print('hello from sandbox')"
 ```
 
 Real Docker mode never pulls images. The image must already be available
-locally, and the requested image must match the approval.
+locally, and the requested image must match the approval. Docker infrastructure
+failures, such as invalid Docker argv or daemon errors, are fail-closed and
+record bounded redacted diagnostics in the JSON report when possible.
 
 ## Approval Requirements
 
@@ -141,6 +146,12 @@ stdout and stderr are captured as bounded previews only. Reports include:
 - `raw_stdout_stderr_persisted=false`
 
 Raw unbounded stdout/stderr is not persisted by default.
+
+Docker diagnostics are also bounded and redacted in the `docker` object. The
+report can include `docker.exit_code`, `docker.failure_class`,
+`docker.diagnostic_redacted`, `docker.stderr_preview_redacted`, and
+`docker.stdout_preview_redacted`. Docker exit code 125 is treated as Docker
+infrastructure failure, not as evidence that the approved command completed.
 
 ## Report Fields
 

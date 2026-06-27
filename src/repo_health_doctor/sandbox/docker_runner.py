@@ -79,7 +79,7 @@ def build_docker_run_argv(
     argv.extend(
         [
             "--mount",
-            f"type=bind,src={workspace_host_path},dst={WORKDIR},rw",
+            f"type=bind,src={workspace_host_path},dst={WORKDIR}",
             image,
             *command_argv,
         ]
@@ -127,7 +127,13 @@ def docker_report_fields(
         "userns_remap_detected": runtime["userns_remap_detected"],
         "argv_redacted": argv_redacted or [],
         "runner": runner_name,
+        "invoked": docker_invoked,
         "docker_invoked": docker_invoked,
+        "exit_code": None,
+        "failure_class": None,
+        "diagnostic_redacted": None,
+        "stdout_preview_redacted": "",
+        "stderr_preview_redacted": "",
     }
 
 
@@ -240,11 +246,13 @@ class FakeDockerRunner:
         stdout: str = "fake sandbox-run output\n",
         stderr: str = "",
         exit_code: int = 0,
+        docker_invoked: bool = False,
     ) -> None:
         self.mode = mode
         self.stdout = stdout
         self.stderr = stderr
         self.exit_code = exit_code
+        self.docker_invoked = docker_invoked
         self.runner_name = f"fake-{mode}"
 
     def docker_available(self) -> bool:

@@ -23,6 +23,9 @@ change. See [docs/versioning.md](docs/versioning.md).
 
 - README and project metadata now align on the pre-execution safety gate
   positioning.
+- Sandbox-run `--output` now writes machine-readable JSON regardless of stdout
+  format, and Docker infrastructure failures include bounded redacted
+  diagnostics when a report can be produced.
 
 ### Security
 

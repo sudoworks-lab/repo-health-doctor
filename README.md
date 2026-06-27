@@ -99,6 +99,10 @@ env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synth
   -- python3 -c "print('hello from sandbox')"
 ```
 
+For `sandbox-run`, `--output` writes the machine-readable JSON report. Stdout
+uses `--format`, so you can keep the terminal summary human-readable while
+writing JSON to the report path.
+
 See [docs/sandbox-run.md](docs/sandbox-run.md) and
 [docs/sandbox-roadmap.md](docs/sandbox-roadmap.md).
 

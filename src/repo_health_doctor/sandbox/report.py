@@ -33,21 +33,46 @@ def format_sandbox_run_text(report: dict) -> str:
         "Refusal reasons:",
         *[f"- {item}" for item in report["approval"]["refusal_reasons"]],
         "",
-        "Workspace diff:",
-        f"- Created: {report['workspace_diff']['created_count']}",
-        f"- Modified: {report['workspace_diff']['modified_count']}",
-        f"- Deleted: {report['workspace_diff']['deleted_count']}",
-        "",
-        "Safety statement:",
-        f"- {report['safety_statement']}",
-        "",
-        "Next actions:",
-        *[f"- {item}" for item in report["next_actions"]],
     ]
+    docker_diagnostic = report["docker"].get("diagnostic_redacted")
+    if docker_diagnostic:
+        lines.extend(
+            [
+                "Docker diagnostic:",
+                f"- {docker_diagnostic}",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "Limitations:",
+            *[f"- {item}" for item in report["limitations"]],
+            "",
+            "Workspace diff:",
+            f"- Created: {report['workspace_diff']['created_count']}",
+            f"- Modified: {report['workspace_diff']['modified_count']}",
+            f"- Deleted: {report['workspace_diff']['deleted_count']}",
+            "",
+            "Safety statement:",
+            f"- {report['safety_statement']}",
+            "",
+            "Next actions:",
+            *[f"- {item}" for item in report["next_actions"]],
+        ]
+    )
     return "\n".join(lines).rstrip() + "\n"
 
 
 def format_sandbox_run_markdown(report: dict) -> str:
+    docker_diagnostic = report["docker"].get("diagnostic_redacted")
+    diagnostic_lines = []
+    if docker_diagnostic:
+        diagnostic_lines = [
+            "## Docker Diagnostic",
+            "",
+            docker_diagnostic,
+            "",
+        ]
     return "\n".join(
         [
             "# Repo Health Doctor Sandbox-Run",
@@ -63,6 +88,11 @@ def format_sandbox_run_markdown(report: dict) -> str:
             "## Refusal Reasons",
             "",
             *[f"- `{item}`" for item in report["approval"]["refusal_reasons"]],
+            "",
+            *diagnostic_lines,
+            "## Limitations",
+            "",
+            *[f"- {item}" for item in report["limitations"]],
             "",
             "## Safety Statement",
             "",
