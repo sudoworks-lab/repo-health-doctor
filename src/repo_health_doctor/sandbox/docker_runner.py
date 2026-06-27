@@ -12,6 +12,10 @@ from .profiles import SandboxProfile, WORKDIR
 
 
 PULL_POLICY = "never"
+_ALLOWED_NETWORK_MODES = {"none"}
+_NETWORK_OPTIONS = ("--network", "--net")
+_NAMESPACE_OPTIONS = ("--pid", "--ipc", "--uts")
+_NAMESPACE_OPTION_PREFIXES = tuple(f"{option}=" for option in _NAMESPACE_OPTIONS)
 
 
 @dataclass(frozen=True)
@@ -305,19 +309,26 @@ def _decode_timeout_stream(value: str | bytes | None) -> str:
 
 
 def _assert_no_prohibited_docker_options(argv: list[str]) -> None:
-    prohibited = {
-        "--privileged",
-        "--cap-add",
-        "--network=host",
-        "--pid",
-        "--pid=host",
-        "--ipc",
-        "--ipc=host",
-        "--uts",
-        "--uts=host",
-    }
-    for token in argv:
-        if token in prohibited or token.startswith("--cap-add="):
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if token in _NETWORK_OPTIONS:
+            value = argv[index + 1] if index + 1 < len(argv) else None
+            if value not in _ALLOWED_NETWORK_MODES:
+                rendered = f"{token} {value}" if value is not None else token
+                raise ValueError(f"prohibited docker option generated: {rendered}")
+            index += 2
+            continue
+        network_prefix = _network_option_prefix(token)
+        if network_prefix is not None:
+            value = token[len(network_prefix) :]
+            if value not in _ALLOWED_NETWORK_MODES:
+                raise ValueError(f"prohibited docker option generated: {token}")
+        if token in _NAMESPACE_OPTIONS or token.startswith(_NAMESPACE_OPTION_PREFIXES):
+            raise ValueError(f"prohibited docker option generated: {token}")
+        if token == "--cap-add" or token.startswith("--cap-add="):
+            raise ValueError(f"prohibited docker option generated: {token}")
+        if token == "--privileged" or token.startswith("--privileged="):
             raise ValueError(f"prohibited docker option generated: {token}")
         if token in {"/var/run/docker.sock", "/", "/etc"}:
             raise ValueError(f"prohibited mount target generated: {token}")
@@ -325,3 +336,12 @@ def _assert_no_prohibited_docker_options(argv: list[str]) -> None:
             raise ValueError("docker socket mount generated")
         if "dst=/" in token and "dst=/workspace" not in token:
             raise ValueError("prohibited root-like mount generated")
+        index += 1
+
+
+def _network_option_prefix(token: str) -> str | None:
+    for option in _NETWORK_OPTIONS:
+        prefix = f"{option}="
+        if token.startswith(prefix):
+            return prefix
+    return None

@@ -2,8 +2,25 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from repo_health_doctor.sandbox.docker_runner import build_docker_run_argv
+import pytest
+
+from repo_health_doctor.sandbox.docker_runner import _assert_no_prohibited_docker_options, build_docker_run_argv
 from repo_health_doctor.sandbox.profiles import get_sandbox_profile
+
+
+def _docker_argv_with(*option_tokens: str) -> list[str]:
+    return [
+        "docker",
+        "run",
+        "--rm",
+        *option_tokens,
+        "--mount",
+        "type=bind,src=/tmp/rhd-workspace,dst=/workspace",
+        "python:3.12-slim",
+        "python3",
+        "-c",
+        "print('hello')",
+    ]
 
 
 def test_no_network_default_docker_argv_includes_required_constraints(tmp_path: Path) -> None:
@@ -53,6 +70,51 @@ def test_docker_argv_excludes_prohibited_options_and_shell_wrapping(tmp_path: Pa
     assert "dst=/" not in rendered.replace("dst=/workspace", "")
     assert ["sh", "-c"] not in [argv[index : index + 2] for index in range(len(argv) - 1)]
     assert ["bash", "-c"] not in [argv[index : index + 2] for index in range(len(argv) - 1)]
+
+
+def test_no_network_default_generated_argv_passes_prohibited_option_guard(tmp_path: Path) -> None:
+    profile = get_sandbox_profile("no-network-default")
+    argv = build_docker_run_argv(
+        image="python:3.12-slim",
+        command_argv=["python3", "-c", "print('hello')"],
+        workspace_host_path=tmp_path / "workspace",
+        profile=profile,
+    )
+
+    _assert_no_prohibited_docker_options(argv)
+
+
+@pytest.mark.parametrize(
+    "option_tokens",
+    [
+        ("--network", "host"),
+        ("--network=host",),
+        ("--network", "bridge"),
+        ("--network=bridge",),
+        ("--net", "host"),
+        ("--net=host",),
+        ("--pid", "host"),
+        ("--pid=host",),
+        ("--ipc", "host"),
+        ("--ipc=host",),
+        ("--uts", "host"),
+        ("--uts=host",),
+        ("--cap-add", "NET_ADMIN"),
+        ("--cap-add=NET_ADMIN",),
+        ("--privileged",),
+        ("--privileged=true",),
+    ],
+)
+def test_prohibited_docker_options_are_rejected(option_tokens: tuple[str, ...]) -> None:
+    with pytest.raises(ValueError, match="prohibited docker option generated"):
+        _assert_no_prohibited_docker_options(_docker_argv_with(*option_tokens))
+
+
+def test_docker_socket_mount_is_rejected() -> None:
+    argv = _docker_argv_with("--mount", "type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock")
+
+    with pytest.raises(ValueError, match="docker socket mount generated"):
+        _assert_no_prohibited_docker_options(argv)
 
 
 def test_no_network_readonly_adds_read_only_rootfs_and_tmpfs(tmp_path: Path) -> None:
