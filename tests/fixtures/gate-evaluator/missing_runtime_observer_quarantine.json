@@ -1,0 +1,6 @@
+{
+  "scenario": "missing_runtime_observer_quarantine",
+  "expected_verdict": "quarantine",
+  "missing_evidence": ["runtime-observer"],
+  "expected_execution_authorized": false
+}

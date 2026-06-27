@@ -1,0 +1,26 @@
+{
+  "findings": [
+    {
+      "primary_category": "sandbox_escape_risk",
+      "secondary_category": "docker_socket_reference",
+      "evidence": [
+        "subprocess_indicator"
+      ]
+    }
+  ],
+  "evidence_edges": [
+    {
+      "relation": "docker_to_host_access"
+    }
+  ],
+  "expected": {
+    "highest_risk_tier_effect": "T5_candidate",
+    "gate_effects": [
+      "requires_dedicated_vm"
+    ],
+    "rules_fired": [
+      "RISK008",
+      "RISK009"
+    ]
+  }
+}

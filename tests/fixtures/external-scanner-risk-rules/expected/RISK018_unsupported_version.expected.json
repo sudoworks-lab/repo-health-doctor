@@ -1,0 +1,46 @@
+{
+  "expected_validation_valid": true,
+  "expected_highest_risk": "T5_candidate",
+  "expected_gate_effects": [
+    "quarantine"
+  ],
+  "expected_rules_fired": [
+    "RISK018"
+  ],
+  "must_not_leak": [
+    "raw_secret",
+    "raw_host_absolute_path",
+    "raw_scanner_output",
+    "raw_stdout_stderr",
+    "personal_information"
+  ],
+  "expected_outcome": "unknown",
+  "expected_limitations": [
+    "scanner_scope_only",
+    "not_execution_authorization",
+    "external_result_trust_limited",
+    "raw_output_not_retained"
+  ],
+  "expected_cannot_lower_risk": true,
+  "expected_execution_authorized": false,
+  "expected_blocking_rules": [
+    "RISK018"
+  ],
+  "expected_warnings": [],
+  "expected_requires_human_review": true,
+  "expected_blocks_live_execution": true,
+  "expected_requires_dedicated_vm": false,
+  "expected_quarantine": true,
+  "expected_residual_risks": [
+    "scanner_scope_only"
+  ],
+  "expected_evidence_summary_contains": {
+    "outcome": "unknown",
+    "trust_level": "commit_bound_import",
+    "finding_count": 0,
+    "primary_categories": [],
+    "secondary_categories": [],
+    "edge_relations": []
+  },
+  "notes": "Synthetic golden contract. Not a real scanner output."
+}

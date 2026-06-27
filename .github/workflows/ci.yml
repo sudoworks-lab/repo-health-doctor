@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -e .
+
+      - name: Run tests
+        run: PYTHONPATH=src python -m unittest discover -s tests -v
+
+      - name: Parse schemas and policies
+        run: |
+          python -m json.tool schemas/evidence.schema.json >/dev/null
+          python -m json.tool schemas/gate-decision.schema.json >/dev/null
+          python -m json.tool schemas/execution-authorization.schema.json >/dev/null
+          python -m json.tool schemas/pre-execution-gate-policy.schema.json >/dev/null
+          python -m json.tool schemas/external-scanner-result.schema.json >/dev/null
+          python -m json.tool schemas/external-scanner-plan.schema.json >/dev/null
+          python -m json.tool schemas/external-scanner-readiness-result.schema.json >/dev/null
+          python -m json.tool policies/pre-execution-gate-policy.v0.1.json >/dev/null
+          python -m json.tool policies/external-scanner-risk-policy.v0.1.json >/dev/null
+          python -m json.tool policies/external-scanner-execution-policy.v0.1.json >/dev/null
+
+      - name: Run always-on Docker boundary test
+        run: PYTHONPATH=src python -m unittest tests.test_docker_integration_always_on -v
+
+      - name: Run CLI checks
+        run: |
+          repo-health-doctor --help
+          repo-health-doctor --version
+          python3 -m repo_health_doctor --help
+          repo-health-doctor .
+          repo-health-doctor . --strict
+          repo-health-doctor . --fail-on block --public-safety
+          repo-health-doctor . --strict --public-safety
+          repo-health-doctor . --strict --public-safety --format json --output /tmp/repo-health-doctor-result.json
+          test -s /tmp/repo-health-doctor-result.json
+          python -m json.tool /tmp/repo-health-doctor-result.json >/dev/null
+          repo-health-doctor validate-policy .
+          repo-health-doctor validate-policy . --format json --output /tmp/repo-health-doctor-policy.json
+          test -s /tmp/repo-health-doctor-policy.json
+          python -m json.tool /tmp/repo-health-doctor-policy.json >/dev/null
+
+      - name: Run release-check smoke
+        run: bash scripts/release-check-smoke.sh

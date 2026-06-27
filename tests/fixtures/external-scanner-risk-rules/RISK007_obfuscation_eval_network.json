@@ -1,0 +1,29 @@
+{
+  "findings": [
+    {
+      "primary_category": "malicious_behavior",
+      "secondary_category": "obfuscation"
+    },
+    {
+      "primary_category": "malicious_behavior",
+      "secondary_category": "dynamic_eval"
+    },
+    {
+      "primary_category": "malicious_behavior",
+      "secondary_category": "network_request",
+      "evidence": [
+        "example.invalid"
+      ]
+    }
+  ],
+  "expected": {
+    "highest_risk_tier_effect": "T5_candidate",
+    "gate_effects": [
+      "requires_dedicated_vm"
+    ],
+    "rules_fired": [
+      "RISK006",
+      "RISK007"
+    ]
+  }
+}

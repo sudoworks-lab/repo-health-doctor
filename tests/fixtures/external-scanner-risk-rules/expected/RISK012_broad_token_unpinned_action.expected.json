@@ -1,0 +1,49 @@
+{
+  "expected_validation_valid": true,
+  "expected_highest_risk": "raise_to_T4",
+  "expected_gate_effects": [
+    "requires_human_review"
+  ],
+  "expected_rules_fired": [
+    "RISK012"
+  ],
+  "must_not_leak": [
+    "raw_secret",
+    "raw_host_absolute_path",
+    "raw_scanner_output",
+    "raw_stdout_stderr",
+    "personal_information"
+  ],
+  "expected_outcome": "findings_present",
+  "expected_limitations": [
+    "scanner_scope_only",
+    "not_execution_authorization",
+    "external_result_trust_limited",
+    "raw_output_not_retained"
+  ],
+  "expected_cannot_lower_risk": true,
+  "expected_execution_authorized": false,
+  "expected_blocking_rules": [],
+  "expected_warnings": [],
+  "expected_requires_human_review": true,
+  "expected_blocks_live_execution": false,
+  "expected_requires_dedicated_vm": false,
+  "expected_quarantine": false,
+  "expected_residual_risks": [
+    "scanner_scope_only"
+  ],
+  "expected_evidence_summary_contains": {
+    "outcome": "findings_present",
+    "trust_level": "commit_bound_import",
+    "finding_count": 2,
+    "primary_categories": [
+      "ci_cd_risk"
+    ],
+    "secondary_categories": [
+      "broad_token_permission",
+      "unpinned_action"
+    ],
+    "edge_relations": []
+  },
+  "notes": "Synthetic golden contract. Not a real scanner output."
+}

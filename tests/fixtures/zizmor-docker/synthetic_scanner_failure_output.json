@@ -1,0 +1,24 @@
+{
+  "fixture_kind": "synthetic_zizmor_style_v0",
+  "scanner_version": "0.0.0-docker-fixture",
+  "status": "scanner_failure",
+  "findings": [
+    {
+      "rule_id": "zizmor.docker.synthetic.failure",
+      "kind": "scanner_failure",
+      "path": "<repo>/.github/workflows/ci.yml",
+      "line": 1,
+      "title": "Synthetic Docker scanner failure",
+      "description": "Synthetic scanner failure is unknown and not PASS.",
+      "evidence": []
+    }
+  ],
+  "redaction_status": {
+    "raw_secret_present": false,
+    "raw_host_path_present": false,
+    "raw_scanner_output_included": false,
+    "raw_stdout_stderr_included": false,
+    "unredacted_snippet_present": false,
+    "redaction_validated": true
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repo-health-doctor://schemas/sandbox-approval-draft.schema.json",
+  "title": "repo-health-doctor unknown repository approval draft",
+  "type": "object",
+  "required": ["tool", "version", "schema_version", "report_kind", "status", "approval_status", "approved", "execution_permitted", "repo_scope", "source_profile_report", "source_risk_tier", "candidate", "candidate_key", "exact_match_key", "live_candidate_generated", "execution_constraints", "behavior_policy", "reasons", "blockers", "human_review_requirements", "promotion_requirements", "limitations", "residual_risks", "redaction"],
+  "properties": {
+    "tool": {"type": "string", "enum": ["repo-health-doctor"]},
+    "version": {"type": "string"},
+    "schema_version": {"type": "string", "enum": ["0.1-draft"]},
+    "report_kind": {"type": "string", "enum": ["sandbox_approval_draft"]},
+    "status": {"type": "string", "enum": ["draft_requires_human_review"]},
+    "approval_status": {"type": "string", "enum": ["draft_requires_human_review"]},
+    "approved": {"type": "boolean", "enum": [false]},
+    "execution_permitted": {"type": "boolean", "enum": [false]},
+    "repo_scope": {"$ref": "#/$defs/repo_scope"},
+    "source_profile_report": {"$ref": "#/$defs/source_profile"},
+    "source_risk_tier": {"type": "string", "enum": ["T0", "T1", "T2", "T3", "T4", "T5"]},
+    "candidate": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/candidate"}]},
+    "candidate_key": {"type": ["string", "null"]},
+    "exact_match_key": {"type": ["string", "null"]},
+    "live_candidate_generated": {"type": "boolean"},
+    "execution_constraints": {"$ref": "#/$defs/execution_constraints"},
+    "behavior_policy": {"$ref": "#/$defs/policy_placeholder"},
+    "reasons": {"type": "array", "items": {"type": "string"}},
+    "blockers": {"type": "array", "items": {"type": "string"}},
+    "human_review_requirements": {"type": "array", "items": {"type": "string"}},
+    "promotion_requirements": {"type": "array", "items": {"type": "string"}},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "residual_risks": {"type": "array", "items": {"type": "string"}},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "repo_scope": {"type": "object", "required": ["repository_identity", "commit", "working_tree_status", "path"], "properties": {"repository_identity": {"type": "string"}, "commit": {"type": "string"}, "working_tree_status": {"type": "string", "enum": ["not_evaluated_static"]}, "path": {"type": "string", "enum": ["<repo>"]}}, "additionalProperties": false},
+    "source_profile": {"type": "object", "required": ["schema_version", "report_kind", "repository_identity", "profile_reference"], "properties": {"schema_version": {"type": "string", "enum": ["0.1-draft"]}, "report_kind": {"type": "string", "enum": ["sandbox_unknown_repo_profile"]}, "repository_identity": {"type": "string"}, "profile_reference": {"type": "string", "pattern": "^sha256:"}}, "additionalProperties": false},
+    "candidate": {"type": "object", "required": ["phase", "kind", "cwd", "argv", "env_allowlist", "shell"], "properties": {"phase": {"type": "string", "enum": ["phase2_install_probe", "phase3_runtime_probe"]}, "kind": {"type": "string"}, "cwd": {"type": "string", "pattern": "^/workspace(?:/.*)?$"}, "argv": {"type": "array", "minItems": 1, "items": {"type": "string"}}, "env_allowlist": {"type": "array", "items": {"type": "string"}}, "shell": {"type": "boolean", "enum": [false]}}, "additionalProperties": false},
+    "policy_placeholder": {"type": "object", "required": ["schema_version", "report_kind", "status"], "properties": {"schema_version": {"type": "string", "enum": ["unconfigured"]}, "report_kind": {"type": "string", "enum": ["sandbox_command_behavior_policy", "sandbox_image_lock"]}, "status": {"type": "string", "enum": ["placeholder_not_validated"]}}, "additionalProperties": false},
+    "execution_constraints": {"type": "object", "required": ["network_policy", "shell_allowed", "docker_used", "image_pull_performed", "image_policy"], "properties": {"network_policy": {"type": "string", "enum": ["none"]}, "shell_allowed": {"type": "boolean", "enum": [false]}, "docker_used": {"type": "boolean", "enum": [false]}, "image_pull_performed": {"type": "boolean", "enum": [false]}, "image_policy": {"$ref": "#/$defs/policy_placeholder"}}, "additionalProperties": false},
+    "redaction": {"type": "object", "required": ["raw_host_paths_redacted", "secret_like_values_redacted"], "properties": {"raw_host_paths_redacted": {"type": "boolean", "enum": [true]}, "secret_like_values_redacted": {"type": "boolean", "enum": [true]}}, "additionalProperties": false}
+  }
+}

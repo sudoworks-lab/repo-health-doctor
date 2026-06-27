@@ -1,0 +1,64 @@
+{
+  "plan": {
+    "scanner_name": "zizmor-style",
+    "scanner_mode": "local_static_no_network",
+    "scanner_argv": ["zizmor", "--format", "json", ".github/workflows"],
+    "docker_argv": [
+      "docker",
+      "run",
+      "--rm",
+      "--network",
+      "none",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges",
+      "--read-only",
+      "--user",
+      "65532:65532",
+      "--workdir",
+      "/workspace",
+      "--mount",
+      "type=bind,src=<disposable-workspace>,dst=/workspace,readonly",
+      "zizmor:local",
+      "zizmor",
+      "--format",
+      "json",
+      ".github/workflows"
+    ],
+    "mounts": [
+      {
+        "type": "bind",
+        "source": "<disposable-workspace>",
+        "target": "/workspace",
+        "read_only": true
+      }
+    ],
+    "network_mode": "none",
+    "network_allowed": false,
+    "target_code_execution_allowed": false,
+    "docker_allowed": true,
+    "raw_output_retention": false,
+    "raw_output_discard_required": true,
+    "requires_human_approval": true,
+    "scanner_executed": false,
+    "execution_authorized": false,
+    "binary_trust_status": "verified",
+    "version_pin_status": "pinned",
+    "binary_hash_status": "verified",
+    "policy_version": "0.1",
+    "scope": "github_actions_workflows",
+    "limitations": ["not_execution_authorization", "raw_output_not_retained"],
+    "residual_risks": ["docker_is_not_complete_malware_sandbox"]
+  },
+  "approval": {
+    "approval_kind": "synthetic_external_scanner_execution_approval",
+    "approval_id": "<redacted-approval-id>",
+    "approval_state": "accepted",
+    "scanner_name": "zizmor-style",
+    "scanner_argv": ["zizmor", "--format", "json", ".github/workflows"],
+    "scope": "github_actions_workflows",
+    "expires_at": "2099-01-01T00:00:00Z",
+    "approval_artifact_generated": false
+  }
+}

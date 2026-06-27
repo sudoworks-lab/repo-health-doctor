@@ -1,0 +1,6 @@
+{
+  "scenario": "allow_limited_but_not_authorized",
+  "expected_verdict": "allow_limited",
+  "signals": ["trusted_static_evidence"],
+  "expected_execution_authorized": false
+}

@@ -1,0 +1,6 @@
+{
+  "scenario": "low_trust_no_finding_warn",
+  "expected_verdict": "warn",
+  "signals": ["low trust no finding"],
+  "expected_execution_authorized": false
+}

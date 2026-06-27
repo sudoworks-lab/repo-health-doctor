@@ -1,0 +1,80 @@
+name: Security model review
+description: Request or provide review of repo-health-doctor safety boundaries.
+title: "[security-model-review] "
+labels:
+  - security-model-review
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Third-party security review has not been completed. Use this template to request or provide focused review. Do not include raw secrets, private paths, raw scanner output, credentials, or unredacted local details.
+  - type: dropdown
+    id: review-area
+    attributes:
+      label: Review area
+      options:
+        - redaction boundary
+        - gate decision and authorization separation
+        - Docker or sandbox boundary
+        - external scanner evidence import
+        - public contract wording
+        - threat model limitation
+        - issue template or maintainer workflow
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: reviewer-background
+    attributes:
+      label: Reviewer background
+      description: Share relevant background or review lens. Keep it high level if privacy matters.
+  - type: textarea
+    id: threat-model-concern
+    attributes:
+      label: Threat model concern
+      description: Describe the safety claim, boundary, or limitation that needs review.
+    validations:
+      required: true
+  - type: textarea
+    id: affected-docs-code
+    attributes:
+      label: Affected docs or code
+      description: List paths, sections, or components involved. Use redacted placeholders for private paths.
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - blocking safety issue
+        - high concern
+        - medium concern
+        - wording concern
+        - question
+    validations:
+      required: true
+  - type: textarea
+    id: suggested-change
+    attributes:
+      label: Suggested change
+      description: Propose the smallest wording, test, docs, or implementation change that would address the concern.
+  - type: dropdown
+    id: issue-kind
+    attributes:
+      label: Claim wording or implementation issue
+      options:
+        - claim wording issue
+        - implementation issue
+        - both
+        - unsure
+    validations:
+      required: true
+  - type: checkboxes
+    id: boundary-involved
+    attributes:
+      label: Sensitive boundary involved
+      options:
+        - label: Raw secret handling is involved.
+        - label: Host private path handling is involved.
+        - label: Docker or sandbox boundary is involved.
+        - label: Raw scanner output handling is involved.
+        - label: Gate decision versus execution authorization is involved.

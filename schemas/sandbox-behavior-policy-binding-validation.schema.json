@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sandbox behavior policy binding validation report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "report_kind",
+    "verdict",
+    "binding_status",
+    "approval_reference",
+    "behavior_policy_reference",
+    "observer_evidence_reference",
+    "checked_fields",
+    "mismatches",
+    "blockers",
+    "warnings",
+    "limitations",
+    "residual_risks",
+    "redaction_status",
+    "execution_permitted",
+    "runner_connected",
+    "docker_contacted",
+    "observer_capture_performed"
+  ],
+  "properties": {
+    "schema_version": {"enum": ["0.1-draft"]},
+    "report_kind": {"enum": ["sandbox_behavior_policy_binding_validation"]},
+    "verdict": {"enum": ["pass", "warn", "block"]},
+    "binding_status": {"enum": ["matched", "invalid_or_mismatch"]},
+    "approval_reference": {"type": "object"},
+    "behavior_policy_reference": {"type": "object"},
+    "observer_evidence_reference": {"type": "object"},
+    "checked_fields": {"type": "array", "items": {"type": "string"}},
+    "mismatches": {"type": "array", "items": {"type": "string"}},
+    "blockers": {"type": "array", "items": {"type": "string"}},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "residual_risks": {"type": "array", "items": {"type": "string"}},
+    "redaction_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw_host_paths_redacted", "secret_like_values_redacted"],
+      "properties": {
+        "raw_host_paths_redacted": {"const": true},
+        "secret_like_values_redacted": {"const": true}
+      }
+    },
+    "execution_permitted": {"const": false},
+    "runner_connected": {"const": false},
+    "docker_contacted": {"const": false},
+    "observer_capture_performed": {"const": false}
+  }
+}

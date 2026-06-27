@@ -1,0 +1,3 @@
+allow_findings:
+  - rule_id: rhd.repository.large_file
+    path: local/generated.bin

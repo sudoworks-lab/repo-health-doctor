@@ -1,0 +1,20 @@
+{
+  "findings": [
+    {
+      "primary_category": "credential_access",
+      "secondary_category": "host_home_reference",
+      "evidence": [
+        "<redacted-host-path>"
+      ]
+    }
+  ],
+  "expected": {
+    "highest_risk_tier_effect": "raise_to_T4",
+    "gate_effects": [
+      "blocks_live_execution"
+    ],
+    "rules_fired": [
+      "RISK010"
+    ]
+  }
+}

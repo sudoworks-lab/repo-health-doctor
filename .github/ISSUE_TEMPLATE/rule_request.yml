@@ -1,0 +1,25 @@
+name: Rule request
+description: Propose a new rule or rule adjustment.
+title: "[rule] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the maintainer decision gap this rule should address.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed rule
+      description: Include intended severity, detection scope, and expected redaction behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Fixture or example
+      description: Point to an existing fixture or describe the minimum new fixture needed.

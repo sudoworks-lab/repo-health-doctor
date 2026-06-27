@@ -1,0 +1,21 @@
+{
+  "findings": [
+    {
+      "primary_category": "malicious_behavior",
+      "secondary_category": "obfuscation"
+    },
+    {
+      "primary_category": "malicious_behavior",
+      "secondary_category": "dynamic_eval"
+    }
+  ],
+  "expected": {
+    "highest_risk_tier_effect": "raise_to_T4",
+    "gate_effects": [
+      "requires_human_review"
+    ],
+    "rules_fired": [
+      "RISK006"
+    ]
+  }
+}

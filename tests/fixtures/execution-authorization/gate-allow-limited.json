@@ -1,0 +1,48 @@
+{
+  "decision_kind": "repo_health_gate_decision",
+  "schema_version": "0.1-draft",
+  "subject": {
+    "repo": "<repo>",
+    "commit": "0123456789abcdef0123456789abcdef01234567",
+    "tree_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "binding_kind": "commit_bound"
+  },
+  "verdict": "allow_limited",
+  "execution_authorized": false,
+  "confidence": "medium",
+  "confidence_reason": "safe synthetic gate decision fixture",
+  "explanation": {
+    "summary": "The gate found only limited scoped evidence, but this is not a safety proof or execution authorization.",
+    "key_reasons": [
+      "No scanner finding is not proof of safety.",
+      "Evidence remains scoped to the reviewed inputs and limitations.",
+      "Gate decisions and execution authorization are intentionally separate."
+    ],
+    "next_actions": [
+      "Do not run install scripts locally based only on scanner silence.",
+      "Review limitations and evidence gaps.",
+      "Use a stronger isolated environment if execution is necessary."
+    ]
+  },
+  "evidence_summary": {
+    "findings_count": 1,
+    "blocking_evidence": [],
+    "warning_evidence": [],
+    "missing_evidence": [],
+    "degraded_observers": []
+  },
+  "required_actions": [
+    "proceed only within the reviewed limited scope"
+  ],
+  "limitations": [
+    "allow_limited is not proof of safety",
+    "not_execution_authorization"
+  ],
+  "policy": {
+    "policy_version": "0.1",
+    "fail_closed": true
+  },
+  "residual_risks": [
+    "synthetic authorization fixture is not a real approval"
+  ]
+}

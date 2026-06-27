@@ -1,0 +1,582 @@
+{
+  "schema_version": "0.1-draft",
+  "policy_version": "0.1",
+  "policy_kind": "external_scanner_risk_policy",
+  "risk_rules": [
+    {
+      "rule_id": "RISK001",
+      "description": "verified_secret",
+      "match": {
+        "secondary_category": [
+          "verified_secret"
+        ]
+      },
+      "risk_tier_effect": "raise_to_T5",
+      "gate_effects": [
+        "blocks_live_execution"
+      ],
+      "requires_human_review": true,
+      "blocks_live_execution": true,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "not_execution_authorization",
+        "external_result_trust_limited"
+      ],
+      "notes": "A verified secret is T5 evidence and blocks live execution."
+    },
+    {
+      "rule_id": "RISK002",
+      "description": "raw secret leak in scanner output",
+      "match": {
+        "redaction_status": [
+          "raw_secret_present"
+        ],
+        "secondary_category": [
+          "raw_secret_leak"
+        ]
+      },
+      "risk_tier_effect": "raise_to_T5",
+      "gate_effects": [
+        "quarantine"
+      ],
+      "requires_human_review": true,
+      "blocks_live_execution": true,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "raw_output_not_retained"
+      ],
+      "notes": "Redaction failure is a BLOCK condition and is not reportable raw output."
+    },
+    {
+      "rule_id": "RISK003",
+      "description": "credential path reference",
+      "match": {
+        "secondary_category": [
+          "credential_path_reference"
+        ]
+      },
+      "risk_tier_effect": "raise_to_T4",
+      "gate_effects": [
+        "requires_human_review"
+      ],
+      "requires_human_review": true,
+      "blocks_live_execution": false,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "scanner_scope_only"
+      ],
+      "notes": "Credential path evidence raises review risk but does not prove execution behavior."
+    },
+    {
+      "rule_id": "RISK004",
+      "description": "credential access + network",
+      "match": {
+        "secondary_category_all": [
+          "credential_path_reference",
+          "network_request"
+        ],
+        "edge_relation": [
+          "credential_to_network",
+          "same_execution_path"
+        ]
+      },
+      "risk_tier_effect": "T5_candidate",
+      "gate_effects": [
+        "requires_dedicated_vm"
+      ],
+      "requires_human_review": true,
+      "blocks_live_execution": true,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "scanner_scope_only",
+        "not_execution_authorization"
+      ],
+      "notes": "Credential and network evidence chained on a plausible path is a T5 candidate."
+    },
+    {
+      "rule_id": "RISK005",
+      "description": "install script + download + exec",
+      "match": {
+        "secondary_category_all": [
+          "install_script_execution",
+          "download_exec_chain"
+        ]
+      },
+      "risk_tier_effect": "raise_to_T4",
+      "gate_effects": [
+        "requires_human_review"
+      ],
+      "requires_human_review": true,
+      "blocks_live_execution": false,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "scanner_scope_only"
+      ],
+      "notes": "Static lifecycle download/exec chains require review."
+    },
+    {
+      "rule_id": "RISK006",
+      "description": "obfuscation + eval",
+      "match": {
+        "secondary_category_all": [
+          "obfuscation",
+          "dynamic_eval"
+        ]
+      },
+      "risk_tier_effect": "raise_to_T4",
+      "gate_effects": [
+        "requires_human_review"
+      ],
+      "requires_human_review": true,
+      "blocks_live_execution": false,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "scanner_scope_only"
+      ],
+      "notes": "Obfuscation with dynamic evaluation is suspicious static evidence."
+    },
+    {
+      "rule_id": "RISK007",
+      "description": "obfuscation + eval + network",
+      "match": {
+        "secondary_category_all": [
+          "obfuscation",
+          "dynamic_eval",
+          "network_request"
+        ]
+      },
+      "risk_tier_effect": "T5_candidate",
+      "gate_effects": [
+        "requires_dedicated_vm"
+      ],
+      "requires_human_review": true,
+      "blocks_live_execution": true,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "scanner_scope_only",
+        "not_execution_authorization"
+      ],
+      "notes": "Obfuscation, eval, and network evidence is a T5 candidate."
+    },
+    {
+      "rule_id": "RISK008",
+      "description": "docker socket reference",
+      "match": {
+        "secondary_category": [
+          "docker_socket_reference"
+        ]
+      },
+      "risk_tier_effect": "raise_to_T4",
+      "gate_effects": [
+        "blocks_live_execution"
+      ],
+      "requires_human_review": true,
+      "blocks_live_execution": true,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "scanner_scope_only",
+        "not_execution_authorization"
+      ],
+      "notes": "Docker socket references can cross the sandbox boundary."
+    },
+    {
+      "rule_id": "RISK009",
+      "description": "docker socket + subprocess",
+      "match": {
+        "secondary_category": [
+          "docker_socket_reference"
+        ],
+        "evidence_token": [
+          "subprocess_indicator"
+        ],
+        "edge_relation": [
+          "docker_to_host_access"
+        ]
+      },
+      "risk_tier_effect": "T5_candidate",
+      "gate_effects": [
+        "requires_dedicated_vm"
+      ],
+      "requires_human_review": true,
+      "blocks_live_execution": true,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "scanner_scope_only",
+        "not_execution_authorization"
+      ],
+      "notes": "Docker socket plus subprocess/host-access chain is a T5 candidate."
+    },
+    {
+      "rule_id": "RISK010",
+      "description": "host home reference",
+      "match": {
+        "secondary_category": [
+          "host_home_reference",
+          "raw_host_path_leak"
+        ],
+        "redaction_status": [
+          "raw_host_path_present"
+        ]
+      },
+      "risk_tier_effect": "raise_to_T4",
+      "gate_effects": [
+        "blocks_live_execution"
+      ],
+      "requires_human_review": true,
+      "blocks_live_execution": true,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "scanner_scope_only",
+        "not_execution_authorization"
+      ],
+      "notes": "Host HOME evidence can imply credential boundary risk."
+    },
+    {
+      "rule_id": "RISK011",
+      "description": "pull_request_target + untrusted checkout",
+      "match": {
+        "secondary_category": [
+          "pull_request_target_misuse"
+        ],
+        "evidence_token": [
+          "untrusted_checkout"
+        ],
+        "edge_relation": [
+          "ci_token_to_untrusted_code"
+        ]
+      },
+      "risk_tier_effect": "raise_to_T4",
+      "gate_effects": [
+        "requires_human_review"
+      ],
+      "requires_human_review": true,
+      "blocks_live_execution": false,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "scanner_scope_only"
+      ],
+      "notes": "CI token exposure through untrusted checkout requires review."
+    },
+    {
+      "rule_id": "RISK012",
+      "description": "broad token + unpinned action",
+      "match": {
+        "secondary_category_all": [
+          "broad_token_permission",
+          "unpinned_action"
+        ]
+      },
+      "risk_tier_effect": "raise_to_T4",
+      "gate_effects": [
+        "requires_human_review"
+      ],
+      "requires_human_review": true,
+      "blocks_live_execution": false,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "scanner_scope_only"
+      ],
+      "notes": "Broad token permission with an unpinned action is CI/CD risk evidence."
+    },
+    {
+      "rule_id": "RISK013",
+      "description": "verified secret + CI exposure",
+      "match": {
+        "secondary_category": [
+          "verified_secret"
+        ],
+        "evidence_token": [
+          "ci_exposure"
+        ],
+        "edge_relation": [
+          "ci_token_to_untrusted_code"
+        ]
+      },
+      "risk_tier_effect": "raise_to_T5",
+      "gate_effects": [
+        "blocks_live_execution"
+      ],
+      "requires_human_review": true,
+      "blocks_live_execution": true,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "not_execution_authorization",
+        "external_result_trust_limited"
+      ],
+      "notes": "Verified secret evidence with CI exposure is T5."
+    },
+    {
+      "rule_id": "RISK014",
+      "description": "critical vuln only",
+      "match": {
+        "secondary_category": [
+          "known_critical_vulnerability"
+        ]
+      },
+      "risk_tier_effect": "raise_to_T3",
+      "gate_effects": [
+        "raises_risk"
+      ],
+      "requires_human_review": false,
+      "blocks_live_execution": false,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "scanner_scope_only"
+      ],
+      "notes": "Critical vulnerability evidence alone raises to T3."
+    },
+    {
+      "rule_id": "RISK015",
+      "description": "critical vuln + suspicious runtime behavior",
+      "match": {
+        "secondary_category": [
+          "known_critical_vulnerability"
+        ],
+        "runtime_signal": [
+          "download_exec_chain",
+          "dynamic_eval",
+          "network_request",
+          "network_exfiltration_indicator",
+          "docker_socket_reference"
+        ],
+        "edge_relation": [
+          "lifecycle_to_runtime"
+        ]
+      },
+      "risk_tier_effect": "raise_to_T4",
+      "gate_effects": [
+        "requires_human_review"
+      ],
+      "requires_human_review": true,
+      "blocks_live_execution": false,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "scanner_scope_only"
+      ],
+      "notes": "Critical vulnerability plus suspicious runtime evidence raises to T4."
+    },
+    {
+      "rule_id": "RISK016",
+      "description": "low repo posture only",
+      "match": {
+        "secondary_category": [
+          "low_security_posture"
+        ]
+      },
+      "risk_tier_effect": "raise_to_T2",
+      "gate_effects": [
+        "evidence_only"
+      ],
+      "requires_human_review": false,
+      "blocks_live_execution": false,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "scanner_scope_only"
+      ],
+      "notes": "Low posture is weak evidence and cannot clear gates."
+    },
+    {
+      "rule_id": "RISK017",
+      "description": "scanner failure but claimed no findings",
+      "match": {
+        "validation_error": [
+          "scanner_failure_claims_no_findings",
+          "scanner_incomplete_claims_no_findings"
+        ]
+      },
+      "risk_tier_effect": "raise_to_T5",
+      "gate_effects": [
+        "quarantine"
+      ],
+      "requires_human_review": true,
+      "blocks_live_execution": true,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "scanner_scope_only",
+        "external_result_trust_limited"
+      ],
+      "notes": "Scanner failure cannot become a no-finding result."
+    },
+    {
+      "rule_id": "RISK018",
+      "description": "unsupported scanner version",
+      "match": {
+        "scanner": [
+          "unsupported_version"
+        ]
+      },
+      "risk_tier_effect": "T5_candidate",
+      "gate_effects": [
+        "quarantine"
+      ],
+      "requires_human_review": true,
+      "blocks_live_execution": true,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "external_result_trust_limited"
+      ],
+      "notes": "Unsupported scanner version is unknown/block in v0.1 without adding new effect names."
+    },
+    {
+      "rule_id": "RISK019",
+      "description": "limitations missing",
+      "match": {
+        "validation_error": [
+          "limitations_empty",
+          "limitations_must_be_array"
+        ]
+      },
+      "risk_tier_effect": "raise_to_T5",
+      "gate_effects": [
+        "quarantine"
+      ],
+      "requires_human_review": true,
+      "blocks_live_execution": true,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "scanner_scope_only"
+      ],
+      "notes": "Missing limitations is a BLOCK condition."
+    },
+    {
+      "rule_id": "RISK020",
+      "description": "low-trust no-finding import",
+      "match": {
+        "trust_level": [
+          "untrusted_import",
+          "schema_validated_import"
+        ],
+        "outcome": [
+          "no_findings_in_scope"
+        ]
+      },
+      "risk_tier_effect": "none",
+      "gate_effects": [
+        "evidence_only"
+      ],
+      "requires_human_review": false,
+      "blocks_live_execution": false,
+      "cannot_lower_risk": true,
+      "limitations": [
+        "scanner_scope_only",
+        "not_execution_authorization",
+        "external_result_trust_limited"
+      ],
+      "notes": "Low-trust no-finding imports cannot lower risk or authorize execution."
+    }
+  ],
+  "chain_rules": [
+    {
+      "rule_id": "RISK004",
+      "description": "credential path reference + network request",
+      "requires": [
+        "credential_path_reference",
+        "network_request"
+      ]
+    },
+    {
+      "rule_id": "RISK006",
+      "description": "obfuscation + dynamic_eval",
+      "requires": [
+        "obfuscation",
+        "dynamic_eval"
+      ]
+    },
+    {
+      "rule_id": "RISK007",
+      "description": "obfuscation + dynamic_eval + network_request",
+      "requires": [
+        "obfuscation",
+        "dynamic_eval",
+        "network_request"
+      ]
+    },
+    {
+      "rule_id": "RISK009",
+      "description": "docker socket reference + subprocess indicator",
+      "requires": [
+        "docker_socket_reference",
+        "subprocess_indicator"
+      ]
+    },
+    {
+      "rule_id": "RISK013",
+      "description": "verified secret + CI exposure",
+      "requires": [
+        "verified_secret",
+        "ci_exposure"
+      ]
+    },
+    {
+      "rule_id": "RISK015",
+      "description": "critical vulnerability + suspicious runtime behavior",
+      "requires": [
+        "known_critical_vulnerability",
+        "suspicious_runtime_behavior"
+      ]
+    }
+  ],
+  "gate_effects": [
+    "evidence_only",
+    "raises_risk",
+    "requires_human_review",
+    "blocks_live_execution",
+    "requires_dedicated_vm",
+    "quarantine"
+  ],
+  "required_limitations": [
+    "scanner_scope_only",
+    "not_execution_authorization",
+    "external_result_trust_limited",
+    "raw_output_not_retained"
+  ],
+  "forbidden_fields": [
+    "raw_secret",
+    "raw_host_absolute_path",
+    "raw_scanner_output",
+    "raw_stdout",
+    "raw_stderr",
+    "unredacted_snippet",
+    "credential_value",
+    "token_value"
+  ],
+  "scanner_mode_constraints": {
+    "imported_report": {
+      "scanner_execution_allowed": false,
+      "network_allowed": false,
+      "target_code_execution_allowed": false,
+      "raw_output_retained_allowed": false
+    },
+    "local_static_no_network": {
+      "scanner_execution_allowed": false,
+      "network_allowed": false,
+      "target_code_execution_allowed": false,
+      "raw_output_retained_allowed": false
+    },
+    "local_static_network": {
+      "scanner_execution_allowed": false,
+      "requires_human_approval": true
+    },
+    "remote_api": {
+      "scanner_execution_allowed": false,
+      "requires_human_approval": true
+    },
+    "local_dynamic_sandbox": {
+      "scanner_execution_allowed": false,
+      "requires_existing_sandbox_gates": true
+    }
+  },
+  "default_behavior": {
+    "no_findings_is_safety_proof": false,
+    "risk_lowering_allowed": false,
+    "execution_authorized": false,
+    "no_rule_match_gate_effect": "evidence_only"
+  },
+  "fail_closed_behavior": {
+    "invalid_validation_result": "quarantine",
+    "unknown_safety_relevant_category": "requires_human_review",
+    "unknown_risk_rule_id": "quarantine",
+    "unknown_gate_effect": "quarantine",
+    "unsupported_relation": "requires_human_review"
+  }
+}

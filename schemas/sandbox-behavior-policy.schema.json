@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repo-health-doctor://schemas/sandbox-behavior-policy.schema.json",
+  "title": "repo-health-doctor unknown repository behavior policy",
+  "type": "object",
+  "required": ["schema_version", "report_kind", "policy_id", "binding", "expected_behavior", "severity_rules", "observer_requirements", "redaction"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["0.1-draft"]},
+    "report_kind": {"type": "string", "enum": ["sandbox_command_behavior_policy"]},
+    "policy_id": {"type": "string", "pattern": "^behavior-policy:sha256:"},
+    "binding": {"$ref": "#/$defs/binding"},
+    "expected_behavior": {"$ref": "#/$defs/expected_behavior"},
+    "severity_rules": {"$ref": "#/$defs/severity_rules"},
+    "observer_requirements": {"$ref": "#/$defs/observer_requirements"},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "binding": {"type": "object", "required": ["candidate_key", "repo_identity", "commit", "phase", "kind", "cwd", "argv", "env_allowlist", "shell", "network_policy", "image_policy_schema_version"], "properties": {"candidate_key": {"type": "string", "pattern": "^sha256:"}, "repo_identity": {"type": "string", "pattern": "^sha256:"}, "commit": {"type": "string"}, "phase": {"type": "string", "enum": ["phase2_install_probe", "phase3_runtime_probe"]}, "kind": {"type": "string"}, "cwd": {"type": "string", "pattern": "^/workspace(?:/.*)?$"}, "argv": {"type": "array", "minItems": 1, "items": {"type": "string"}}, "env_allowlist": {"type": "array", "items": {"type": "string"}}, "shell": {"type": "boolean", "enum": [false]}, "network_policy": {"type": "string", "enum": ["none"]}, "image_policy_schema_version": {"type": "string", "enum": ["unconfigured", "0.1-draft"]}}, "additionalProperties": false},
+    "expected_behavior": {"type": "object", "required": ["network", "allowed_write_prefixes", "denied_read_prefixes", "denied_socket_paths", "max_process_events", "allowed_exec_binaries", "allow_subprocess", "limited_subprocess_binaries", "max_secret_events", "max_outside_writable_delete", "allowed_env_keys", "timeout_seconds", "expected_return_codes"], "properties": {"network": {"type": "object", "required": ["allowed"], "properties": {"allowed": {"type": "boolean", "enum": [false]}}, "additionalProperties": false}, "allowed_write_prefixes": {"type": "array", "minItems": 1, "items": {"type": "string"}}, "denied_read_prefixes": {"type": "array", "items": {"type": "string"}}, "denied_socket_paths": {"type": "array", "items": {"type": "string"}}, "max_process_events": {"type": "integer", "minimum": 0}, "allowed_exec_binaries": {"type": "array", "minItems": 1, "items": {"type": "string"}}, "allow_subprocess": {"oneOf": [{"type": "boolean", "enum": [false]}, {"type": "string", "enum": ["limited"]}]}, "limited_subprocess_binaries": {"type": "array", "items": {"type": "string"}}, "max_secret_events": {"type": "integer", "enum": [0]}, "max_outside_writable_delete": {"type": "integer", "enum": [0]}, "allowed_env_keys": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer", "minimum": 1}, "expected_return_codes": {"type": "array", "minItems": 1, "items": {"type": "integer"}}}, "additionalProperties": false},
+    "severity_rules": {"type": "object", "required": ["network_event", "write_outside_allowed_prefix", "docker_socket_access", "host_home_access", "denied_read_access", "secret_event", "unexpected_execve", "subprocess_spawn", "observer_unavailable", "strace_log_missing", "strace_parse_failure", "evidence_missing", "timeout", "return_code_mismatch", "outside_writable_delete"], "properties": {"network_event": {"type": "string"}, "write_outside_allowed_prefix": {"type": "string"}, "docker_socket_access": {"type": "string"}, "host_home_access": {"type": "string"}, "denied_read_access": {"type": "string"}, "secret_event": {"type": "string"}, "unexpected_execve": {"type": "string"}, "subprocess_spawn": {"type": "string"}, "observer_unavailable": {"type": "string"}, "strace_log_missing": {"type": "string"}, "strace_parse_failure": {"type": "string"}, "evidence_missing": {"type": "string"}, "timeout": {"type": "string"}, "return_code_mismatch": {"type": "string"}, "outside_writable_delete": {"type": "string"}}, "additionalProperties": false},
+    "observer_requirements": {"type": "object", "required": ["strace_required", "runtime_hook_required", "evidence_required", "default_verdict_on_missing_evidence"], "properties": {"strace_required": {"type": "boolean", "enum": [true]}, "runtime_hook_required": {"type": "boolean"}, "evidence_required": {"type": "boolean", "enum": [true]}, "default_verdict_on_missing_evidence": {"type": "string", "enum": ["block"]}}, "additionalProperties": false},
+    "redaction": {"type": "object", "required": ["raw_host_paths_redacted", "secret_like_values_redacted"], "properties": {"raw_host_paths_redacted": {"type": "boolean", "enum": [true]}, "secret_like_values_redacted": {"type": "boolean", "enum": [true]}}, "additionalProperties": false}
+  }
+}

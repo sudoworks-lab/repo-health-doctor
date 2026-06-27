@@ -1,0 +1,45 @@
+Repo Health Doctor: PASS
+Target: <demo-repo>
+Schema: 1.1
+Summary: 12 pass, 0 warn, 0 block
+Status: PASS ok, WARN review, BLOCK release blocker
+
+Checks:
+- [PASS] readme: README found.
+    found: README.md
+
+- [PASS] license: License file found.
+    found: LICENSE
+
+- [PASS] gitignore: .gitignore found.
+    found: .gitignore, .git/info/exclude
+
+- [PASS] ci: Workflow file found.
+    found: .github/workflows/ci.yml
+
+- [PASS] tests: Test directory found.
+    found: tests
+
+- [PASS] docs: Docs directory found.
+    found: docs
+
+- [PASS] scripts: Scripts directory found.
+    found: scripts
+
+- [PASS] secrets_scan: No obvious unallowed secrets detected.
+    scanned_files: 6
+
+- [PASS] large_files: No unallowed large files detected.
+    threshold_bytes: 10485760
+
+- [PASS] public_text_safety: No obvious public-facing text issues detected.
+    scanned_files: 6
+    scan_scope: tracked
+
+- [PASS] tracked_artifacts: Tracked generated or environment files were not detected.
+    scan_scope: tracked
+
+- [PASS] policy: Policy configuration loaded.
+    policy_sources: repo
+    ignore_path_count: 1
+    allow_finding_count: 0

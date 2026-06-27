@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "repo-health-doctor"
+version = "0.1.0"
+description = "Local-first pre-execution safety gate for AI agents and developers reviewing unknown repositories."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [
+  {name = "repo-health-doctor contributors"}
+]
+keywords = [
+  "repository",
+  "cli",
+  "preflight",
+  "ci",
+  "oss",
+  "maintainer",
+  "public-safety",
+  "repository-health",
+]
+classifiers = [
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Quality Assurance"
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/sudoworks-lab/repo-health-doctor"
+Repository = "https://github.com/sudoworks-lab/repo-health-doctor"
+Issues = "https://github.com/sudoworks-lab/repo-health-doctor/issues"
+Documentation = "https://github.com/sudoworks-lab/repo-health-doctor/tree/main/docs"
+
+[project.scripts]
+repo-health-doctor = "repo_health_doctor.cli:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+norecursedirs = ["tests/fixtures"]

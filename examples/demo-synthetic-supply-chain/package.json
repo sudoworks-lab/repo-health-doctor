@@ -1,0 +1,10 @@
+{
+  "name": "repo-health-doctor-demo-synthetic-supply-chain",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Safe synthetic supply-chain risk shape for gate demos.",
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js --synthetic-demo",
+    "test": "node -e \"console.log('synthetic demo test ok')\""
+  }
+}

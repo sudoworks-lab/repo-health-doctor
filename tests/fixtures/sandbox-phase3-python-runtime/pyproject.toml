@@ -1,0 +1,9 @@
+[build-system]
+requires = []
+
+[project]
+name = "sandbox-phase3-python-runtime"
+version = "0.0.1"
+
+[tool.repo_health_doctor.sandbox]
+controlled_runtime_probe_argv = ["python", "-c", "import os, pathlib; pathlib.Path('/tmp/tmp/rhd-phase3-runtime.txt').write_text('ok', encoding='utf-8'); print(os.getpid())"]

@@ -1,0 +1,24 @@
+{
+  "summary": {
+    "outcome": "no_findings_in_scope"
+  },
+  "execution_context": {
+    "scanner_completed": false,
+    "timeout_occurred": true
+  },
+  "findings": [
+    {
+      "primary_category": "scanner_failure",
+      "secondary_category": "scanner_timeout"
+    }
+  ],
+  "expected": {
+    "highest_risk_tier_effect": "raise_to_T5",
+    "gate_effects": [
+      "quarantine"
+    ],
+    "rules_fired": [
+      "RISK017"
+    ]
+  }
+}

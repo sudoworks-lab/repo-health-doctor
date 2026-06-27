@@ -1,0 +1,51 @@
+name: Bug report
+description: Report unexpected repo-health-doctor behavior without exposing sensitive data.
+title: "[bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include raw secrets, tokens, private paths, local IPs, raw scanner output, or unredacted policy values. Replace sensitive examples with redacted placeholders.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the observed behavior and the expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Safe command and version
+      description: Share the repo-health-doctor command, version, and environment summary without private paths or secrets.
+      placeholder: "repo-health-doctor --version; repo-health-doctor <redacted-target> --public-safety"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Safe reproduction
+      description: Provide minimal synthetic reproduction steps. Do not attach raw scanner output or private repository data.
+    validations:
+      required: true
+  - type: dropdown
+    id: contract-impact
+    attributes:
+      label: Contract impact
+      description: Does this affect a stable contract or an experimental surface?
+      options:
+        - default v3 JSON output
+        - default CLI behavior
+        - redaction or public-safety behavior
+        - gate decision sidecar
+        - execution authorization artifact
+        - imported evidence adapter
+        - docs or metadata only
+        - unsure
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Explain why this blocks or degrades maintainer workflow.

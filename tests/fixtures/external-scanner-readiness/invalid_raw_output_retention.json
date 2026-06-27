@@ -1,0 +1,6 @@
+{
+  "mutations": {
+    "raw_output_retention": true
+  },
+  "expected_error": "raw_output_retention_must_be_false"
+}

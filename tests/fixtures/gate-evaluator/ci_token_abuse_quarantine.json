@@ -1,0 +1,6 @@
+{
+  "scenario": "ci_token_abuse_quarantine",
+  "expected_verdict": "quarantine",
+  "signals": ["ci_token_abuse_chain"],
+  "expected_execution_authorized": false
+}

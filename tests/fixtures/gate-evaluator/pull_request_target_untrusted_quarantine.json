@@ -1,0 +1,6 @@
+{
+  "scenario": "pull_request_target_untrusted_quarantine",
+  "expected_verdict": "quarantine",
+  "signals": ["pull_request_target_misuse", "untrusted_checkout"],
+  "expected_execution_authorized": false
+}

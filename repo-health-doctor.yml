@@ -1,0 +1,26 @@
+allow_findings:
+  - rule_id: rhd.public_text.restricted_term
+    path: docs/requirements.md
+    reason: requirements-source
+    owner: maintainer
+    expires: 2099-12-31
+  - rule_id: rhd.secret.generic_api_key
+    path: tests/fixtures/secret-like-repo/app.py
+    reason: fixture-intentional-secret
+    owner: maintainer
+    expires: 2099-12-31
+  - rule_id: rhd.public_text.restricted_term
+    path: tests/fixtures/public-safety-repo/docs/public.md
+    reason: fixture-public-safety
+    owner: maintainer
+    expires: 2099-12-31
+  - rule_id: rhd.public_text.private_path
+    path: tests/fixtures/public-safety-repo/docs/public.md
+    reason: fixture-public-safety
+    owner: maintainer
+    expires: 2099-12-31
+  - rule_id: rhd.public_text.local_ip
+    path: tests/fixtures/public-safety-repo/docs/public.md
+    reason: fixture-public-safety
+    owner: maintainer
+    expires: 2099-12-31

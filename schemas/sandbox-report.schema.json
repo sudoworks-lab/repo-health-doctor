@@ -1,0 +1,1798 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repo-health-doctor://schemas/sandbox-report.schema.json",
+  "title": "repo-health-doctor sandbox report",
+  "type": "object",
+  "required": [
+    "tool",
+    "version",
+    "schema_version",
+    "report_kind",
+    "repo_path",
+    "overall_status",
+    "summary",
+    "checks",
+    "execution_plan",
+    "phase_plan",
+    "sandbox",
+    "residual_risks"
+  ],
+  "properties": {
+    "tool": {
+      "type": "string",
+      "enum": [
+        "repo-health-doctor"
+      ]
+    },
+    "version": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "string",
+      "enum": [
+        "1.1"
+      ]
+    },
+    "report_kind": {
+      "type": "string",
+      "enum": [
+        "sandbox"
+      ]
+    },
+    "repo_path": {
+      "type": "string"
+    },
+    "overall_status": {
+      "$ref": "#/$defs/runtime_status"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary_counts"
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "severity_detail",
+          "confidence",
+          "phase",
+          "summary",
+          "evidence",
+          "limitations"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/$defs/runtime_status"
+          },
+          "severity_detail": {
+            "type": "string",
+            "enum": [
+              "PASS",
+              "WARN-low",
+              "WARN-med",
+              "WARN-high",
+              "BLOCK"
+            ]
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "phase": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "object"
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "execution_plan": {
+      "type": "object",
+      "required": [
+        "mode",
+        "detected_languages",
+        "manifest_paths",
+        "commands",
+        "skipped_commands",
+        "approval"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "plan_only"
+          ]
+        },
+        "detected_languages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "manifest_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/execution_command"
+          }
+        },
+        "skipped_commands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/skipped_command"
+          }
+        },
+        "approval": {
+          "type": "object",
+          "required": [
+            "provided",
+            "status",
+            "matched_command_count",
+            "total_command_count",
+            "path_handle",
+            "approval_scope",
+            "docker_image",
+            "expected_image_id",
+            "local_sanctioned_image",
+            "network_policy",
+            "human_review_required",
+            "created_at",
+            "expires_at",
+            "mismatch_reasons"
+          ],
+          "properties": {
+            "provided": {
+              "type": "boolean"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "not_provided",
+                "matched",
+                "partial",
+                "invalid"
+              ]
+            },
+            "matched_command_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "total_command_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "path_handle": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "approval_scope": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "repo_path": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            },
+            "docker_image": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "expected_image_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "local_sanctioned_image": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "network_policy": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "human_review_required": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "created_at": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "expires_at": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "mismatch_reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "phase_plan": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/phase_plan_entry"
+      }
+    },
+    "sandbox": {
+      "type": "object",
+      "required": [
+        "mode",
+        "network",
+        "rootfs",
+        "user",
+        "capabilities",
+        "docker_socket_mounted",
+        "observation_mode",
+        "docker_spec",
+        "disposable_workspace",
+        "preflight",
+        "strace_target_wrap_smoke",
+        "phase1_fetch",
+        "phase1_5_rescan",
+        "observer",
+        "dynamic_evidence",
+        "phase2_install_probes",
+        "phase3_runtime_probes"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "plan_only"
+          ]
+        },
+        "network": {
+          "type": "string"
+        },
+        "rootfs": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        },
+        "capabilities": {
+          "type": "string"
+        },
+        "docker_socket_mounted": {
+          "type": "boolean"
+        },
+        "observation_mode": {
+          "type": "string"
+        },
+        "docker_spec": {
+          "$ref": "#/$defs/docker_spec"
+        },
+        "disposable_workspace": {
+          "$ref": "#/$defs/disposable_workspace"
+        },
+        "preflight": {
+          "$ref": "#/$defs/preflight"
+        },
+        "strace_target_wrap_smoke": {
+          "$ref": "#/$defs/strace_smoke_run"
+        },
+        "phase1_fetch": {
+          "$ref": "#/$defs/phase_run"
+        },
+        "phase1_5_rescan": {
+          "$ref": "#/$defs/artifact_rescan"
+        },
+        "observer": {
+          "$ref": "#/$defs/observer_plan"
+        },
+        "dynamic_evidence": {
+          "$ref": "#/$defs/dynamic_evidence"
+        },
+        "phase2_install_probes": {
+          "$ref": "#/$defs/dynamic_phase_run"
+        },
+        "phase3_runtime_probes": {
+          "$ref": "#/$defs/dynamic_phase_run"
+        }
+      },
+      "additionalProperties": false
+    },
+    "residual_risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "runtime_status": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "block"
+      ]
+    },
+    "summary_counts": {
+      "type": "object",
+      "required": [
+        "pass",
+        "warn",
+        "block"
+      ],
+      "properties": {
+        "pass": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warn": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "block": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "artifact_rescan_findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "category",
+          "classification",
+          "severity",
+          "path",
+          "summary",
+          "artifact_kind"
+        ],
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "classification": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "artifact_kind": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "execution_command": {
+      "type": "object",
+      "required": [
+        "phase",
+        "kind",
+        "cwd",
+        "argv",
+        "env_allowlist",
+        "shell",
+        "approved"
+      ],
+      "properties": {
+        "phase": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "env_allowlist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "shell": {
+          "type": "boolean",
+          "enum": [
+            false
+          ]
+        },
+        "approved": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "skipped_command": {
+      "type": "object",
+      "required": [
+        "reason",
+        "shell"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "shell": {
+          "type": "boolean"
+        },
+        "detail": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "phase_plan_entry": {
+      "type": "object",
+      "required": [
+        "phase",
+        "status",
+        "summary",
+        "commands",
+        "skipped_commands",
+        "limitations",
+        "execution_enabled",
+        "approval_required"
+      ],
+      "properties": {
+        "phase": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/execution_command"
+          }
+        },
+        "skipped_commands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/skipped_command"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "execution_enabled": {
+          "type": "boolean"
+        },
+        "approval_required": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "docker_spec": {
+      "type": "object",
+      "required": [
+        "mode",
+        "argv",
+        "shell",
+        "image_reference_placeholder",
+        "image_variants",
+        "selected_image_reference",
+        "selected_image_digest_pinned",
+        "selected_image_execution_allowed",
+        "image_reference_kind",
+        "expected_image_id",
+        "actual_image_id",
+        "image_id_match",
+        "local_sanctioned",
+        "local_sanctioned_limitations",
+        "decision",
+        "pull_policy",
+        "network",
+        "rootfs",
+        "user",
+        "cap_drop",
+        "security_opts",
+        "memory",
+        "cpus",
+        "pids_limit",
+        "docker_socket_mounted",
+        "host_home_mounted",
+        "credential_mounts_blocked",
+        "path_resolution_status",
+        "resolved_argv_redacted",
+        "mount_source_handles",
+        "execution_enabled"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "shell": {
+          "type": "boolean",
+          "enum": [
+            false
+          ]
+        },
+        "image_reference_placeholder": {
+          "type": "string"
+        },
+        "image_variants": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "language",
+              "image_reference",
+              "digest_pinned"
+            ],
+            "properties": {
+              "language": {
+                "type": "string"
+              },
+              "image_reference": {
+                "type": "string"
+              },
+              "digest_pinned": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "pull_policy": {
+          "type": "string"
+        },
+        "network": {
+          "type": "string"
+        },
+        "rootfs": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        },
+        "cap_drop": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "security_opts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "memory": {
+          "type": "string"
+        },
+        "cpus": {
+          "type": "string"
+        },
+        "pids_limit": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "docker_socket_mounted": {
+          "type": "boolean"
+        },
+        "host_home_mounted": {
+          "type": "boolean"
+        },
+        "credential_mounts_blocked": {
+          "type": "boolean"
+        },
+        "path_resolution_status": {
+          "type": "string"
+        },
+        "resolved_argv_redacted": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mount_source_handles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "selected_image_reference": {
+          "type": "string"
+        },
+        "selected_image_digest_pinned": {
+          "type": "boolean"
+        },
+        "selected_image_execution_allowed": {
+          "type": "boolean"
+        },
+        "image_reference_kind": {
+          "type": "string",
+          "enum": [
+            "registry_digest",
+            "local_sanctioned_image",
+            "tag_only_rejected"
+          ]
+        },
+        "expected_image_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "actual_image_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "image_id_match": {
+          "type": "boolean"
+        },
+        "local_sanctioned": {
+          "type": "boolean"
+        },
+        "local_sanctioned_limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "rejected",
+            "skipped-safe",
+            "gated"
+          ]
+        },
+        "execution_enabled": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "disposable_workspace": {
+      "type": "object",
+      "required": [
+        "mode",
+        "copy_strategy",
+        "cleanup_strategy",
+        "source_repo",
+        "logical_paths",
+        "host_path_placeholders",
+        "path_handles",
+        "environment",
+        "blocked_host_inputs",
+        "materialization_status",
+        "cleanup_status",
+        "copy_summary",
+        "copy_exclusions",
+        "honeypots",
+        "unsafe_symlinks",
+        "copy_errors",
+        "limitations",
+        "execution_enabled"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "copy_strategy": {
+          "type": "string"
+        },
+        "cleanup_strategy": {
+          "type": "string"
+        },
+        "source_repo": {
+          "type": "string"
+        },
+        "logical_paths": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "host_path_placeholders": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "path_handles": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "blocked_host_inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "materialization_status": {
+          "type": "string"
+        },
+        "cleanup_status": {
+          "type": "string"
+        },
+        "cleanup_error": {
+          "type": "string"
+        },
+        "copy_summary": {
+          "type": "object",
+          "required": [
+            "files_copied",
+            "directories_created",
+            "excluded_count",
+            "unsafe_symlink_count",
+            "copy_error_count",
+            "git_metadata_copied"
+          ],
+          "properties": {
+            "files_copied": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "directories_created": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "excluded_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unsafe_symlink_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "copy_error_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "git_metadata_copied": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "copy_exclusions": {
+          "type": "object",
+          "required": [
+            "categories"
+          ],
+          "properties": {
+            "categories": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "category",
+                  "count"
+                ],
+                "properties": {
+                  "category": {
+                    "type": "string"
+                  },
+                  "count": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "honeypots": {
+          "type": "object",
+          "required": [
+            "file_handle_count",
+            "file_handles",
+            "env_names"
+          ],
+          "properties": {
+            "file_handle_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "file_handles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "env_names": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "unsafe_symlinks": {
+          "type": "object",
+          "required": [
+            "count",
+            "samples"
+          ],
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "samples": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "reason"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "copy_errors": {
+          "type": "object",
+          "required": [
+            "count",
+            "samples"
+          ],
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "samples": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "detail"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "detail": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "execution_enabled": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "preflight": {
+      "type": "object",
+      "required": [
+        "requested",
+        "performed",
+        "status",
+        "timeout_seconds",
+        "commands",
+        "results",
+        "limitations"
+      ],
+      "properties": {
+        "requested": {
+          "type": "boolean"
+        },
+        "performed": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "kind",
+              "argv",
+              "shell"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "argv": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "shell": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "command_kind",
+              "argv",
+              "return_code",
+              "status",
+              "timed_out",
+              "stdout_summary",
+              "stderr_summary"
+            ],
+            "properties": {
+              "command_kind": {
+                "type": "string"
+              },
+              "argv": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "return_code": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "timed_out": {
+                "type": "boolean"
+              },
+              "stdout_summary": {
+                "type": "string"
+              },
+              "stderr_summary": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "phase_gate_limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "phase_run": {
+      "type": "object",
+      "required": [
+        "requested",
+        "performed",
+        "status",
+        "network_mode",
+        "timeout_seconds",
+        "results",
+        "limitations"
+      ],
+      "properties": {
+        "requested": {
+          "type": "boolean"
+        },
+        "performed": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        },
+        "network_mode": {
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "kind",
+              "argv",
+              "return_code",
+              "status",
+              "timed_out",
+              "stdout_summary",
+              "stderr_summary"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "argv": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "return_code": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "timed_out": {
+                "type": "boolean"
+              },
+              "stdout_summary": {
+                "type": "string"
+              },
+              "stderr_summary": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "phase_gate_limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "artifact_rescan": {
+      "type": "object",
+      "required": [
+        "requested",
+        "performed",
+        "status",
+        "artifact_summary",
+        "finding_summary",
+        "findings",
+        "blocked_findings",
+        "warn_findings",
+        "info_findings",
+        "unknown_findings",
+        "ordinary_library_capabilities",
+        "install_time_risks",
+        "dependency_source_risks",
+        "limitations",
+        "residual_risks"
+      ],
+      "properties": {
+        "requested": {
+          "type": "boolean"
+        },
+        "performed": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        },
+        "artifact_summary": {
+          "type": "object",
+          "required": [
+            "scanned_file_count",
+            "artifact_candidate_count",
+            "read_error_count",
+            "artifact_kind_counts"
+          ],
+          "properties": {
+            "scanned_file_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "artifact_candidate_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "read_error_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "artifact_kind_counts": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "finding_summary": {
+          "type": "object",
+          "required": [
+            "blocked_count",
+            "warn_count",
+            "info_count",
+            "unknown_count"
+          ],
+          "properties": {
+            "blocked_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "warn_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "info_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unknown_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "category",
+              "classification",
+              "severity",
+              "path",
+              "summary",
+              "artifact_kind"
+            ],
+            "properties": {
+              "category": {
+                "type": "string"
+              },
+              "classification": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "artifact_kind": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "blocked_findings": {
+          "$ref": "#/$defs/artifact_rescan_findings"
+        },
+        "warn_findings": {
+          "$ref": "#/$defs/artifact_rescan_findings"
+        },
+        "info_findings": {
+          "$ref": "#/$defs/artifact_rescan_findings"
+        },
+        "unknown_findings": {
+          "$ref": "#/$defs/artifact_rescan_findings"
+        },
+        "ordinary_library_capabilities": {
+          "$ref": "#/$defs/artifact_rescan_findings"
+        },
+        "install_time_risks": {
+          "$ref": "#/$defs/artifact_rescan_findings"
+        },
+        "dependency_source_risks": {
+          "$ref": "#/$defs/artifact_rescan_findings"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "residual_risks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "observer_plan": {
+      "type": "object",
+      "required": [
+        "mode",
+        "status",
+        "languages",
+        "syscall_observer",
+        "runtime_hooks",
+        "runtime_hook_active_languages",
+        "pass_possible",
+        "event_sink",
+        "phase2_ready",
+        "phase3_ready",
+        "limitations"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "syscall_observer": {
+          "type": "object",
+          "required": [
+            "kind",
+            "available",
+            "active",
+            "binary_name",
+            "limitations"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "available": {
+              "type": "boolean"
+            },
+            "active": {
+              "type": "boolean"
+            },
+            "binary_name": {
+              "type": "string"
+            },
+            "limitations": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "runtime_hooks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "language",
+              "implemented",
+              "activation",
+              "logical_path",
+              "logical_directory",
+              "event_sink",
+              "coverage",
+              "limitations"
+            ],
+            "properties": {
+              "language": {
+                "type": "string"
+              },
+              "implemented": {
+                "type": "boolean"
+              },
+              "activation": {
+                "type": "string"
+              },
+              "logical_path": {
+                "type": "string"
+              },
+              "logical_directory": {
+                "type": "string"
+              },
+              "event_sink": {
+                "type": "string"
+              },
+              "coverage": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "limitations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "runtime_hook_active_languages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pass_possible": {
+          "type": "boolean"
+        },
+        "event_sink": {
+          "type": "string"
+        },
+        "phase2_ready": {
+          "type": "boolean"
+        },
+        "phase3_ready": {
+          "type": "boolean"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "dynamic_evidence": {
+      "type": "object",
+      "required": [
+        "performed",
+        "result_count",
+        "observer_mode",
+        "observer_modes",
+        "confidence",
+        "limitations",
+        "degraded_reasons",
+        "observation",
+        "phase_statuses",
+        "result_status_counts",
+        "event_counts",
+        "syscall_trace"
+      ],
+      "properties": {
+        "performed": {"type": "boolean"},
+        "result_count": {"type": "integer", "minimum": 0},
+        "observer_mode": {"type": "string"},
+        "observer_modes": {"type": "array", "items": {"type": "string"}},
+        "confidence": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "limitations": {"type": "array", "items": {"type": "string"}},
+        "degraded_reasons": {"type": "array", "items": {"type": "string"}},
+        "observation": {
+          "type": "object",
+          "required": ["performed", "result_count", "pass_possible", "observer_modes"],
+          "properties": {
+            "performed": {"type": "boolean"},
+            "result_count": {"type": "integer", "minimum": 0},
+            "pass_possible": {"type": "boolean"},
+            "observer_modes": {"type": "array", "items": {"type": "string"}}
+          },
+          "additionalProperties": false
+        },
+        "phase_statuses": {
+          "type": "object",
+          "required": ["phase2", "phase3"],
+          "properties": {
+            "phase2": {"$ref": "#/$defs/dynamic_phase_status"},
+            "phase3": {"$ref": "#/$defs/dynamic_phase_status"}
+          },
+          "additionalProperties": false
+        },
+        "result_status_counts": {
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        },
+        "event_counts": {
+          "type": "object",
+          "required": [
+            "network_event_count",
+            "secret_event_count",
+            "env_sweep_count",
+            "process_event_count",
+            "delete_inside_writable_count",
+            "delete_outside_writable_count"
+          ],
+          "properties": {
+            "network_event_count": {"type": "integer", "minimum": 0},
+            "secret_event_count": {"type": "integer", "minimum": 0},
+            "env_sweep_count": {"type": "integer", "minimum": 0},
+            "process_event_count": {"type": "integer", "minimum": 0},
+            "delete_inside_writable_count": {"type": "integer", "minimum": 0},
+            "delete_outside_writable_count": {"type": "integer", "minimum": 0}
+          },
+          "additionalProperties": false
+        },
+        "syscall_trace": {
+          "type": "object",
+          "required": ["log_file_count", "read_error_count", "secret_file_open_count"],
+          "properties": {
+            "log_file_count": {"type": "integer", "minimum": 0},
+            "read_error_count": {"type": "integer", "minimum": 0},
+            "secret_file_open_count": {"type": "integer", "minimum": 0}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "dynamic_phase_status": {
+      "type": "object",
+      "required": ["requested", "performed", "status", "approved_command_count", "result_count"],
+      "properties": {
+        "requested": {"type": "boolean"},
+        "performed": {"type": "boolean"},
+        "status": {"type": "string"},
+        "approved_command_count": {"type": "integer", "minimum": 0},
+        "result_count": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "dynamic_phase_run": {
+      "type": "object",
+      "required": [
+        "requested",
+        "performed",
+        "status",
+        "network_mode",
+        "timeout_seconds",
+        "approved_command_count",
+        "results",
+        "limitations"
+      ],
+      "properties": {
+        "requested": {
+          "type": "boolean"
+        },
+        "performed": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        },
+        "network_mode": {
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "approved_command_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "kind",
+              "argv",
+              "return_code",
+              "status",
+              "timed_out",
+              "stdout_summary",
+              "stderr_summary",
+              "observer_summary"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "argv": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "return_code": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "timed_out": {
+                "type": "boolean"
+              },
+              "stdout_summary": {
+                "type": "string"
+              },
+              "stderr_summary": {
+                "type": "string"
+              },
+              "observer_summary": {
+                "type": "object"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "strace_smoke_run": {
+      "type": "object",
+      "required": [
+        "requested",
+        "performed",
+        "status",
+        "network_mode",
+        "timeout_seconds",
+        "approved_command_count",
+        "results",
+        "limitations",
+        "target_argv",
+        "wrapper_argv"
+      ],
+      "properties": {
+        "requested": {
+          "type": "boolean"
+        },
+        "performed": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        },
+        "network_mode": {
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "approved_command_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "kind",
+              "argv",
+              "return_code",
+              "status",
+              "timed_out",
+              "stdout_summary",
+              "stderr_summary",
+              "observer_summary"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "argv": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "return_code": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "timed_out": {
+                "type": "boolean"
+              },
+              "stdout_summary": {
+                "type": "string"
+              },
+              "stderr_summary": {
+                "type": "string"
+              },
+              "observer_summary": {
+                "type": "object"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "target_argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "wrapper_argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,7 @@
+{
+  "mutations": {
+    "network_allowed": true,
+    "network_mode": "bridge"
+  },
+  "expected_error": "network_allowed_must_be_false_for_target_scan"
+}

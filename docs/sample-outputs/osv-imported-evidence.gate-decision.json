@@ -1,0 +1,61 @@
+{
+  "decision_kind": "repo_health_gate_decision",
+  "schema_version": "0.1-draft",
+  "subject": {
+    "repo": "<repo>",
+    "commit": null,
+    "tree_hash": null,
+    "binding_kind": "synthetic"
+  },
+  "verdict": "block",
+  "execution_authorized": false,
+  "confidence": "high",
+  "confidence_reason": "recommended_block:osv-import-1-1-1; warning_signal:osv-import-1-1-1",
+  "explanation": {
+    "summary": "Gate evidence blocks execution review; this is not execution authorization.",
+    "key_reasons": [
+      "No scanner finding is not proof of safety.",
+      "Findings or warning evidence still require review before execution.",
+      "Evidence remains scoped to the reviewed inputs and limitations.",
+      "Gate decisions and execution authorization are intentionally separate."
+    ],
+    "next_actions": [
+      "Do not run install scripts locally based only on scanner silence.",
+      "Review limitations and evidence gaps.",
+      "Use a stronger isolated environment if execution is necessary."
+    ]
+  },
+  "evidence_summary": {
+    "findings_count": 1,
+    "blocking_evidence": [
+      "osv-import-1-1-1"
+    ],
+    "warning_evidence": [
+      "osv-import-1-1-1"
+    ],
+    "missing_evidence": [],
+    "degraded_observers": []
+  },
+  "required_actions": [
+    "do not execute until blocking evidence is resolved"
+  ],
+  "limitations": [
+    "not_execution_authorization",
+    "allow_limited_is_not_safety_proof",
+    "OSV-like synthetic JSON fixture support only",
+    "imported evidence only",
+    "no finding is not proof of safety",
+    "raw output not retained",
+    "vulnerability database lookup was not performed by repo-health-doctor"
+  ],
+  "policy": {
+    "policy_version": "0.1",
+    "fail_closed": true
+  },
+  "residual_risks": [
+    "execution_authorization_not_implemented",
+    "real OSV-Scanner output compatibility unconfirmed",
+    "OSV database freshness is outside repo-health-doctor",
+    "scanner was not executed by repo-health-doctor"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "findings": [
+    {
+      "primary_category": "vulnerability",
+      "secondary_category": "known_critical_vulnerability"
+    },
+    {
+      "primary_category": "malicious_behavior",
+      "secondary_category": "download_exec_chain"
+    }
+  ],
+  "evidence_edges": [
+    {
+      "relation": "lifecycle_to_runtime"
+    }
+  ],
+  "expected": {
+    "highest_risk_tier_effect": "raise_to_T4",
+    "gate_effects": [
+      "requires_human_review"
+    ],
+    "rules_fired": [
+      "RISK014",
+      "RISK015"
+    ]
+  }
+}

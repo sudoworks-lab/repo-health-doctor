@@ -1,0 +1,24 @@
+{
+  "fixture_kind": "synthetic_zizmor_style_v0",
+  "scanner_version": "0.0.0-fixture",
+  "status": "ok",
+  "findings": [
+    {
+      "rule_id": "zizmor-style.synthetic.ci_chain",
+      "kind": "ci_token_untrusted_code_chain",
+      "path": "<repo>/.github/workflows/pr.yml",
+      "line": 17,
+      "title": "Synthetic CI exposure chain",
+      "description": "Synthetic workflow evidence connects CI privileges to untrusted code.",
+      "evidence": ["untrusted_checkout", "ci_exposure"]
+    }
+  ],
+  "redaction_status": {
+    "raw_secret_present": false,
+    "raw_host_path_present": false,
+    "raw_scanner_output_included": false,
+    "raw_stdout_stderr_included": false,
+    "unredacted_snippet_present": false,
+    "redaction_validated": true
+  }
+}

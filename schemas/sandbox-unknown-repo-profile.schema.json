@@ -1,0 +1,252 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repo-health-doctor://schemas/sandbox-unknown-repo-profile.schema.json",
+  "title": "repo-health-doctor unknown repository sandbox profile",
+  "type": "object",
+  "required": [
+    "tool",
+    "version",
+    "schema_version",
+    "report_kind",
+    "repo_path",
+    "mode",
+    "overall_status",
+    "execution_permitted",
+    "execution",
+    "approval_status",
+    "approval",
+    "repo_scope",
+    "profile",
+    "risk",
+    "redaction",
+    "limitations",
+    "residual_risks"
+  ],
+  "properties": {
+    "tool": {"type": "string", "enum": ["repo-health-doctor"]},
+    "version": {"type": "string"},
+    "schema_version": {"type": "string", "enum": ["0.1-draft"]},
+    "report_kind": {"type": "string", "enum": ["sandbox_unknown_repo_profile"]},
+    "repo_path": {"type": "string", "enum": ["<repo>"]},
+    "mode": {"type": "string", "enum": ["plan_only"]},
+    "overall_status": {"type": "string", "enum": ["warn", "block"]},
+    "execution_permitted": {"type": "boolean", "enum": [false]},
+    "execution": {
+      "type": "object",
+      "required": ["docker_used", "image_pull_performed", "network_allowed", "shell_allowed", "phase1_fetch_requested", "phase2_live_requested", "phase3_live_requested"],
+      "properties": {
+        "docker_used": {"type": "boolean", "enum": [false]},
+        "image_pull_performed": {"type": "boolean", "enum": [false]},
+        "network_allowed": {"type": "boolean", "enum": [false]},
+        "shell_allowed": {"type": "boolean", "enum": [false]},
+        "phase1_fetch_requested": {"type": "boolean", "enum": [false]},
+        "phase2_live_requested": {"type": "boolean", "enum": [false]},
+        "phase3_live_requested": {"type": "boolean", "enum": [false]}
+      },
+      "additionalProperties": false
+    },
+    "approval_status": {"type": "string", "enum": ["not_generated"]},
+    "approval": {
+      "type": "object",
+      "required": ["draft_generated", "approved", "candidate_count"],
+      "properties": {
+        "draft_generated": {"type": "boolean", "enum": [false]},
+        "approved": {"type": "boolean", "enum": [false]},
+        "candidate_count": {"type": "integer", "enum": [0]}
+      },
+      "additionalProperties": false
+    },
+    "repo_scope": {
+      "type": "object",
+      "required": ["repository_identity", "commit", "path"],
+      "properties": {
+        "repository_identity": {"type": "string"},
+        "commit": {"type": "string", "enum": ["unavailable_read_only"]},
+        "path": {"type": "string", "enum": ["<repo>"]}
+      },
+      "additionalProperties": false
+    },
+    "profile": {"$ref": "#/$defs/profile"},
+    "risk": {
+      "type": "object",
+      "required": ["tier", "report_status", "disposition", "reasons", "live_eligibility"],
+      "properties": {
+        "tier": {"type": "string", "enum": ["T0", "T1", "T2", "T3", "T4", "T5"]},
+        "report_status": {"type": "string", "enum": ["warn", "block"]},
+        "disposition": {"type": "string"},
+        "reasons": {"type": "array", "items": {"type": "string"}},
+        "live_eligibility": {"type": "string", "enum": ["not_a_candidate", "not_implemented"]}
+      },
+      "additionalProperties": false
+    },
+    "redaction": {
+      "type": "object",
+      "required": ["raw_host_paths_redacted", "secret_like_values_redacted"],
+      "properties": {
+        "raw_host_paths_redacted": {"type": "boolean", "enum": [true]},
+        "secret_like_values_redacted": {"type": "boolean", "enum": [true]}
+      },
+      "additionalProperties": false
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "residual_risks": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "count": {
+      "type": "object",
+      "required": ["count"],
+      "properties": {"count": {"type": "integer", "minimum": 0}},
+      "additionalProperties": false
+    },
+    "profile": {
+      "type": "object",
+      "required": [
+        "package_managers",
+        "manifest_files",
+        "package_scripts",
+        "lifecycle_scripts",
+        "python_build",
+        "npm_scripts",
+        "dependency_sources",
+        "native_binaries",
+        "suspicious_files",
+        "symlink_risks",
+        "credential_path_references",
+        "network_related_references",
+        "shell_command_references",
+        "command_references",
+        "docker_socket_references",
+        "host_home_references",
+        "obfuscation_indicators",
+        "large_binary_or_archive_indicators",
+        "analysis",
+        "indicators"
+      ],
+      "properties": {
+        "package_managers": {"type": "array", "items": {"type": "string"}},
+        "manifest_files": {"type": "array", "items": {"$ref": "#/$defs/manifest"}},
+        "package_scripts": {"type": "array", "items": {"$ref": "#/$defs/script"}},
+        "lifecycle_scripts": {"type": "array", "items": {"$ref": "#/$defs/script"}},
+        "python_build": {"$ref": "#/$defs/python_build"},
+        "npm_scripts": {"type": "array", "items": {"$ref": "#/$defs/script"}},
+        "dependency_sources": {"$ref": "#/$defs/dependencies"},
+        "native_binaries": {"$ref": "#/$defs/count"},
+        "suspicious_files": {"$ref": "#/$defs/count"},
+        "symlink_risks": {"$ref": "#/$defs/symlinks"},
+        "credential_path_references": {"$ref": "#/$defs/count"},
+        "network_related_references": {"$ref": "#/$defs/count"},
+        "shell_command_references": {"$ref": "#/$defs/count"},
+        "command_references": {"$ref": "#/$defs/command_references"},
+        "docker_socket_references": {"$ref": "#/$defs/count"},
+        "host_home_references": {"$ref": "#/$defs/count"},
+        "obfuscation_indicators": {"$ref": "#/$defs/count"},
+        "large_binary_or_archive_indicators": {"$ref": "#/$defs/count"},
+        "analysis": {"$ref": "#/$defs/analysis"},
+        "indicators": {"$ref": "#/$defs/indicators"}
+      },
+      "additionalProperties": false
+    },
+    "manifest": {
+      "type": "object",
+      "required": ["path", "kind"],
+      "properties": {"path": {"type": "string"}, "kind": {"type": "string"}},
+      "additionalProperties": false
+    },
+    "script": {
+      "type": "object",
+      "required": ["classification", "script_fingerprint"],
+      "properties": {
+        "name": {"type": "string"},
+        "name_fingerprint": {"type": "string"},
+        "classification": {"type": "string"},
+        "script_fingerprint": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "python_build": {
+      "type": "object",
+      "required": ["backend_status", "build_system_requires"],
+      "properties": {
+        "backend_status": {"type": "string", "enum": ["not_declared", "declared", "invalid", "unavailable"]},
+        "build_system_requires": {
+          "type": "object",
+          "required": ["status", "count", "dependency_classes"],
+          "properties": {
+            "status": {"type": "string", "enum": ["not_declared", "present", "invalid", "unavailable"]},
+            "count": {"type": "integer", "minimum": 0},
+            "dependency_classes": {"type": "array", "items": {"type": "string"}}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "dependencies": {
+      "type": "object",
+      "required": ["regular_count", "direct_url_count", "vcs_count", "editable_count", "local_path_count", "ambiguous_count"],
+      "properties": {
+        "regular_count": {"type": "integer", "minimum": 0},
+        "direct_url_count": {"type": "integer", "minimum": 0},
+        "vcs_count": {"type": "integer", "minimum": 0},
+        "editable_count": {"type": "integer", "minimum": 0},
+        "local_path_count": {"type": "integer", "minimum": 0},
+        "ambiguous_count": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "symlinks": {
+      "type": "object",
+      "required": ["count", "outside_repo_count", "broken_count"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "outside_repo_count": {"type": "integer", "minimum": 0},
+        "broken_count": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "command_references": {
+      "type": "object",
+      "required": ["curl_count", "wget_count", "powershell_count", "bash_count"],
+      "properties": {
+        "curl_count": {"type": "integer", "minimum": 0},
+        "wget_count": {"type": "integer", "minimum": 0},
+        "powershell_count": {"type": "integer", "minimum": 0},
+        "bash_count": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "analysis": {
+      "type": "object",
+      "required": ["parse_error_count", "read_error_count", "ambiguous_field_count"],
+      "properties": {
+        "parse_error_count": {"type": "integer", "minimum": 0},
+        "read_error_count": {"type": "integer", "minimum": 0},
+        "ambiguous_field_count": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "indicators": {
+      "type": "object",
+      "required": ["native_binary_count", "suspicious_file_count", "credential_path_reference_count", "network_related_reference_count", "shell_command_reference_count", "curl_reference_count", "wget_reference_count", "powershell_reference_count", "bash_reference_count", "docker_socket_reference_count", "host_home_reference_count", "obfuscation_indicator_count", "large_binary_or_archive_count", "destructive_reference_count", "persistence_reference_count"],
+      "properties": {
+        "native_binary_count": {"type": "integer", "minimum": 0},
+        "suspicious_file_count": {"type": "integer", "minimum": 0},
+        "credential_path_reference_count": {"type": "integer", "minimum": 0},
+        "network_related_reference_count": {"type": "integer", "minimum": 0},
+        "shell_command_reference_count": {"type": "integer", "minimum": 0},
+        "curl_reference_count": {"type": "integer", "minimum": 0},
+        "wget_reference_count": {"type": "integer", "minimum": 0},
+        "powershell_reference_count": {"type": "integer", "minimum": 0},
+        "bash_reference_count": {"type": "integer", "minimum": 0},
+        "docker_socket_reference_count": {"type": "integer", "minimum": 0},
+        "host_home_reference_count": {"type": "integer", "minimum": 0},
+        "obfuscation_indicator_count": {"type": "integer", "minimum": 0},
+        "large_binary_or_archive_count": {"type": "integer", "minimum": 0},
+        "destructive_reference_count": {"type": "integer", "minimum": 0},
+        "persistence_reference_count": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    }
+  }
+}

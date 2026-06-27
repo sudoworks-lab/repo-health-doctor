@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://repo-health-doctor.local/schemas/external-scanner-plan.schema.json",
+  "title": "External Scanner No-Network Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "plan_kind",
+    "scanner",
+    "input_scope",
+    "execution_constraints",
+    "approval",
+    "failure_policy",
+    "limitations",
+    "residual_risks",
+    "execution_authorized",
+    "scanner_execution_planned",
+    "scanner_executed"
+  ],
+  "properties": {
+    "schema_version": {
+      "enum": [
+        "0.1-draft"
+      ]
+    },
+    "plan_kind": {
+      "enum": [
+        "external_scanner_no_network_plan"
+      ]
+    },
+    "scanner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "mode",
+        "version_pin_required",
+        "version_pin",
+        "binary_hash_required",
+        "binary_hash",
+        "binary_trust_requirement",
+        "allowed_input_scope"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "mode": {
+          "const": "local_static_no_network"
+        },
+        "version_pin_required": {
+          "const": true
+        },
+        "version_pin": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "binary_hash_required": {
+          "const": true
+        },
+        "binary_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "binary_trust_requirement": {
+          "type": "string"
+        },
+        "allowed_input_scope": {
+          "type": "string"
+        }
+      }
+    },
+    "input_scope": {
+      "type": "object"
+    },
+    "execution_constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "network_allowed",
+        "target_code_execution_allowed",
+        "docker_allowed",
+        "timeout_seconds",
+        "max_output_bytes",
+        "raw_output_retention",
+        "redaction_before_persistence"
+      ],
+      "properties": {
+        "network_allowed": {
+          "const": false
+        },
+        "target_code_execution_allowed": {
+          "const": false
+        },
+        "docker_allowed": {
+          "const": false
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_output_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "raw_output_retention": {
+          "const": false
+        },
+        "redaction_before_persistence": {
+          "const": true
+        }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requires_human_approval",
+        "approval_artifact_generated",
+        "approval_reference"
+      ],
+      "properties": {
+        "requires_human_approval": {
+          "const": true
+        },
+        "approval_artifact_generated": {
+          "const": false
+        },
+        "approval_reference": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "failure_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "failure_effect",
+        "scanner_unavailable_effect",
+        "parse_failure_effect"
+      ],
+      "properties": {
+        "failure_effect": {
+          "enum": [
+            "requires_human_review",
+            "blocks_live_execution",
+            "quarantine"
+          ]
+        },
+        "scanner_unavailable_effect": {
+          "enum": [
+            "requires_human_review",
+            "blocks_live_execution",
+            "quarantine"
+          ]
+        },
+        "parse_failure_effect": {
+          "enum": [
+            "requires_human_review",
+            "blocks_live_execution",
+            "quarantine"
+          ]
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "residual_risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "execution_authorized": {
+      "const": false
+    },
+    "scanner_execution_planned": {
+      "const": true
+    },
+    "scanner_executed": {
+      "const": false
+    }
+  }
+}

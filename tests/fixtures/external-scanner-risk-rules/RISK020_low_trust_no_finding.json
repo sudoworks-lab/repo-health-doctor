@@ -1,0 +1,16 @@
+{
+  "trust_level": "untrusted_import",
+  "summary": {
+    "outcome": "no_findings_in_scope"
+  },
+  "expected": {
+    "highest_risk_tier_effect": "none",
+    "gate_effects": [
+      "evidence_only"
+    ],
+    "rules_fired": [
+      "RISK020"
+    ],
+    "cannot_lower_risk": true
+  }
+}

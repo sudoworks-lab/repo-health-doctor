@@ -1,0 +1,41 @@
+{
+  "authorization_kind": "repo_health_execution_authorization",
+  "schema_version": "0.1-draft",
+  "approved": true,
+  "approved_by": "redacted@example.invalid",
+  "approved_at": "2026-01-01T00:00:00Z",
+  "expires_at": "2099-01-01T00:00:00Z",
+  "approved_scope": {
+    "repo": "<repo>",
+    "commit": "0123456789abcdef0123456789abcdef01234567",
+    "tree_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "binding_kind": "commit_bound"
+  },
+  "approved_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "tests"
+  ],
+  "approved_policy_version": "0.1",
+  "based_on_gate_decision": {
+    "decision_kind": "repo_health_gate_decision",
+    "schema_version": "0.1-draft",
+    "verdict": "allow_limited",
+    "fingerprint": "sha256:44fcf5da12ca69f2a6f88eaec4487a4e37e2f15bbc15efa67904ed991fcc722a"
+  },
+  "subject": {
+    "repo": "<repo>",
+    "commit": "0123456789abcdef0123456789abcdef01234567",
+    "tree_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "limitations": [
+    "human_approved_exact_argv_only",
+    "authorization_expires",
+    "not_a_gate_decision"
+  ],
+  "residual_risks": [
+    "human approval may be operationally wrong",
+    "authorization is limited to the exact reviewed scope"
+  ]
+}

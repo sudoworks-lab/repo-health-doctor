@@ -1,0 +1,127 @@
+{
+  "tool": "repo-health-doctor",
+  "version": "0.1.0",
+  "schema_version": "1.1",
+  "repo_path": "examples/demo-no-finding-but-degraded",
+  "overall_status": "pass",
+  "summary": {
+    "pass": 11,
+    "warn": 0,
+    "block": 0
+  },
+  "checks": [
+    {
+      "name": "readme",
+      "status": "pass",
+      "summary": "README found.",
+      "details": {
+        "found": [
+          "README.md"
+        ],
+        "findings": []
+      }
+    },
+    {
+      "name": "license",
+      "status": "pass",
+      "summary": "License file found.",
+      "details": {
+        "found": [
+          "LICENSE"
+        ],
+        "findings": []
+      }
+    },
+    {
+      "name": "gitignore",
+      "status": "pass",
+      "summary": ".gitignore found.",
+      "details": {
+        "found": [
+          ".gitignore"
+        ]
+      }
+    },
+    {
+      "name": "ci",
+      "status": "pass",
+      "summary": "Workflow file found.",
+      "details": {
+        "found": [
+          ".github/workflows/ci.yml"
+        ],
+        "findings": []
+      }
+    },
+    {
+      "name": "tests",
+      "status": "pass",
+      "summary": "Test directory found.",
+      "details": {
+        "found": [
+          "tests"
+        ],
+        "findings": []
+      }
+    },
+    {
+      "name": "docs",
+      "status": "pass",
+      "summary": "Docs directory found.",
+      "details": {
+        "found": [
+          "docs"
+        ]
+      }
+    },
+    {
+      "name": "scripts",
+      "status": "pass",
+      "summary": "Scripts directory found.",
+      "details": {
+        "found": [
+          "scripts"
+        ]
+      }
+    },
+    {
+      "name": "secrets_scan",
+      "status": "pass",
+      "summary": "No obvious unallowed secrets detected.",
+      "details": {
+        "findings": [],
+        "scanned_files": 6,
+        "ignored_path_count": 8
+      }
+    },
+    {
+      "name": "large_files",
+      "status": "pass",
+      "summary": "No unallowed large files detected.",
+      "details": {
+        "threshold_mb": 10,
+        "threshold_bytes": 10485760,
+        "findings": []
+      }
+    },
+    {
+      "name": "public_text_safety",
+      "status": "pass",
+      "summary": "No obvious public-facing text issues detected.",
+      "details": {
+        "findings": [],
+        "scanned_files": 0,
+        "scan_scope": "tracked"
+      }
+    },
+    {
+      "name": "tracked_artifacts",
+      "status": "pass",
+      "summary": "Tracked generated or environment files were not detected.",
+      "details": {
+        "findings": [],
+        "scan_scope": "tracked"
+      }
+    }
+  ]
+}

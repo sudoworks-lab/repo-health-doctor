@@ -1,0 +1,21 @@
+{
+  "no_vulnerabilities": {
+    "expected_count": 1,
+    "present": false,
+    "can_lower_risk": false,
+    "can_authorize_execution": false,
+    "recommended_gate_effect": "warn"
+  },
+  "vulnerability": {
+    "expected_count": 1,
+    "category": "known_vulnerability",
+    "subcategory": "known_critical_vulnerability",
+    "severity": "block",
+    "can_authorize_execution": false
+  },
+  "malformed": {
+    "expected_count": 1,
+    "subcategory": "scanner_output_parse_failed",
+    "recommended_gate_effect": "block"
+  }
+}

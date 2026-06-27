@@ -1,0 +1,8 @@
+[build-system]
+requires = []
+build-backend = "local_backend"
+backend-path = ["."]
+
+[project]
+name = "sandbox-phase2-python-local-backend"
+version = "0.0.1"

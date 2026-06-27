@@ -1,0 +1,29 @@
+{
+  "approval_contract": {
+    "approval_scope": {
+      "kind": "controlled_fixture_only",
+      "repo_path": "../sandbox-phase3-python-runtime"
+    },
+    "docker_image": "rhd-python312-strace:local",
+    "expected_image_id": "sha256:58513b66cedda1be08bb3c5ada38214894f601ad0b528936129881fdc75c1e55",
+    "local_sanctioned_image": true,
+    "network_policy": "none",
+    "human_review_required": true,
+    "created_at": "2026-06-24T00:00:00Z",
+    "expires_at": "2026-12-31T23:59:59Z"
+  },
+  "commands": [
+    {
+      "phase": "phase3_runtime_probe",
+      "kind": "test_probe",
+      "cwd": ".",
+      "argv": [
+        "python",
+        "-c",
+        "import os, pathlib; pathlib.Path('/tmp/tmp/rhd-phase3-runtime.txt').write_text('ok', encoding='utf-8'); print(os.getpid())"
+      ],
+      "env_allowlist": [],
+      "shell": false
+    }
+  ]
+}

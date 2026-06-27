@@ -1,0 +1,22 @@
+name: False positive
+description: Report a finding that should not block or warn.
+title: "[false-positive] "
+labels:
+  - false-positive
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste raw secrets, tokens, private paths, local IPs, or policy raw values.
+  - type: textarea
+    id: finding
+    attributes:
+      label: Finding
+      description: Share the safe `rule_id`, `severity`, file path, and why it is expected.
+    validations:
+      required: true
+  - type: textarea
+    id: remediation
+    attributes:
+      label: Suggested fix
+      description: Explain whether content should change or a scoped allow is needed.

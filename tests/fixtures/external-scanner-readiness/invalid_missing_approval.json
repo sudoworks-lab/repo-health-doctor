@@ -1,0 +1,26 @@
+{
+  "plan": {
+    "scanner_name": "zizmor-style",
+    "scanner_mode": "local_static_no_network",
+    "scanner_argv": ["zizmor", "--format", "json", ".github/workflows"],
+    "docker_argv": ["docker", "run", "--network", "none", "zizmor:local"],
+    "mounts": [{"type": "bind", "source": "<disposable-workspace>", "target": "/workspace", "read_only": true}],
+    "network_mode": "none",
+    "network_allowed": false,
+    "target_code_execution_allowed": false,
+    "docker_allowed": true,
+    "raw_output_retention": false,
+    "raw_output_discard_required": true,
+    "requires_human_approval": true,
+    "scanner_executed": false,
+    "execution_authorized": false,
+    "binary_trust_status": "verified",
+    "version_pin_status": "pinned",
+    "binary_hash_status": "verified",
+    "policy_version": "0.1",
+    "scope": "github_actions_workflows",
+    "limitations": ["not_execution_authorization"],
+    "residual_risks": ["docker_is_not_complete_malware_sandbox"]
+  },
+  "approval": null
+}

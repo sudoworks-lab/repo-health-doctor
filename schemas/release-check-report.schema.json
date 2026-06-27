@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repo-health-doctor://schemas/release-check-report.schema.json",
+  "title": "repo-health-doctor release check report",
+  "type": "object",
+  "required": [
+    "tool",
+    "version",
+    "schema_version",
+    "report_kind",
+    "repo_path",
+    "overall_status",
+    "release_readiness",
+    "recommended_next_action",
+    "summary",
+    "checks"
+  ],
+  "properties": {
+    "tool": {
+      "type": "string",
+      "enum": [
+        "repo-health-doctor"
+      ]
+    },
+    "version": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "string",
+      "enum": [
+        "1.1"
+      ]
+    },
+    "report_kind": {
+      "type": "string",
+      "enum": [
+        "release_check"
+      ]
+    },
+    "repo_path": {
+      "type": "string"
+    },
+    "overall_status": {
+      "$ref": "#/$defs/runtime_status"
+    },
+    "release_readiness": {
+      "type": "object",
+      "required": [
+        "status",
+        "summary"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/runtime_status"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "recommended_next_action": {
+      "type": "string"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary_counts"
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "status",
+          "summary",
+          "details"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/$defs/runtime_status"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "properties": {
+              "report_overall_status": {
+                "$ref": "#/$defs/runtime_status"
+              },
+              "pass_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "warn_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "block_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "finding_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "warning_checks": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "blocking_checks": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "policy_sources": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "repo",
+                    "local"
+                  ]
+                }
+              },
+              "ignore_path_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "allow_finding_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "issue_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "issue_rule_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "active_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "expiring_soon_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "expired_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "displayed_allow_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "comparison_available": {
+                "type": "boolean"
+              },
+              "added_findings": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "resolved_findings": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "unchanged_findings": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "severity_changes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "status_changes": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "$defs": {
+    "runtime_status": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "block"
+      ]
+    },
+    "summary_counts": {
+      "type": "object",
+      "required": [
+        "pass",
+        "warn",
+        "block"
+      ],
+      "properties": {
+        "pass": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warn": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "block": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

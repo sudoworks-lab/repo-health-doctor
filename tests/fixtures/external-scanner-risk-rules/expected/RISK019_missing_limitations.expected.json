@@ -1,0 +1,51 @@
+{
+  "expected_validation_valid": false,
+  "expected_highest_risk": "raise_to_T5",
+  "expected_gate_effects": [
+    "quarantine"
+  ],
+  "expected_rules_fired": [
+    "RISK019"
+  ],
+  "must_not_leak": [
+    "raw_secret",
+    "raw_host_absolute_path",
+    "raw_scanner_output",
+    "raw_stdout_stderr",
+    "personal_information"
+  ],
+  "expected_outcome": "no_findings_in_scope",
+  "expected_limitations": [
+    "scanner_scope_only",
+    "not_execution_authorization",
+    "external_result_trust_limited",
+    "raw_output_not_retained"
+  ],
+  "expected_cannot_lower_risk": true,
+  "expected_execution_authorized": false,
+  "expected_blocking_rules": [
+    "RISK019",
+    "schema_top_level_required_or_unknown_field",
+    "limitations_must_be_array"
+  ],
+  "expected_warnings": [
+    "no_findings_in_scope_is_not_safety_proof",
+    "invalid_validation_result_fail_closed"
+  ],
+  "expected_requires_human_review": true,
+  "expected_blocks_live_execution": true,
+  "expected_requires_dedicated_vm": false,
+  "expected_quarantine": true,
+  "expected_residual_risks": [
+    "scanner_scope_only"
+  ],
+  "expected_evidence_summary_contains": {
+    "outcome": "no_findings_in_scope",
+    "trust_level": "commit_bound_import",
+    "finding_count": 0,
+    "primary_categories": [],
+    "secondary_categories": [],
+    "edge_relations": []
+  },
+  "notes": "Synthetic invalid input. expected_limitations lists required limitations, not present input fields."
+}

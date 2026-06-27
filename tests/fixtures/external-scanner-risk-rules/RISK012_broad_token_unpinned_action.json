@@ -1,0 +1,21 @@
+{
+  "findings": [
+    {
+      "primary_category": "ci_cd_risk",
+      "secondary_category": "broad_token_permission"
+    },
+    {
+      "primary_category": "ci_cd_risk",
+      "secondary_category": "unpinned_action"
+    }
+  ],
+  "expected": {
+    "highest_risk_tier_effect": "raise_to_T4",
+    "gate_effects": [
+      "requires_human_review"
+    ],
+    "rules_fired": [
+      "RISK012"
+    ]
+  }
+}

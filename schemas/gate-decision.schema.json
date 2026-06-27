@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repo-health-doctor://schemas/gate-decision.schema.json",
+  "title": "repo-health-doctor gate decision",
+  "description": "Experimental draft gate decision sidecar schema. Gate decisions are review outcomes and always keep execution_authorized=false.",
+  "type": "object",
+  "required": [
+    "decision_kind",
+    "schema_version",
+    "subject",
+    "verdict",
+    "execution_authorized",
+    "confidence",
+    "confidence_reason",
+    "explanation",
+    "evidence_summary",
+    "required_actions",
+    "limitations",
+    "policy",
+    "residual_risks"
+  ],
+  "properties": {
+    "decision_kind": {"type": "string", "enum": ["repo_health_gate_decision"]},
+    "schema_version": {"type": "string", "enum": ["0.1-draft"]},
+    "subject": {"$ref": "#/$defs/subject"},
+    "verdict": {
+      "type": "string",
+      "enum": ["allow_limited", "warn", "quarantine", "block", "unknown"]
+    },
+    "execution_authorized": {"type": "boolean", "const": false},
+    "confidence": {"type": "string", "enum": ["low", "medium", "high", "unknown"]},
+    "confidence_reason": {"type": "string", "minLength": 1},
+    "explanation": {"$ref": "#/$defs/explanation"},
+    "evidence_summary": {"$ref": "#/$defs/evidence_summary"},
+    "required_actions": {"type": "array", "items": {"type": "string"}},
+    "limitations": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "policy": {"$ref": "#/$defs/policy"},
+    "residual_risks": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "subject": {
+      "type": "object",
+      "required": ["repo", "commit", "tree_hash", "binding_kind"],
+      "properties": {
+        "repo": {"type": "string", "minLength": 1},
+        "commit": {"type": ["string", "null"]},
+        "tree_hash": {"type": ["string", "null"]},
+        "binding_kind": {
+          "type": "string",
+          "enum": ["unbound", "path_bound", "commit_bound", "tree_bound", "synthetic"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "explanation": {
+      "type": "object",
+      "required": ["summary", "key_reasons", "next_actions"],
+      "properties": {
+        "summary": {"type": "string", "minLength": 1},
+        "key_reasons": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "next_actions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+      },
+      "additionalProperties": false
+    },
+    "evidence_summary": {
+      "type": "object",
+      "required": [
+        "findings_count",
+        "blocking_evidence",
+        "warning_evidence",
+        "missing_evidence",
+        "degraded_observers"
+      ],
+      "properties": {
+        "findings_count": {"type": "integer", "minimum": 0},
+        "blocking_evidence": {"type": "array", "items": {"type": "string"}},
+        "warning_evidence": {"type": "array", "items": {"type": "string"}},
+        "missing_evidence": {"type": "array", "items": {"type": "string"}},
+        "degraded_observers": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "policy": {
+      "type": "object",
+      "required": ["policy_version", "fail_closed"],
+      "properties": {
+        "policy_version": {"type": ["string", "null"]},
+        "fail_closed": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

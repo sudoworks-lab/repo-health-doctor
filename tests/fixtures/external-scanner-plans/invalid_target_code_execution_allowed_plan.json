@@ -1,0 +1,50 @@
+{
+  "schema_version": "0.1-draft",
+  "plan_kind": "external_scanner_no_network_plan",
+  "scanner": {
+    "name": "semgrep-style-custom-static-rules",
+    "mode": "local_static_no_network",
+    "version_pin_required": true,
+    "version_pin": "0.0.0-fixture",
+    "binary_hash_required": true,
+    "binary_hash": null,
+    "binary_trust_requirement": "human_verified_before_execution",
+    "allowed_input_scope": "repo_static_files"
+  },
+  "input_scope": {
+    "scope": "repo",
+    "included_paths": [
+      "<repo>/src"
+    ],
+    "excluded_paths": []
+  },
+  "execution_constraints": {
+    "network_allowed": false,
+    "target_code_execution_allowed": true,
+    "docker_allowed": false,
+    "timeout_seconds": 60,
+    "max_output_bytes": 1048576,
+    "raw_output_retention": false,
+    "redaction_before_persistence": true
+  },
+  "approval": {
+    "requires_human_approval": true,
+    "approval_artifact_generated": false,
+    "approval_reference": null
+  },
+  "failure_policy": {
+    "failure_effect": "blocks_live_execution",
+    "scanner_unavailable_effect": "requires_human_review",
+    "parse_failure_effect": "blocks_live_execution"
+  },
+  "limitations": [
+    "planner_only",
+    "not_execution_authorization"
+  ],
+  "residual_risks": [
+    "local_runner_unimplemented"
+  ],
+  "execution_authorized": false,
+  "scanner_execution_planned": true,
+  "scanner_executed": false
+}

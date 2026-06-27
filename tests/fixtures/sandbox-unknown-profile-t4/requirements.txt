@@ -1,0 +1,3 @@
+-e ./local-package
+example-package @ https://example.invalid/example-package.whl
+git+https://example.invalid/example-package.git

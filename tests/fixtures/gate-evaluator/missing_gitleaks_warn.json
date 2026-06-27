@@ -1,0 +1,6 @@
+{
+  "scenario": "missing_gitleaks_warn",
+  "expected_verdict": "warn",
+  "missing_evidence": ["gitleaks"],
+  "expected_execution_authorized": false
+}

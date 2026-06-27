@@ -1,0 +1,25 @@
+{
+  "findings": [
+    {
+      "primary_category": "ci_cd_risk",
+      "secondary_category": "pull_request_target_misuse",
+      "evidence": [
+        "untrusted_checkout"
+      ]
+    }
+  ],
+  "evidence_edges": [
+    {
+      "relation": "ci_token_to_untrusted_code"
+    }
+  ],
+  "expected": {
+    "highest_risk_tier_effect": "raise_to_T4",
+    "gate_effects": [
+      "requires_human_review"
+    ],
+    "rules_fired": [
+      "RISK011"
+    ]
+  }
+}

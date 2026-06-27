@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repo-health-doctor://schemas/execution-authorization.schema.json",
+  "title": "repo-health-doctor execution authorization",
+  "description": "Experimental human-controlled execution authorization artifact. Gate decisions remain non-authorizing; only a separately approved and validated artifact can authorize an exact argv/scope/policy decision.",
+  "type": "object",
+  "required": [
+    "authorization_kind",
+    "schema_version",
+    "approved",
+    "approved_by",
+    "approved_at",
+    "expires_at",
+    "approved_scope",
+    "approved_argv",
+    "approved_policy_version",
+    "based_on_gate_decision",
+    "subject",
+    "limitations",
+    "residual_risks"
+  ],
+  "properties": {
+    "authorization_kind": {"type": "string", "enum": ["repo_health_execution_authorization"]},
+    "schema_version": {"type": "string", "enum": ["0.1-draft"]},
+    "approved": {"type": "boolean"},
+    "approved_by": {"type": ["string", "null"]},
+    "approved_at": {"type": ["string", "null"]},
+    "expires_at": {"type": ["string", "null"]},
+    "approved_scope": {"$ref": "#/$defs/approved_scope"},
+    "approved_argv": {"type": "array", "items": {"type": "string"}},
+    "approved_policy_version": {"type": ["string", "null"]},
+    "based_on_gate_decision": {"$ref": "#/$defs/based_on_gate_decision"},
+    "subject": {"$ref": "#/$defs/subject"},
+    "limitations": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "residual_risks": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "approved_scope": {
+      "type": "object",
+      "required": ["repo", "commit", "tree_hash", "binding_kind"],
+      "properties": {
+        "repo": {"type": "string", "minLength": 1},
+        "commit": {"type": ["string", "null"]},
+        "tree_hash": {"type": ["string", "null"]},
+        "binding_kind": {
+          "type": "string",
+          "enum": ["unbound", "path_bound", "commit_bound", "tree_bound", "synthetic"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "based_on_gate_decision": {
+      "type": "object",
+      "required": ["decision_kind", "schema_version", "verdict", "fingerprint"],
+      "properties": {
+        "decision_kind": {"type": "string", "enum": ["repo_health_gate_decision"]},
+        "schema_version": {"type": "string", "enum": ["0.1-draft"]},
+        "verdict": {
+          "type": "string",
+          "enum": ["allow_limited", "warn", "quarantine", "block", "unknown"]
+        },
+        "fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      },
+      "additionalProperties": false
+    },
+    "subject": {
+      "type": "object",
+      "required": ["repo", "commit", "tree_hash"],
+      "properties": {
+        "repo": {"type": "string", "minLength": 1},
+        "commit": {"type": ["string", "null"]},
+        "tree_hash": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    }
+  }
+}

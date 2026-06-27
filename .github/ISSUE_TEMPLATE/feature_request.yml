@@ -1,0 +1,50 @@
+name: Feature request
+description: Propose a repo-health-doctor improvement without reimplementing existing scanners.
+title: "[feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        repo-health-doctor is a pre-execution safety gate, not a replacement for existing scanners. Prefer evidence adapters, policy checks, gate evaluator changes, or docs clarifications over scanner reimplementation.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the maintainer decision gap this feature should address.
+    validations:
+      required: true
+  - type: dropdown
+    id: proposed-area
+    attributes:
+      label: Proposed area
+      options:
+        - evidence adapter
+        - gate evaluator
+        - policy validation
+        - redaction or public-safety
+        - docs or runbook
+        - CLI ergonomics
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence source or fixture idea
+      description: Point to a safe synthetic fixture or describe a redacted example. Do not paste raw scanner output.
+  - type: checkboxes
+    id: safety-boundaries
+    attributes:
+      label: Safety boundaries
+      options:
+        - label: This should not turn scanner no finding into proof of safety.
+        - label: This should not merge gate decisions with execution authorization.
+        - label: This should not require host scanner install or host direct scanner execution by default.
+        - label: This should not persist or display raw scanner output.
+  - type: textarea
+    id: suggested-change
+    attributes:
+      label: Suggested change
+      description: Describe the smallest useful change.

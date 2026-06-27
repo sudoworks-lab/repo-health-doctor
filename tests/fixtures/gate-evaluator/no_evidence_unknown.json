@@ -1,0 +1,6 @@
+{
+  "scenario": "no_evidence_unknown",
+  "expected_verdict": "unknown",
+  "signals": ["no evidence"],
+  "expected_execution_authorized": false
+}

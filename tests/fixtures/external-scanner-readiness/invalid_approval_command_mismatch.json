@@ -1,0 +1,6 @@
+{
+  "approval_mutations": {
+    "scanner_argv": ["zizmor", "--format", "json", "<repo>/.github/workflows"]
+  },
+  "expected_error": "approval_command_mismatch"
+}

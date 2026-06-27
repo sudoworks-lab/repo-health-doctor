@@ -1,0 +1,6 @@
+{
+  "scenario": "raw_output_retained_block",
+  "expected_verdict": "block",
+  "signals": ["raw output retained"],
+  "expected_execution_authorized": false
+}

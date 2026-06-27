@@ -1,0 +1,6 @@
+{
+  "scenario": "no_findings_but_observer_degraded",
+  "expected_verdict": "quarantine",
+  "signals": ["runtime observer degraded"],
+  "expected_execution_authorized": false
+}

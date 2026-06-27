@@ -1,0 +1,75 @@
+{
+  "schema_version": "0.1-draft",
+  "policy_kind": "external_scanner_execution_policy",
+  "policy_version": "0.1",
+  "default_behavior": {
+    "scanner_execution_enabled": false,
+    "planner_only": true,
+    "execution_authorized": false,
+    "requires_human_approval": true,
+    "failure_effect": "blocks_live_execution"
+  },
+  "scanner_allowlist": [
+    {
+      "scanner": "zizmor-style-github-actions",
+      "allowed_mode": "local_static_no_network",
+      "version_pin_required": true,
+      "binary_hash_required": true,
+      "network_allowed": false,
+      "target_code_execution_allowed": false,
+      "docker_allowed": false,
+      "raw_output_retention": false,
+      "redaction_before_persistence": true,
+      "approval_required": true,
+      "failure_effect": "blocks_live_execution",
+      "notes": "Planner-only draft. No scanner execution is implemented in G-017."
+    },
+    {
+      "scanner": "semgrep-style-custom-static-rules",
+      "allowed_mode": "local_static_no_network",
+      "version_pin_required": true,
+      "binary_hash_required": true,
+      "network_allowed": false,
+      "target_code_execution_allowed": false,
+      "docker_allowed": false,
+      "raw_output_retention": false,
+      "redaction_before_persistence": true,
+      "approval_required": true,
+      "failure_effect": "blocks_live_execution",
+      "notes": "Planner-only draft. No scanner execution is implemented in G-017."
+    }
+  ],
+  "network_policy": {
+    "network_allowed": false,
+    "remote_api_allowed": false,
+    "database_update_allowed": false
+  },
+  "target_code_execution_policy": {
+    "target_code_execution_allowed": false,
+    "subprocess_execution_allowed": false,
+    "package_install_execution_allowed": false
+  },
+  "output_policy": {
+    "max_output_bytes": 1048576,
+    "raw_output_retention": false,
+    "raw_stdout_stderr_retention": false,
+    "redaction_before_persistence": true
+  },
+  "approval_policy": {
+    "requires_human_approval": true,
+    "approval_artifact_generated_by_planner": false,
+    "approval_promotion_allowed": false
+  },
+  "limitations": [
+    "planner_only",
+    "not_execution_authorization",
+    "scanner_binary_trust_boundary",
+    "scanner_version_specific",
+    "raw_output_not_retained"
+  ],
+  "residual_risks": [
+    "scanner_output_formats_unconfirmed",
+    "local_runner_unimplemented",
+    "scanner_binary_attestation_unimplemented"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "findings": [],
+  "expected": {
+    "highest_risk_tier_effect": "none",
+    "gate_effects": [
+      "evidence_only"
+    ],
+    "rules_fired": [],
+    "cannot_lower_risk": true
+  }
+}

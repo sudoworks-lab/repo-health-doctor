@@ -1,0 +1,22 @@
+{
+  "no_findings": {
+    "expected_count": 1,
+    "present": false,
+    "can_lower_risk": false,
+    "can_authorize_execution": false,
+    "recommended_gate_effect": "warn"
+  },
+  "redacted_finding": {
+    "expected_count": 1,
+    "category": "secret",
+    "subcategory": "secret_candidate",
+    "severity": "block",
+    "redaction_status": "validated",
+    "can_authorize_execution": false
+  },
+  "unredacted_finding": {
+    "expected_count": 1,
+    "redaction_status": "failed",
+    "blocking_error": "redaction_status_failed"
+  }
+}

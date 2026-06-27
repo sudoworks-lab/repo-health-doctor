@@ -1,0 +1,490 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repo-health-doctor://schemas/external-scanner-result.schema.json",
+  "title": "repo-health-doctor external scanner result",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "report_kind",
+    "scanner",
+    "input_scope",
+    "execution_context",
+    "trust_level",
+    "execution_authorized",
+    "findings",
+    "evidence_nodes",
+    "evidence_edges",
+    "summary",
+    "mapping_result",
+    "redaction_status",
+    "limitations",
+    "residual_risks",
+    "binding"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["0.1-draft"]},
+    "report_kind": {"type": "string", "enum": ["external_scanner_result"]},
+    "scanner": {"$ref": "#/$defs/scanner"},
+    "input_scope": {"$ref": "#/$defs/input_scope"},
+    "execution_context": {"$ref": "#/$defs/execution_context"},
+    "trust_level": {"$ref": "#/$defs/trust_level"},
+    "execution_authorized": {"type": "boolean", "const": false},
+    "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "evidence_nodes": {"type": "array", "items": {"$ref": "#/$defs/evidence_node"}},
+    "evidence_edges": {"type": "array", "items": {"$ref": "#/$defs/evidence_edge"}},
+    "summary": {"$ref": "#/$defs/summary"},
+    "mapping_result": {"$ref": "#/$defs/mapping_result"},
+    "redaction_status": {"$ref": "#/$defs/redaction_status"},
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/limitation"}
+    },
+    "residual_risks": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/residual_risk"}
+    },
+    "binding": {"$ref": "#/$defs/binding"}
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "scanner": {
+            "properties": {
+              "mode": {"const": "imported_report"}
+            },
+            "required": ["mode"]
+          }
+        },
+        "required": ["scanner"]
+      },
+      "then": {
+        "properties": {
+          "execution_context": {
+            "properties": {
+              "raw_output_retained": {"const": false}
+            },
+            "required": ["raw_output_retained"]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "scanner_mode": {
+      "type": "string",
+      "enum": [
+        "imported_report",
+        "local_static_no_network",
+        "local_static_network",
+        "remote_api",
+        "local_dynamic_sandbox"
+      ]
+    },
+    "primary_category": {
+      "type": "string",
+      "enum": [
+        "secret",
+        "credential_access",
+        "vulnerability",
+        "malicious_behavior",
+        "ci_cd_risk",
+        "repo_posture",
+        "dependency_risk",
+        "sandbox_escape_risk",
+        "scanner_failure",
+        "redaction_failure",
+        "unknown"
+      ]
+    },
+    "secondary_category": {
+      "type": "string",
+      "enum": [
+        "verified_secret",
+        "secret_like_value",
+        "credential_path_reference",
+        "host_home_reference",
+        "known_critical_vulnerability",
+        "install_script_execution",
+        "download_exec_chain",
+        "obfuscation",
+        "dynamic_eval",
+        "network_request",
+        "network_exfiltration_indicator",
+        "docker_socket_reference",
+        "pull_request_target_misuse",
+        "broad_token_permission",
+        "unpinned_action",
+        "dependency_confusion_signal",
+        "low_security_posture",
+        "unsupported_scanner_version",
+        "scanner_timeout",
+        "raw_secret_leak",
+        "raw_host_path_leak",
+        "unknown"
+      ]
+    },
+    "risk_tier_effect": {
+      "type": "string",
+      "enum": [
+        "none",
+        "raise_to_T2",
+        "raise_to_T3",
+        "raise_to_T4",
+        "raise_to_T5",
+        "T5_candidate"
+      ]
+    },
+    "gate_effect": {
+      "type": "string",
+      "enum": [
+        "evidence_only",
+        "raises_risk",
+        "requires_human_review",
+        "blocks_live_execution",
+        "requires_dedicated_vm",
+        "quarantine"
+      ]
+    },
+    "trust_level": {
+      "type": "string",
+      "enum": [
+        "untrusted_import",
+        "schema_validated_import",
+        "commit_bound_import",
+        "policy_bound_import",
+        "local_reproducible",
+        "attested_reproducible"
+      ]
+    },
+    "unknown_reason": {
+      "type": "string",
+      "enum": [
+        "unsupported_scanner",
+        "unsupported_version",
+        "parse_failure",
+        "scope_ambiguous",
+        "commit_mismatch",
+        "redaction_unverified",
+        "scanner_unavailable",
+        "timeout",
+        "policy_missing",
+        "adapter_missing",
+        "unknown"
+      ]
+    },
+    "limitation_id": {
+      "type": "string",
+      "enum": [
+        "scanner_scope_only",
+        "not_execution_authorization",
+        "external_result_trust_limited",
+        "raw_output_not_retained",
+        "scanner_binary_trust_boundary",
+        "scanner_version_specific"
+      ]
+    },
+    "scanner": {
+      "type": "object",
+      "required": [
+        "name",
+        "version",
+        "adapter_version",
+        "category",
+        "mode",
+        "scanner_source",
+        "trusted_binary_status",
+        "unsupported_version"
+      ],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1},
+        "adapter_version": {"type": "string", "minLength": 1},
+        "category": {
+          "type": "string",
+          "enum": [
+            "secret_detection",
+            "vulnerability",
+            "sbom",
+            "repo_posture",
+            "ci_cd_risk",
+            "malicious_package_static",
+            "custom_static",
+            "unknown"
+          ]
+        },
+        "mode": {"$ref": "#/$defs/scanner_mode"},
+        "scanner_source": {
+          "type": "string",
+          "enum": ["external_binary", "remote_service", "imported_file", "internal_adapter", "unknown"]
+        },
+        "trusted_binary_status": {
+          "type": "string",
+          "enum": ["not_applicable", "unverified", "hash_verified", "attested", "unknown"]
+        },
+        "unsupported_version": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "input_scope": {
+      "type": "object",
+      "required": [
+        "scope",
+        "source_type",
+        "repo_commit",
+        "dirty_state",
+        "input_fingerprint",
+        "included_paths",
+        "excluded_paths"
+      ],
+      "properties": {
+        "scope": {"type": "string", "enum": ["repo", "subdir", "manifest", "lockfile", "sbom", "workflow", "imported_report", "unknown"]},
+        "source_type": {"type": "string", "enum": ["working_tree", "git_commit", "archive", "sbom", "imported_report", "unknown"]},
+        "repo_commit": {"type": ["string", "null"]},
+        "dirty_state": {"type": "string", "enum": ["clean", "dirty", "unknown", "not_applicable"]},
+        "input_fingerprint": {"type": ["string", "null"], "pattern": "^(sha256:[0-9a-f]{64})$"},
+        "included_paths": {"type": "array", "items": {"type": "string"}},
+        "excluded_paths": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "execution_context": {
+      "type": "object",
+      "required": [
+        "network_used",
+        "target_code_executed",
+        "docker_used",
+        "scanner_downloaded_dependencies",
+        "raw_output_available",
+        "raw_output_retained",
+        "timeout_occurred",
+        "scanner_completed"
+      ],
+      "properties": {
+        "network_used": {"type": "boolean"},
+        "target_code_executed": {"type": "boolean"},
+        "docker_used": {"type": "boolean"},
+        "scanner_downloaded_dependencies": {"type": "boolean"},
+        "raw_output_available": {"type": "boolean"},
+        "raw_output_retained": {"type": "boolean"},
+        "timeout_occurred": {"type": "boolean"},
+        "scanner_completed": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "required": [
+        "finding_id",
+        "scanner_rule_id",
+        "primary_category",
+        "secondary_category",
+        "scanner_severity",
+        "normalized_severity",
+        "confidence",
+        "title",
+        "redacted_description",
+        "location",
+        "evidence",
+        "risk_mapping",
+        "gate_effect"
+      ],
+      "properties": {
+        "finding_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+        "scanner_rule_id": {"type": ["string", "null"]},
+        "primary_category": {"$ref": "#/$defs/primary_category"},
+        "secondary_category": {"$ref": "#/$defs/secondary_category"},
+        "scanner_severity": {"type": ["string", "null"]},
+        "normalized_severity": {"type": "string", "enum": ["info", "warn", "block", "unknown"]},
+        "confidence": {"type": "string", "enum": ["low", "medium", "high", "unknown"]},
+        "title": {"type": "string"},
+        "redacted_description": {"type": "string"},
+        "location": {"$ref": "#/$defs/location"},
+        "evidence": {"type": "array", "items": {"type": "string"}},
+        "risk_mapping": {"$ref": "#/$defs/finding_risk_mapping"},
+        "gate_effect": {"$ref": "#/$defs/gate_effect"}
+      },
+      "additionalProperties": false
+    },
+    "location": {
+      "type": "object",
+      "required": ["path", "line", "column"],
+      "properties": {
+        "path": {"type": ["string", "null"]},
+        "line": {"type": ["integer", "null"], "minimum": 1},
+        "column": {"type": ["integer", "null"], "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "finding_risk_mapping": {
+      "type": "object",
+      "required": ["risk_tier_effect", "rule_ids"],
+      "properties": {
+        "risk_tier_effect": {"$ref": "#/$defs/risk_tier_effect"},
+        "rule_ids": {"type": "array", "items": {"$ref": "#/$defs/risk_rule_id"}}
+      },
+      "additionalProperties": false
+    },
+    "evidence_node": {
+      "type": "object",
+      "required": ["node_id", "primary_category", "secondary_category", "title", "redacted_summary", "location", "confidence"],
+      "properties": {
+        "node_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+        "primary_category": {"$ref": "#/$defs/primary_category"},
+        "secondary_category": {"$ref": "#/$defs/secondary_category"},
+        "title": {"type": "string"},
+        "redacted_summary": {"type": "string"},
+        "location": {"$ref": "#/$defs/location"},
+        "confidence": {"type": "string", "enum": ["low", "medium", "high", "unknown"]}
+      },
+      "additionalProperties": false
+    },
+    "evidence_edge": {
+      "type": "object",
+      "required": ["edge_id", "from_node", "to_node", "relation"],
+      "properties": {
+        "edge_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+        "from_node": {"type": "string"},
+        "to_node": {"type": "string"},
+        "relation": {
+          "type": "string",
+          "enum": [
+            "same_file",
+            "same_package",
+            "same_workflow",
+            "same_execution_path",
+            "lifecycle_to_runtime",
+            "credential_to_network",
+            "ci_token_to_untrusted_code",
+            "docker_to_host_access"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": ["outcome", "finding_count", "highest_risk_tier_effect", "gate_effects"],
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "no_findings_in_scope",
+            "findings_present",
+            "block",
+            "unknown",
+            "not_applicable"
+          ]
+        },
+        "unknown_reason": {"$ref": "#/$defs/unknown_reason"},
+        "finding_count": {"type": "integer", "minimum": 0},
+        "highest_risk_tier_effect": {"$ref": "#/$defs/risk_tier_effect"},
+        "gate_effects": {"type": "array", "items": {"$ref": "#/$defs/gate_effect"}}
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {"outcome": {"const": "unknown"}},
+            "required": ["outcome"]
+          },
+          "then": {"required": ["unknown_reason"]}
+        }
+      ]
+    },
+    "mapping_result": {
+      "type": "object",
+      "required": ["risk_tier_effect", "gate_effects", "rules_fired", "risk_lowering_allowed"],
+      "properties": {
+        "risk_tier_effect": {"$ref": "#/$defs/risk_tier_effect"},
+        "gate_effects": {"type": "array", "items": {"$ref": "#/$defs/gate_effect"}},
+        "rules_fired": {"type": "array", "items": {"$ref": "#/$defs/risk_rule_id"}},
+        "risk_lowering_allowed": {"type": "boolean", "const": false}
+      },
+      "additionalProperties": false
+    },
+    "redaction_status": {
+      "type": "object",
+      "required": [
+        "raw_secret_present",
+        "raw_host_path_present",
+        "raw_scanner_output_included",
+        "raw_stdout_stderr_included",
+        "unredacted_snippet_present",
+        "redaction_validated"
+      ],
+      "properties": {
+        "raw_secret_present": {"type": "boolean"},
+        "raw_host_path_present": {"type": "boolean"},
+        "raw_scanner_output_included": {"type": "boolean"},
+        "raw_stdout_stderr_included": {"type": "boolean"},
+        "unredacted_snippet_present": {"type": "boolean"},
+        "redaction_validated": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "limitation": {
+      "type": "object",
+      "required": ["limitation_id", "description"],
+      "properties": {
+        "limitation_id": {"$ref": "#/$defs/limitation_id"},
+        "description": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "residual_risk": {
+      "type": "object",
+      "required": ["risk_id", "description"],
+      "properties": {
+        "risk_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+        "description": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "binding": {
+      "type": "object",
+      "required": [
+        "repo_commit",
+        "input_fingerprint",
+        "source_report_fingerprint",
+        "policy_fingerprint",
+        "adapter_fingerprint"
+      ],
+      "properties": {
+        "repo_commit": {"type": ["string", "null"]},
+        "input_fingerprint": {"type": ["string", "null"], "pattern": "^(sha256:[0-9a-f]{64})$"},
+        "source_report_fingerprint": {"type": ["string", "null"], "pattern": "^(sha256:[0-9a-f]{64})$"},
+        "policy_fingerprint": {"type": ["string", "null"], "pattern": "^(sha256:[0-9a-f]{64})$"},
+        "adapter_fingerprint": {"type": ["string", "null"], "pattern": "^(sha256:[0-9a-f]{64})$"}
+      },
+      "additionalProperties": false
+    },
+    "risk_rule_id": {
+      "type": "string",
+      "enum": [
+        "RISK001",
+        "RISK002",
+        "RISK003",
+        "RISK004",
+        "RISK005",
+        "RISK006",
+        "RISK007",
+        "RISK008",
+        "RISK009",
+        "RISK010",
+        "RISK011",
+        "RISK012",
+        "RISK013",
+        "RISK014",
+        "RISK015",
+        "RISK016",
+        "RISK017",
+        "RISK018",
+        "RISK019",
+        "RISK020"
+      ]
+    }
+  }
+}

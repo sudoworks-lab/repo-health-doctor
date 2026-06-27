@@ -1,0 +1,14 @@
+[
+  {
+    "Description": "Synthetic unsafe Secret field",
+    "StartLine": 4,
+    "EndLine": 4,
+    "StartColumn": 10,
+    "EndColumn": 34,
+    "Match": "<redacted-secret-fingerprint>",
+    "Secret": "plain-text-fixture-value",
+    "File": "config/example.env",
+    "RuleID": "synthetic-unredacted-secret",
+    "Fingerprint": "0000000000000000000000000000000000000000:config/example.env:synthetic-unredacted-secret:4"
+  }
+]

@@ -1,0 +1,152 @@
+"""Sandbox planning support for repo-health-doctor."""
+
+from .command import REPORT_KIND_SANDBOX, run_sandbox
+from .approval_draft import (
+    REPORT_KIND_APPROVAL_DRAFT,
+    generate_unknown_repo_approval_draft,
+    validate_unknown_repo_approval_draft,
+)
+from .approval_promotion import (
+    COMMAND_APPROVAL_SCHEMA_VERSION,
+    REPORT_KIND_COMMAND_APPROVAL,
+    REPORT_KIND_COMMAND_APPROVAL_VALIDATION,
+    validate_unknown_repo_command_approval,
+    validate_unknown_repo_command_approval_report,
+)
+from .behavior_policy import (
+    BEHAVIOR_POLICY_SCHEMA_VERSION,
+    REPORT_KIND_BEHAVIOR_POLICY,
+    REPORT_KIND_BEHAVIOR_VERDICT,
+    behavior_policy_binding_fingerprint,
+    build_default_behavior_policy,
+    evaluate_behavior_policy,
+    validate_behavior_evidence,
+    validate_behavior_policy,
+)
+from .observer_evidence import (
+    NORMALIZED_OBSERVER_EVIDENCE_SCHEMA_VERSION,
+    REPORT_KIND_NORMALIZED_OBSERVER_EVIDENCE,
+    REPORT_KIND_NORMALIZED_OBSERVER_EVIDENCE_VALIDATION,
+    normalized_observer_evidence_pass_blockers,
+    normalized_observer_evidence_to_behavior_evidence,
+    validate_normalized_observer_evidence,
+    validate_normalized_observer_evidence_report,
+)
+from .image_lock import (
+    IMAGE_LOCK_SCHEMA_VERSION,
+    REPORT_KIND_IMAGE_LOCK,
+    REPORT_KIND_IMAGE_LOCK_VALIDATION,
+    build_registry_image_lock,
+    validate_sandbox_image_lock,
+    validate_sandbox_image_lock_report,
+)
+from .image_attestation import (
+    IMAGE_ATTESTATION_SCHEMA_VERSION,
+    REPORT_KIND_IMAGE_ATTESTATION,
+    REPORT_KIND_IMAGE_ATTESTATION_VALIDATION,
+    validate_sandbox_image_attestation,
+    validate_sandbox_image_attestation_report,
+)
+from .lock_binding import (
+    LOCK_BINDING_SCHEMA_VERSION,
+    REPORT_KIND_IMAGE_LOCK_BINDING_VALIDATION,
+    validate_sandbox_image_lock_binding,
+    validate_sandbox_image_lock_binding_report,
+)
+from .behavior_policy_binding import (
+    BEHAVIOR_POLICY_BINDING_SCHEMA_VERSION,
+    REPORT_KIND_BEHAVIOR_POLICY_BINDING_VALIDATION,
+    validate_sandbox_behavior_policy_binding,
+    validate_sandbox_behavior_policy_binding_report,
+)
+from .dry_run import REPORT_KIND_UNKNOWN_REPO_DRY_RUN, run_unknown_repo_controlled_dry_run
+from .static_transition import (
+    REPORT_KIND_STATIC_TRANSITION_VALIDATION,
+    STATIC_TRANSITION_SCHEMA_VERSION,
+    build_controlled_static_transition_inputs,
+    run_controlled_static_transition,
+)
+from .runner_preflight import (
+    REPORT_KIND_RUNNER_PREFLIGHT,
+    RUNNER_PREFLIGHT_SCHEMA_VERSION,
+    run_non_executing_runner_preflight,
+)
+from .report import (
+    format_sandbox_json,
+    format_sandbox_markdown,
+    format_sandbox_text,
+    format_unknown_repo_approval_draft_json,
+    format_unknown_repo_approval_draft_markdown,
+    format_unknown_repo_approval_draft_text,
+    format_unknown_repo_profile_json,
+    format_unknown_repo_profile_markdown,
+    format_unknown_repo_profile_text,
+)
+from .unknown_profile import REPORT_KIND_UNKNOWN_REPO_PROFILE, profile_unknown_repo
+
+__all__ = [
+    "REPORT_KIND_SANDBOX",
+    "REPORT_KIND_UNKNOWN_REPO_PROFILE",
+    "REPORT_KIND_APPROVAL_DRAFT",
+    "COMMAND_APPROVAL_SCHEMA_VERSION",
+    "REPORT_KIND_COMMAND_APPROVAL",
+    "REPORT_KIND_COMMAND_APPROVAL_VALIDATION",
+    "REPORT_KIND_BEHAVIOR_POLICY",
+    "REPORT_KIND_BEHAVIOR_VERDICT",
+    "BEHAVIOR_POLICY_SCHEMA_VERSION",
+    "NORMALIZED_OBSERVER_EVIDENCE_SCHEMA_VERSION",
+    "REPORT_KIND_NORMALIZED_OBSERVER_EVIDENCE",
+    "REPORT_KIND_NORMALIZED_OBSERVER_EVIDENCE_VALIDATION",
+    "IMAGE_LOCK_SCHEMA_VERSION",
+    "REPORT_KIND_IMAGE_LOCK",
+    "REPORT_KIND_IMAGE_LOCK_VALIDATION",
+    "IMAGE_ATTESTATION_SCHEMA_VERSION",
+    "REPORT_KIND_IMAGE_ATTESTATION",
+    "REPORT_KIND_IMAGE_ATTESTATION_VALIDATION",
+    "LOCK_BINDING_SCHEMA_VERSION",
+    "REPORT_KIND_IMAGE_LOCK_BINDING_VALIDATION",
+    "BEHAVIOR_POLICY_BINDING_SCHEMA_VERSION",
+    "REPORT_KIND_BEHAVIOR_POLICY_BINDING_VALIDATION",
+    "REPORT_KIND_UNKNOWN_REPO_DRY_RUN",
+    "STATIC_TRANSITION_SCHEMA_VERSION",
+    "REPORT_KIND_STATIC_TRANSITION_VALIDATION",
+    "RUNNER_PREFLIGHT_SCHEMA_VERSION",
+    "REPORT_KIND_RUNNER_PREFLIGHT",
+    "format_sandbox_json",
+    "format_sandbox_markdown",
+    "format_sandbox_text",
+    "format_unknown_repo_approval_draft_json",
+    "format_unknown_repo_approval_draft_markdown",
+    "format_unknown_repo_approval_draft_text",
+    "format_unknown_repo_profile_json",
+    "format_unknown_repo_profile_markdown",
+    "format_unknown_repo_profile_text",
+    "profile_unknown_repo",
+    "generate_unknown_repo_approval_draft",
+    "build_default_behavior_policy",
+    "behavior_policy_binding_fingerprint",
+    "evaluate_behavior_policy",
+    "build_registry_image_lock",
+    "run_unknown_repo_controlled_dry_run",
+    "build_controlled_static_transition_inputs",
+    "run_controlled_static_transition",
+    "run_non_executing_runner_preflight",
+    "run_sandbox",
+    "validate_unknown_repo_approval_draft",
+    "validate_unknown_repo_command_approval",
+    "validate_unknown_repo_command_approval_report",
+    "validate_behavior_evidence",
+    "validate_behavior_policy",
+    "validate_normalized_observer_evidence",
+    "validate_normalized_observer_evidence_report",
+    "normalized_observer_evidence_pass_blockers",
+    "normalized_observer_evidence_to_behavior_evidence",
+    "validate_sandbox_image_lock",
+    "validate_sandbox_image_lock_report",
+    "validate_sandbox_image_attestation",
+    "validate_sandbox_image_attestation_report",
+    "validate_sandbox_image_lock_binding",
+    "validate_sandbox_image_lock_binding_report",
+    "validate_sandbox_behavior_policy_binding",
+    "validate_sandbox_behavior_policy_binding_report",
+]

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sandbox image lock binding validation report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "report_kind",
+    "verdict",
+    "binding_status",
+    "approval_reference",
+    "image_lock_reference",
+    "behavior_policy_reference",
+    "checked_fields",
+    "mismatches",
+    "blockers",
+    "warnings",
+    "limitations",
+    "residual_risks",
+    "redaction_status",
+    "execution_permitted",
+    "runner_connected",
+    "docker_contacted"
+  ],
+  "properties": {
+    "schema_version": {"enum": ["0.1-draft"]},
+    "report_kind": {"enum": ["sandbox_image_lock_binding_validation"]},
+    "verdict": {"enum": ["pass", "warn", "block"]},
+    "binding_status": {"enum": ["matched", "matched_with_local_limitations", "invalid_or_mismatch"]},
+    "approval_reference": {"type": "object"},
+    "image_lock_reference": {"type": "object"},
+    "behavior_policy_reference": {"type": "object"},
+    "checked_fields": {"type": "array", "items": {"type": "string"}},
+    "mismatches": {"type": "array", "items": {"type": "string"}},
+    "blockers": {"type": "array", "items": {"type": "string"}},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "residual_risks": {"type": "array", "items": {"type": "string"}},
+    "redaction_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw_host_paths_redacted", "secret_like_values_redacted"],
+      "properties": {
+        "raw_host_paths_redacted": {"const": true},
+        "secret_like_values_redacted": {"const": true}
+      }
+    },
+    "execution_permitted": {"const": false},
+    "runner_connected": {"const": false},
+    "docker_contacted": {"const": false}
+  }
+}

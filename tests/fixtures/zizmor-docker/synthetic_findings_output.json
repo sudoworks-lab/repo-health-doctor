@@ -1,0 +1,24 @@
+{
+  "fixture_kind": "synthetic_zizmor_style_v0",
+  "scanner_version": "0.0.0-docker-fixture",
+  "status": "ok",
+  "findings": [
+    {
+      "rule_id": "zizmor.docker.synthetic.pull_request_target",
+      "kind": "pull_request_target_untrusted_checkout",
+      "path": "<repo>/.github/workflows/ci.yml",
+      "line": 7,
+      "title": "Synthetic Docker-isolated finding",
+      "description": "Synthetic Docker runner evidence for workflow review.",
+      "evidence": ["untrusted_checkout"]
+    }
+  ],
+  "redaction_status": {
+    "raw_secret_present": false,
+    "raw_host_path_present": false,
+    "raw_scanner_output_included": false,
+    "raw_stdout_stderr_included": false,
+    "unredacted_snippet_present": false,
+    "redaction_validated": true
+  }
+}

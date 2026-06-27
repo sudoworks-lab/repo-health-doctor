@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Controlled sandbox static transition validation report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "report_kind", "mode", "fixture_name", "source_risk_tier",
+    "transition_status", "approved", "execution_permitted", "runner_connected",
+    "docker_contacted", "observer_capture_performed", "approval_artifact_generated",
+    "live_candidate_generated", "component_results", "blockers", "warnings",
+    "limitations", "residual_risks", "redaction_status"
+  ],
+  "properties": {
+    "schema_version": {"enum": ["0.1-draft"]},
+    "report_kind": {"enum": ["sandbox_static_transition_validation"]},
+    "mode": {"const": "static_transition_test"},
+    "fixture_name": {"type": "string"},
+    "source_risk_tier": {"enum": ["T0", "T1", "T2", "T3", "T4", "T5", "unavailable"]},
+    "transition_status": {"enum": ["pass", "warn", "block"]},
+    "approved": {"const": false},
+    "execution_permitted": {"const": false},
+    "runner_connected": {"const": false},
+    "docker_contacted": {"const": false},
+    "observer_capture_performed": {"const": false},
+    "approval_artifact_generated": {"const": false},
+    "live_candidate_generated": {"type": "boolean"},
+    "component_results": {"type": "object"},
+    "blockers": {"type": "array", "items": {"type": "string"}},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "residual_risks": {"type": "array", "items": {"type": "string"}},
+    "redaction_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw_host_paths_redacted", "secret_like_values_redacted"],
+      "properties": {
+        "raw_host_paths_redacted": {"const": true},
+        "secret_like_values_redacted": {"const": true}
+      }
+    }
+  }
+}

@@ -1,0 +1,337 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://repo-health-doctor.local/schemas/sandbox-image-attestation.schema.json",
+  "title": "Sandbox Image Attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "report_kind",
+    "attestation_id",
+    "mode",
+    "image",
+    "lock_binding",
+    "tool_inventory",
+    "runtime_flags_attested",
+    "operator_attestation",
+    "local_sanctioned",
+    "limitations",
+    "residual_risks",
+    "redaction"
+  ],
+  "properties": {
+    "schema_version": {
+      "enum": [
+        "0.1-draft"
+      ]
+    },
+    "report_kind": {
+      "enum": [
+        "sandbox_image_attestation"
+      ]
+    },
+    "attestation_id": {
+      "type": "string"
+    },
+    "mode": {
+      "const": "static_attestation_input"
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "image_logical_name",
+        "image_reference",
+        "image_reference_kind",
+        "registry_digest",
+        "full_image_id",
+        "platform",
+        "architecture",
+        "os",
+        "variant"
+      ],
+      "properties": {
+        "image_logical_name": {
+          "type": "string"
+        },
+        "image_reference": {
+          "type": "string"
+        },
+        "image_reference_kind": {
+          "enum": [
+            "registry_digest",
+            "local_image_id"
+          ]
+        },
+        "registry_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "full_image_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "platform": {
+          "$ref": "#/$defs/platform"
+        },
+        "architecture": {
+          "enum": [
+            "amd64",
+            "arm64"
+          ]
+        },
+        "os": {
+          "const": "linux"
+        },
+        "variant": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "lock_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "image_lock_schema_version",
+        "image_lock_report_kind",
+        "image_lock_id",
+        "expected_registry_digest",
+        "expected_full_image_id",
+        "expected_platform"
+      ],
+      "properties": {
+        "image_lock_schema_version": {
+          "const": "0.1-draft"
+        },
+        "image_lock_report_kind": {
+          "const": "sandbox_image_lock"
+        },
+        "image_lock_id": {
+          "type": "string"
+        },
+        "expected_registry_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expected_full_image_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expected_platform": {
+          "$ref": "#/$defs/platform"
+        }
+      }
+    },
+    "tool_inventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "python",
+        "node",
+        "pip",
+        "npm",
+        "strace",
+        "other_tools"
+      ],
+      "properties": {
+        "python": {
+          "type": "string"
+        },
+        "node": {
+          "type": "string"
+        },
+        "pip": {
+          "type": "string"
+        },
+        "npm": {
+          "type": "string"
+        },
+        "strace": {
+          "type": "string"
+        },
+        "other_tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "runtime_flags_attested": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pull_policy",
+        "network",
+        "shell",
+        "no_host_home",
+        "no_docker_socket",
+        "no_credentials",
+        "read_only_rootfs",
+        "non_root_user",
+        "no_new_privileges"
+      ],
+      "properties": {
+        "pull_policy": {
+          "const": "never"
+        },
+        "network": {
+          "const": "none"
+        },
+        "shell": {
+          "const": false
+        },
+        "no_host_home": {
+          "const": true
+        },
+        "no_docker_socket": {
+          "const": true
+        },
+        "no_credentials": {
+          "const": true
+        },
+        "read_only_rootfs": {
+          "const": true
+        },
+        "non_root_user": {
+          "const": true
+        },
+        "no_new_privileges": {
+          "const": true
+        }
+      }
+    },
+    "operator_attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attested_by",
+        "attested_at",
+        "source",
+        "method",
+        "docker_engine_version",
+        "docker_desktop_version",
+        "runc_version",
+        "containerd_version",
+        "notes"
+      ],
+      "properties": {
+        "attested_by": {
+          "type": "string"
+        },
+        "attested_at": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "docker_engine_version": {
+          "type": "string"
+        },
+        "docker_desktop_version": {
+          "type": "string"
+        },
+        "runc_version": {
+          "type": "string"
+        },
+        "containerd_version": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "local_sanctioned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowed",
+        "dev_only",
+        "portability_limitation"
+      ],
+      "properties": {
+        "allowed": {
+          "type": "boolean"
+        },
+        "dev_only": {
+          "type": "boolean"
+        },
+        "portability_limitation": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "residual_risks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_host_path_present",
+        "raw_secret_like_value_present"
+      ],
+      "properties": {
+        "raw_host_path_present": {
+          "const": false
+        },
+        "raw_secret_like_value_present": {
+          "const": false
+        }
+      }
+    }
+  },
+  "$defs": {
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "os",
+        "architecture"
+      ],
+      "properties": {
+        "os": {
+          "const": "linux"
+        },
+        "architecture": {
+          "enum": [
+            "amd64",
+            "arm64"
+          ]
+        }
+      }
+    }
+  }
+}

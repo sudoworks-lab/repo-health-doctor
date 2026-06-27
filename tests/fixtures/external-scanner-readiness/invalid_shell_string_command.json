@@ -1,0 +1,6 @@
+{
+  "mutations": {
+    "scanner_argv": "zizmor --format json .github/workflows"
+  },
+  "expected_error": "scanner_shell_string_command_forbidden"
+}

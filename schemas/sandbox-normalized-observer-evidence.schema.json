@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repo-health-doctor://schemas/sandbox-normalized-observer-evidence.schema.json",
+  "title": "repo-health-doctor normalized observer evidence",
+  "type": "object",
+  "required": ["schema_version", "report_kind", "evidence_id", "source", "command", "execution", "counts", "flags", "summaries", "redaction"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["0.1-draft"]},
+    "report_kind": {"type": "string", "enum": ["sandbox_normalized_observer_evidence"]},
+    "evidence_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "source": {"$ref": "#/$defs/source"},
+    "command": {"$ref": "#/$defs/command"},
+    "execution": {"$ref": "#/$defs/execution"},
+    "counts": {"$ref": "#/$defs/counts"},
+    "flags": {"$ref": "#/$defs/flags"},
+    "summaries": {"$ref": "#/$defs/summaries"},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "labels": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"}},
+    "source": {"type": "object", "required": ["observer_mode", "strace_available", "strace_log_present", "strace_parse_success", "runtime_hook_available", "runtime_hook_active", "runtime_hook_parse_success", "observer_degraded", "degraded_reasons"], "properties": {"observer_mode": {"type": "string", "enum": ["strace_runtime_hook", "strace_only", "runtime_hook_only", "none"]}, "strace_available": {"type": "boolean"}, "strace_log_present": {"type": "boolean"}, "strace_parse_success": {"type": "boolean"}, "runtime_hook_available": {"type": "boolean"}, "runtime_hook_active": {"type": "boolean"}, "runtime_hook_parse_success": {"type": "boolean"}, "observer_degraded": {"type": "boolean"}, "degraded_reasons": {"$ref": "#/$defs/labels"}}, "additionalProperties": false},
+    "command": {"type": "object", "required": ["phase", "kind", "cwd", "argv_fingerprint", "shell", "network_policy"], "properties": {"phase": {"type": "string", "enum": ["phase2_install_probe", "phase3_runtime_probe"]}, "kind": {"type": "string"}, "cwd": {"type": "string", "pattern": "^/workspace(?:/.*)?$"}, "argv_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "shell": {"type": "boolean", "enum": [false]}, "network_policy": {"type": "string", "enum": ["none"]}}, "additionalProperties": false},
+    "execution": {"type": "object", "required": ["return_code", "timeout", "duration_ms", "completed"], "properties": {"return_code": {"type": ["integer", "null"]}, "timeout": {"type": "boolean"}, "duration_ms": {"type": "integer", "minimum": 0}, "completed": {"type": "boolean"}}, "additionalProperties": false},
+    "counts": {"type": "object", "required": ["process_event_count", "unexpected_exec_count", "subprocess_event_count", "network_event_count", "file_write_event_count", "outside_allowed_write_count", "denied_read_count", "docker_socket_access_count", "host_home_access_count", "secret_event_count", "outside_writable_delete_count", "strace_parse_error_count", "runtime_hook_parse_error_count"], "properties": {"process_event_count": {"type": "integer", "minimum": 0}, "unexpected_exec_count": {"type": "integer", "minimum": 0}, "subprocess_event_count": {"type": "integer", "minimum": 0}, "network_event_count": {"type": "integer", "minimum": 0}, "file_write_event_count": {"type": "integer", "minimum": 0}, "outside_allowed_write_count": {"type": "integer", "minimum": 0}, "denied_read_count": {"type": "integer", "minimum": 0}, "docker_socket_access_count": {"type": "integer", "minimum": 0}, "host_home_access_count": {"type": "integer", "minimum": 0}, "secret_event_count": {"type": "integer", "minimum": 0}, "outside_writable_delete_count": {"type": "integer", "minimum": 0}, "strace_parse_error_count": {"type": "integer", "minimum": 0}, "runtime_hook_parse_error_count": {"type": "integer", "minimum": 0}}, "additionalProperties": false},
+    "flags": {"type": "object", "required": ["evidence_complete", "raw_logs_included", "stdout_included", "stderr_included", "host_paths_redacted", "secrets_redacted"], "properties": {"evidence_complete": {"type": "boolean"}, "raw_logs_included": {"type": "boolean", "enum": [false]}, "stdout_included": {"type": "boolean", "enum": [false]}, "stderr_included": {"type": "boolean", "enum": [false]}, "host_paths_redacted": {"type": "boolean", "enum": [true]}, "secrets_redacted": {"type": "boolean", "enum": [true]}}, "additionalProperties": false},
+    "summaries": {"type": "object", "required": ["process_summary", "file_summary", "network_summary", "secret_summary", "limitations", "residual_risks"], "properties": {"process_summary": {"$ref": "#/$defs/labels"}, "file_summary": {"$ref": "#/$defs/labels"}, "network_summary": {"$ref": "#/$defs/labels"}, "secret_summary": {"$ref": "#/$defs/labels"}, "limitations": {"$ref": "#/$defs/labels"}, "residual_risks": {"$ref": "#/$defs/labels"}}, "additionalProperties": false},
+    "redaction": {"type": "object", "required": ["status", "raw_host_path_present", "raw_secret_like_value_present"], "properties": {"status": {"type": "string", "enum": ["redacted"]}, "raw_host_path_present": {"type": "boolean", "enum": [false]}, "raw_secret_like_value_present": {"type": "boolean", "enum": [false]}}, "additionalProperties": false}
+  }
+}

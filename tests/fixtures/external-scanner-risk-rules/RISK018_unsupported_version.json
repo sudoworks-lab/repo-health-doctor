@@ -1,0 +1,18 @@
+{
+  "scanner": {
+    "unsupported_version": true
+  },
+  "summary": {
+    "outcome": "unknown",
+    "unknown_reason": "unsupported_version"
+  },
+  "expected": {
+    "highest_risk_tier_effect": "T5_candidate",
+    "gate_effects": [
+      "quarantine"
+    ],
+    "rules_fired": [
+      "RISK018"
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+[
+  {
+    "Description": "Generic API Key",
+    "StartLine": 12,
+    "EndLine": 12,
+    "File": "config/example.txt",
+    "Secret": "<redacted-secret-fingerprint>",
+    "RuleID": "generic-api-key",
+    "Fingerprint": "<redacted-secret-fingerprint>"
+  }
+]

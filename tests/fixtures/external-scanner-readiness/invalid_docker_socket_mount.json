@@ -1,0 +1,13 @@
+{
+  "mutations": {
+    "mounts": [
+      {
+        "type": "bind",
+        "source": "<docker-socket>",
+        "target": "<docker-socket>",
+        "read_only": true
+      }
+    ]
+  },
+  "expected_error": "docker_socket_mount_forbidden"
+}

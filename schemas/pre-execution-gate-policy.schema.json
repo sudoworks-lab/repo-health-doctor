@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repo-health-doctor://schemas/pre-execution-gate-policy.schema.json",
+  "title": "repo-health-doctor pre-execution gate policy",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "policy_kind",
+    "policy_version",
+    "fail_closed",
+    "mandatory_evidence",
+    "accepted_missing_evidence",
+    "missing_evidence",
+    "requested_dynamic_judgment",
+    "limitation_severity"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["0.1-draft"]},
+    "policy_kind": {"type": "string", "enum": ["pre_execution_gate_policy"]},
+    "policy_version": {"type": "string"},
+    "fail_closed": {"type": "boolean", "const": true},
+    "mandatory_evidence": {"type": "array", "items": {"type": "string"}},
+    "accepted_missing_evidence": {"type": "array", "items": {"type": "string"}},
+    "missing_evidence": {"type": "array", "items": {"type": "string"}},
+    "requested_dynamic_judgment": {"type": "boolean"},
+    "limitation_severity": {
+      "type": "object",
+      "properties": {
+        "low": {"type": "array", "items": {"type": "string"}},
+        "medium": {"type": "array", "items": {"type": "string"}},
+        "high": {"type": "array", "items": {"type": "string"}},
+        "critical": {"type": "array", "items": {"type": "string"}}
+      },
+      "required": ["low", "medium", "high", "critical"],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

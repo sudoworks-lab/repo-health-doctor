@@ -1,0 +1,55 @@
+{
+  "results": [
+    {
+      "source": {
+        "path": "package-lock.json",
+        "type": "lockfile"
+      },
+      "packages": [
+        {
+          "package": {
+            "name": "minimist",
+            "version": "0.0.8",
+            "ecosystem": "npm",
+            "purl": "pkg:npm/minimist@0.0.8"
+          },
+          "vulnerabilities": [
+            {
+              "id": "GHSA-vh95-rmgr-6w4m",
+              "summary": "Prototype pollution in minimist",
+              "details": "Redacted public vulnerability summary for compatibility testing.",
+              "aliases": ["CVE-2020-7598"],
+              "modified": "2026-01-01T00:00:00Z",
+              "published": "2020-03-12T00:00:00Z",
+              "database_specific": {
+                "severity": "CRITICAL"
+              },
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "name": "minimist",
+                    "ecosystem": "npm"
+                  },
+                  "ranges": []
+                }
+              ],
+              "references": [
+                {
+                  "type": "ADVISORY",
+                  "url": "https://example.invalid/osv/redacted-advisory"
+                }
+              ]
+            }
+          ],
+          "groups": []
+        }
+      ]
+    }
+  ]
+}

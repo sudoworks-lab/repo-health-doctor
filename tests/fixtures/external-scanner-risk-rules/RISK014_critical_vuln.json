@@ -1,0 +1,17 @@
+{
+  "findings": [
+    {
+      "primary_category": "vulnerability",
+      "secondary_category": "known_critical_vulnerability"
+    }
+  ],
+  "expected": {
+    "highest_risk_tier_effect": "raise_to_T3",
+    "gate_effects": [
+      "raises_risk"
+    ],
+    "rules_fired": [
+      "RISK014"
+    ]
+  }
+}

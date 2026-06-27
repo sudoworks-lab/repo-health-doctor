@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repo-health-doctor://schemas/public-safety-report.schema.json",
+  "title": "repo-health-doctor public safety report",
+  "type": "object",
+  "required": [
+    "tool",
+    "version",
+    "schema_version",
+    "repo_path",
+    "overall_status",
+    "summary",
+    "checks"
+  ],
+  "properties": {
+    "tool": {
+      "type": "string",
+      "enum": [
+        "repo-health-doctor"
+      ]
+    },
+    "version": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "string",
+      "enum": [
+        "1.1"
+      ]
+    },
+    "repo_path": {
+      "type": "string"
+    },
+    "overall_status": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "block"
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "pass",
+        "warn",
+        "block"
+      ],
+      "properties": {
+        "pass": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warn": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "block": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "status",
+          "summary",
+          "details"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "warn",
+              "block"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "properties": {
+              "findings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "rule_id",
+                    "severity",
+                    "file",
+                    "pattern",
+                    "redacted"
+                  ],
+                  "properties": {
+                    "rule_id": {
+                      "type": "string"
+                    },
+                    "severity": {
+                      "type": "string",
+                      "enum": [
+                        "warn",
+                        "block"
+                      ]
+                    },
+                    "file": {
+                      "type": "string"
+                    },
+                    "pattern": {
+                      "type": "string"
+                    },
+                    "redacted": {
+                      "type": "boolean"
+                    },
+                    "allowed": {
+                      "type": "boolean"
+                    },
+                    "matched_policy_id": {
+                      "type": "string"
+                    },
+                    "policy_source": {
+                      "type": "string",
+                      "enum": [
+                        "repo",
+                        "local"
+                      ]
+                    },
+                    "line": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "size_bytes": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "found": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "scanned_files": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "ignored_paths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "ignored_path_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "ignore_path_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "allow_finding_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "policy_sources": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "repo",
+                    "local"
+                  ]
+                }
+              },
+              "threshold_mb": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "threshold_bytes": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "scan_scope": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

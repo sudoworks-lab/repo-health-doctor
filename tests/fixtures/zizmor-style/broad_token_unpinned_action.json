@@ -1,0 +1,33 @@
+{
+  "fixture_kind": "synthetic_zizmor_style_v0",
+  "scanner_version": "0.0.0-fixture",
+  "status": "ok",
+  "findings": [
+    {
+      "rule_id": "zizmor-style.synthetic.broad_permission",
+      "kind": "broad_token_permission",
+      "path": "<repo>/.github/workflows/release.yml",
+      "line": 8,
+      "title": "Synthetic broad workflow permission",
+      "description": "Synthetic workflow permission evidence.",
+      "evidence": ["broad_token_permission"]
+    },
+    {
+      "rule_id": "zizmor-style.synthetic.unpinned_action",
+      "kind": "unpinned_action",
+      "path": "<repo>/.github/workflows/release.yml",
+      "line": 21,
+      "title": "Synthetic unpinned action",
+      "description": "Synthetic action pinning evidence.",
+      "evidence": ["unpinned_action"]
+    }
+  ],
+  "redaction_status": {
+    "raw_secret_present": false,
+    "raw_host_path_present": false,
+    "raw_scanner_output_included": false,
+    "raw_stdout_stderr_included": false,
+    "unredacted_snippet_present": false,
+    "redaction_validated": true
+  }
+}

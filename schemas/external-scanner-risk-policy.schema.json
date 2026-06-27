@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repo-health-doctor://schemas/external-scanner-risk-policy.schema.json",
+  "title": "repo-health-doctor external scanner risk policy",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "policy_version",
+    "policy_kind",
+    "risk_rules",
+    "chain_rules",
+    "gate_effects",
+    "required_limitations",
+    "forbidden_fields",
+    "scanner_mode_constraints",
+    "default_behavior",
+    "fail_closed_behavior"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": [
+        "0.1-draft"
+      ]
+    },
+    "policy_version": {
+      "type": "string",
+      "enum": [
+        "0.1"
+      ]
+    },
+    "policy_kind": {
+      "type": "string",
+      "enum": [
+        "external_scanner_risk_policy"
+      ]
+    },
+    "risk_rules": {
+      "type": "array",
+      "minItems": 20,
+      "items": {
+        "$ref": "#/$defs/risk_rule"
+      }
+    },
+    "chain_rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/chain_rule"
+      }
+    },
+    "gate_effects": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/gate_effect"
+      }
+    },
+    "required_limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "forbidden_fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "scanner_mode_constraints": {
+      "type": "object"
+    },
+    "default_behavior": {
+      "type": "object"
+    },
+    "fail_closed_behavior": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "risk_tier_effect": {
+      "type": "string",
+      "enum": [
+        "none",
+        "raise_to_T2",
+        "raise_to_T3",
+        "raise_to_T4",
+        "raise_to_T5",
+        "T5_candidate"
+      ]
+    },
+    "gate_effect": {
+      "type": "string",
+      "enum": [
+        "evidence_only",
+        "raises_risk",
+        "requires_human_review",
+        "blocks_live_execution",
+        "requires_dedicated_vm",
+        "quarantine"
+      ]
+    },
+    "risk_rule": {
+      "type": "object",
+      "required": [
+        "rule_id",
+        "description",
+        "match",
+        "risk_tier_effect",
+        "gate_effects",
+        "requires_human_review",
+        "blocks_live_execution",
+        "cannot_lower_risk",
+        "limitations",
+        "notes"
+      ],
+      "properties": {
+        "rule_id": {
+          "type": "string",
+          "pattern": "^RISK0[0-2][0-9]$"
+        },
+        "description": {
+          "type": "string"
+        },
+        "match": {
+          "type": "object"
+        },
+        "risk_tier_effect": {
+          "$ref": "#/$defs/risk_tier_effect"
+        },
+        "gate_effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/gate_effect"
+          }
+        },
+        "requires_human_review": {
+          "type": "boolean"
+        },
+        "blocks_live_execution": {
+          "type": "boolean"
+        },
+        "cannot_lower_risk": {
+          "type": "boolean"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "chain_rule": {
+      "type": "object",
+      "required": [
+        "rule_id",
+        "description",
+        "requires"
+      ],
+      "properties": {
+        "rule_id": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

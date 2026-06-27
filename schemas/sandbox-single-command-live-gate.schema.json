@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://repo-health-doctor.local/schemas/sandbox-single-command-live-gate.schema.json",
+  "title": "Sandbox Single Command Live Gate Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "report_kind",
+    "mode",
+    "execution_permitted",
+    "execution_performed",
+    "docker_contacted",
+    "docker_run_performed",
+    "observer_capture_performed",
+    "phase_live_performed",
+    "approval_reference",
+    "preflight_reference",
+    "image_attestation",
+    "command_identity",
+    "runtime_safety_flags",
+    "disposable_workspace",
+    "observer_summary",
+    "normalized_evidence_reference",
+    "behavior_policy_verdict",
+    "final_verdict",
+    "blockers",
+    "warnings",
+    "limitations",
+    "residual_risks",
+    "cleanup",
+    "redaction_status"
+  ],
+  "properties": {
+    "schema_version": {
+      "enum": [
+        "0.1-draft"
+      ]
+    },
+    "report_kind": {
+      "enum": [
+        "sandbox_single_command_live_gate"
+      ]
+    },
+    "mode": {
+      "enum": [
+        "controlled_fixture_live_gate",
+        "non_executing_live_gate_plan"
+      ]
+    },
+    "execution_permitted": {
+      "type": "boolean"
+    },
+    "execution_performed": {
+      "type": "boolean"
+    },
+    "docker_contacted": {
+      "type": "boolean"
+    },
+    "docker_run_performed": {
+      "type": "boolean"
+    },
+    "observer_capture_performed": {
+      "type": "boolean"
+    },
+    "phase_live_performed": {
+      "type": "boolean"
+    },
+    "approval_reference": {
+      "type": "object"
+    },
+    "preflight_reference": {
+      "type": "object"
+    },
+    "image_attestation": {
+      "type": "object"
+    },
+    "command_identity": {
+      "type": "object"
+    },
+    "runtime_safety_flags": {
+      "type": "object"
+    },
+    "disposable_workspace": {
+      "type": "object"
+    },
+    "observer_summary": {
+      "type": "object"
+    },
+    "normalized_evidence_reference": {
+      "type": "object"
+    },
+    "behavior_policy_verdict": {
+      "type": "object"
+    },
+    "final_verdict": {
+      "enum": [
+        "pass",
+        "warn",
+        "needs_review",
+        "block"
+      ]
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "residual_risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "cleanup": {
+      "type": "object"
+    },
+    "redaction_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_logs_redacted",
+        "stdout_redacted",
+        "stderr_redacted",
+        "raw_host_paths_redacted",
+        "secret_like_values_redacted"
+      ],
+      "properties": {
+        "raw_logs_redacted": {
+          "const": true
+        },
+        "stdout_redacted": {
+          "const": true
+        },
+        "stderr_redacted": {
+          "const": true
+        },
+        "raw_host_paths_redacted": {
+          "const": true
+        },
+        "secret_like_values_redacted": {
+          "const": true
+        }
+      }
+    }
+  }
+}

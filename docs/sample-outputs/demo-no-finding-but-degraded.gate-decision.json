@@ -1,0 +1,93 @@
+{
+  "decision_kind": "repo_health_gate_decision",
+  "schema_version": "0.1-draft",
+  "subject": {
+    "repo": "examples/demo-no-finding-but-degraded",
+    "commit": null,
+    "tree_hash": null,
+    "binding_kind": "unbound"
+  },
+  "verdict": "unknown",
+  "execution_authorized": false,
+  "confidence": "unknown",
+  "confidence_reason": "no_finding_not_safety_proof:v3-check-0-readme; low_trust_no_finding:v3-check-0-readme; unbound_evidence:v3-check-0-readme; medium_limitation:missing_evidence_must_not_become_confidence; no_finding_not_safety_proof:v3-check-1-license; low_trust_no_finding:v3-check-1-license; unbound_evidence:v3-check-1-license; no_finding_not_safety_proof:v3-check-2-gitignore; low_trust_no_finding:v3-check-2-gitignore; unbound_evidence:v3-check-2-gitignore; no_finding_not_safety_proof:v3-check-3-ci; low_trust_no_finding:v3-check-3-ci; unbound_evidence:v3-check-3-ci; no_finding_not_safety_proof:v3-check-4-tests; low_trust_no_finding:v3-check-4-tests; unbound_evidence:v3-check-4-tests; no_finding_not_safety_proof:v3-check-5-docs; low_trust_no_finding:v3-check-5-docs; unbound_evidence:v3-check-5-docs; no_finding_not_safety_proof:v3-check-6-scripts; low_trust_no_finding:v3-check-6-scripts; unbound_evidence:v3-check-6-scripts; no_finding_not_safety_proof:v3-check-7-secrets_scan; low_trust_no_finding:v3-check-7-secrets_scan; unbound_evidence:v3-check-7-secrets_scan; no_finding_not_safety_proof:v3-check-8-large_files; low_trust_no_finding:v3-check-8-large_files; unbound_evidence:v3-check-8-large_files; no_finding_not_safety_proof:v3-check-9-public_text_safety; low_trust_no_finding:v3-check-9-public_text_safety; unbound_evidence:v3-check-9-public_text_safety; no_finding_not_safety_proof:v3-check-10-tracked_artifacts; low_trust_no_finding:v3-check-10-tracked_artifacts; unbound_evidence:v3-check-10-tracked_artifacts; no_finding_not_safety_proof:demo-context-no-finding-but-degraded; low_trust_no_finding:demo-context-no-finding-but-degraded; medium_limitation:observer evidence missing for demo context; missing_evidence",
+  "explanation": {
+    "summary": "Static checks did not find blocking issues, but missing or degraded evidence prevents this from being an execution green light.",
+    "key_reasons": [
+      "No scanner finding is not proof of safety.",
+      "Runtime or observer evidence is missing or degraded.",
+      "The gate cannot authorize execution from scanner silence alone."
+    ],
+    "next_actions": [
+      "Review the limitations in the gate decision sidecar.",
+      "Add stronger evidence or use a more isolated environment if execution is necessary.",
+      "Do not run install scripts based only on a clean static report."
+    ]
+  },
+  "evidence_summary": {
+    "findings_count": 0,
+    "blocking_evidence": [],
+    "warning_evidence": [
+      "v3-check-0-readme",
+      "v3-check-1-license",
+      "v3-check-2-gitignore",
+      "v3-check-3-ci",
+      "v3-check-4-tests",
+      "v3-check-5-docs",
+      "v3-check-6-scripts",
+      "v3-check-7-secrets_scan",
+      "v3-check-8-large_files",
+      "v3-check-9-public_text_safety",
+      "v3-check-10-tracked_artifacts",
+      "demo-context-no-finding-but-degraded"
+    ],
+    "missing_evidence": [
+      "v3_report_lacks_commit_binding",
+      "v3_report_lacks_tree_hash",
+      "v3_report_lacks_formal_confidence_model",
+      "v3_report_lacks_structured_raw_handling",
+      "v3_report_is_check_oriented_not_gate_evaluator",
+      "runtime-observer",
+      "commit_or_tree_binding"
+    ],
+    "degraded_observers": [
+      "observer evidence missing for demo context"
+    ]
+  },
+  "required_actions": [
+    "do not treat missing evidence as confidence",
+    "collect or review missing evidence"
+  ],
+  "limitations": [
+    "not_execution_authorization",
+    "allow_limited_is_not_safety_proof",
+    "v3_report_candidate_only",
+    "no_finding_is_not_safety_proof",
+    "missing_evidence_must_not_become_confidence",
+    "v3_check:readme",
+    "no_finding_scoped_to_current_check_only",
+    "v3_check:license",
+    "v3_check:gitignore",
+    "v3_check:ci",
+    "v3_check:tests",
+    "v3_check:docs",
+    "v3_check:scripts",
+    "v3_check:secrets_scan",
+    "v3_check:large_files",
+    "v3_check:public_text_safety",
+    "v3_check:tracked_artifacts",
+    "observer evidence missing for demo context"
+  ],
+  "policy": {
+    "policy_version": "0.1",
+    "fail_closed": true
+  },
+  "residual_risks": [
+    "execution_authorization_not_implemented",
+    "v3_report_does_not_prove_safety",
+    "commit_and_tree_binding_missing",
+    "runtime_observer_missing",
+    "no_finding_not_safety_proof",
+    "scanner_silence_not_execution_authorization"
+  ]
+}

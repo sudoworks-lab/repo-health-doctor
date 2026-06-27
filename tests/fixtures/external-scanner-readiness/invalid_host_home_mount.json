@@ -1,0 +1,13 @@
+{
+  "mutations": {
+    "mounts": [
+      {
+        "type": "bind",
+        "source": "<host-home>",
+        "target": "/workspace/home",
+        "read_only": true
+      }
+    ]
+  },
+  "expected_error": "host_home_mount_forbidden"
+}

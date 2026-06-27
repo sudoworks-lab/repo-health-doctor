@@ -1,0 +1,6 @@
+{
+  "scenario": "commit_mismatch_block",
+  "expected_verdict": "block",
+  "signals": ["expected commit mismatch"],
+  "expected_execution_authorized": false
+}

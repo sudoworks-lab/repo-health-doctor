@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://repo-health-doctor.local/schemas/sandbox-runner-preflight.schema.json",
+  "title": "Sandbox Runner Preflight Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "report_kind",
+    "mode",
+    "verdict",
+    "execution_permitted",
+    "runner_connected",
+    "docker_contacted",
+    "docker_pull_performed",
+    "docker_inspect_performed",
+    "docker_run_performed",
+    "network_contacted",
+    "observer_capture_performed",
+    "phase_live_performed",
+    "approval_artifact_generated",
+    "inputs",
+    "component_results",
+    "checked_gates",
+    "blockers",
+    "warnings",
+    "limitations",
+    "residual_risks",
+    "redaction_status"
+  ],
+  "properties": {
+    "schema_version": {
+      "enum": [
+        "0.1-draft"
+      ]
+    },
+    "report_kind": {
+      "enum": [
+        "sandbox_runner_preflight"
+      ]
+    },
+    "mode": {
+      "const": "non_executing_preflight"
+    },
+    "verdict": {
+      "enum": [
+        "pass",
+        "warn",
+        "block"
+      ]
+    },
+    "execution_permitted": {
+      "const": false
+    },
+    "runner_connected": {
+      "const": false
+    },
+    "docker_contacted": {
+      "const": false
+    },
+    "docker_pull_performed": {
+      "const": false
+    },
+    "docker_inspect_performed": {
+      "const": false
+    },
+    "docker_run_performed": {
+      "const": false
+    },
+    "network_contacted": {
+      "const": false
+    },
+    "observer_capture_performed": {
+      "const": false
+    },
+    "phase_live_performed": {
+      "const": false
+    },
+    "approval_artifact_generated": {
+      "const": false
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approval_reference",
+        "image_lock_reference",
+        "behavior_policy_reference",
+        "observer_evidence_reference",
+        "static_transition_reference"
+      ],
+      "properties": {
+        "approval_reference": {
+          "type": "object"
+        },
+        "image_lock_reference": {
+          "type": "object"
+        },
+        "behavior_policy_reference": {
+          "type": "object"
+        },
+        "observer_evidence_reference": {
+          "type": "object"
+        },
+        "static_transition_reference": {
+          "type": "object"
+        }
+      }
+    },
+    "component_results": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approval_validation",
+        "image_lock_validation",
+        "image_lock_binding_validation",
+        "behavior_policy_validation",
+        "observer_evidence_validation",
+        "behavior_policy_binding_validation",
+        "static_transition_validation"
+      ],
+      "properties": {
+        "approval_validation": {
+          "type": "object"
+        },
+        "image_lock_validation": {
+          "type": "object"
+        },
+        "image_lock_binding_validation": {
+          "type": "object"
+        },
+        "behavior_policy_validation": {
+          "type": "object"
+        },
+        "observer_evidence_validation": {
+          "type": "object"
+        },
+        "behavior_policy_binding_validation": {
+          "type": "object"
+        },
+        "static_transition_validation": {
+          "type": "object"
+        }
+      }
+    },
+    "checked_gates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "residual_risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "redaction_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_host_paths_redacted",
+        "secret_like_values_redacted"
+      ],
+      "properties": {
+        "raw_host_paths_redacted": {
+          "const": true
+        },
+        "secret_like_values_redacted": {
+          "const": true
+        }
+      }
+    }
+  }
+}
