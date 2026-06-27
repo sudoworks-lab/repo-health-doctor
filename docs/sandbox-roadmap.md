@@ -5,7 +5,7 @@ identity: a local-first pre-execution safety gate and evidence normalizer.
 
 The roadmap below is personal-OSS-grade hardening. It is not an enterprise
 multi-tenant execution roadmap, not a Kubernetes plan, and not a claim that
-Docker makes unknown code safe.
+Docker proves safety.
 
 ## S-002: Profile Hardening
 

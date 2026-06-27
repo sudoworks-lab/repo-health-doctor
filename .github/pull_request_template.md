@@ -18,6 +18,7 @@
 - [ ] Fixture, test, and doc updates are included when rules change
 - [ ] No finding is not described as proof of safety
 - [ ] Gate decision and execution authorization remain separate
+- [ ] Sandbox-run changes keep local-image-only, no-auto-pull, no-Docker-socket boundaries
 - [ ] No generated artifacts, caches, local config, or history files are committed
 
 ## Compatibility And Contracts

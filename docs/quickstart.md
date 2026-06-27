@@ -78,10 +78,10 @@ v3 report means no blocking finding in the current check scope only.
 The default v3 report remains the compatibility-stable output. The evidence
 schema, gate decision sidecar, `--gate-summary`, human-readable gate
 explanation, contextual wording, imported evidence adapters, sample outputs,
-and execution authorization artifact are experimental in this version.
-Real-output-compatible fixture coverage and the Docker integration CI path are
-also experimental and limited to documented scope. Stability details are in
-[public-contracts.md](public-contracts.md).
+execution authorization artifact, and `sandbox-run` approval/report surfaces
+are experimental in this version. Real-output-compatible fixture coverage and
+the Docker integration CI path are also experimental and limited to documented
+scope. Stability details are in [public-contracts.md](public-contracts.md).
 
 ## Optional Sandbox-Run Smoke
 

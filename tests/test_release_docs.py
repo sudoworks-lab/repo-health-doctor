@@ -19,12 +19,14 @@ class ReleaseDocsTests(unittest.TestCase):
         self.assertIn("docs/versioning.md", content)
         self.assertIn("docs/compatibility-regeneration.md", content)
         self.assertIn("Third-party security review is not done", content)
+        self.assertIn("sandbox-run", content)
 
     def test_pyproject_metadata_matches_positioning(self) -> None:
         content = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
         self.assertIn('version = "0.1.0"', content)
         self.assertIn("pre-execution safety gate", content)
+        self.assertIn("evidence normalizer", content)
         self.assertIn('requires-python = ">=3.10"', content)
         self.assertIn("[project.urls]", content)
         self.assertIn("https://github.com/sudoworks-lab/repo-health-doctor", content)
@@ -64,6 +66,17 @@ class ReleaseDocsTests(unittest.TestCase):
         self.assertIn("compatibility-regeneration.md", content)
         self.assertIn("versioning.md", content)
         self.assertIn("release-notes/v0.1.0.md", content)
+
+    def test_release_notes_include_sandbox_run_boundary(self) -> None:
+        content = " ".join(
+            (ROOT / "docs" / "release-notes" / "v0.1.0.md").read_text(encoding="utf-8").split()
+        )
+
+        self.assertIn("Experimental Docker `sandbox-run` add-on", content)
+        self.assertIn("local-image-only Docker mode", content)
+        self.assertIn("does not pull images automatically", content)
+        self.assertIn("not a safety", content)
+        self.assertIn("not unrestricted execution authorization", content)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "repo-health-doctor"
 version = "0.1.0"
-description = "Local-first pre-execution safety gate for AI agents and developers reviewing unknown repositories."
+description = "Local-first pre-execution safety gate and evidence normalizer for AI agents and developers reviewing unfamiliar repositories."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}

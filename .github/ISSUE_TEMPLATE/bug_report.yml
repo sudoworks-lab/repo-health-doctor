@@ -41,6 +41,7 @@ body:
         - redaction or public-safety behavior
         - gate decision sidecar
         - execution authorization artifact
+        - sandbox-run
         - imported evidence adapter
         - docs or metadata only
         - unsure

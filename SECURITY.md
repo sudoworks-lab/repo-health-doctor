@@ -17,7 +17,9 @@ use [.github/ISSUE_TEMPLATE/security-model-review.yml](.github/ISSUE_TEMPLATE/se
 
 ## Scope Notes
 
-`repo-health-doctor` helps detect obvious pre-publish issues, but it is not a complete secret scanner or security platform.
+`repo-health-doctor` is a local-first pre-execution safety gate and evidence
+normalizer. It is not a complete secret scanner, security platform, malware
+sandbox, or permission system for repository-derived commands.
 
 Third-party security review is not done. See
 [docs/security-review-needed.md](docs/security-review-needed.md).

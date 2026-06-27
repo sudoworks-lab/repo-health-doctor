@@ -1,5 +1,15 @@
 # Security Model
 
+## Mental Model
+
+- Static health is scoped evidence only. `PASS` means no blocking finding in
+  the current check scope; it is not proof of safety.
+- A gate decision is a review outcome that surfaces limitations and required
+  actions. It remains separate from execution authorization.
+- `sandbox-run` is an optional experimental add-on for one approved argv in a
+  constrained Docker container. It produces bounded evidence, not complete
+  containment or unrestricted permission to continue.
+
 ## What This Tool Protects
 
 - Raw secret candidates are not printed in text, JSON, or Markdown output

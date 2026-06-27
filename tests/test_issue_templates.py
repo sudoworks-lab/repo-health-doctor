@@ -32,6 +32,7 @@ class IssueTemplateTests(unittest.TestCase):
         self.assertIn("raw scanner output", content)
         self.assertIn("Safe reproduction", content)
         self.assertIn("Contract impact", content)
+        self.assertIn("sandbox-run", content)
 
     def test_feature_request_template_avoids_scanner_reimplementation_bias(self) -> None:
         content = (ISSUE_TEMPLATE / "feature_request.yml").read_text(encoding="utf-8")
@@ -42,6 +43,8 @@ class IssueTemplateTests(unittest.TestCase):
         self.assertIn("not turn scanner no finding into proof of safety", content)
         self.assertIn("not merge gate decisions with execution authorization", content)
         self.assertIn("not persist or display raw scanner output", content)
+        self.assertIn("sandbox-run", content)
+        self.assertIn("not treat Docker or sandbox-run as proof of safety", content)
 
     def test_pull_request_template_covers_release_safety_contracts(self) -> None:
         content = (ROOT / ".github" / "pull_request_template.md").read_text(encoding="utf-8")
@@ -52,6 +55,7 @@ class IssueTemplateTests(unittest.TestCase):
         self.assertIn("No host private path", content)
         self.assertIn("No finding is not described as proof of safety", content)
         self.assertIn("Gate decision and execution authorization remain separate", content)
+        self.assertIn("Sandbox-run changes keep local-image-only", content)
         self.assertIn("Public contract impact", content)
         self.assertIn("Stable versus experimental surface impact", content)
         self.assertIn("No generated artifacts, caches, local config, or history files are committed", content)

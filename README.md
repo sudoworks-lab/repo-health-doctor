@@ -5,7 +5,8 @@
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Version](https://img.shields.io/badge/version-0.1.0-blue)
 
-repo-health-doctor is a local-first pre-execution safety gate for people and AI agents working with unfamiliar repositories.
+repo-health-doctor is a local-first pre-execution safety gate and evidence
+normalizer for people and AI agents working with unfamiliar repositories.
 
 It does not prove safety.
 It prevents false confidence.
@@ -103,6 +104,10 @@ For `sandbox-run`, `--output` writes the machine-readable JSON report. Stdout
 uses `--format`, so you can keep the terminal summary human-readable while
 writing JSON to the report path.
 
+Real Docker mode omits `--runner fake`. It never pulls images automatically;
+the approved image must already exist locally, and a completed sandbox-run is
+still bounded execution evidence only.
+
 See [docs/sandbox-run.md](docs/sandbox-run.md) and
 [docs/sandbox-roadmap.md](docs/sandbox-roadmap.md).
 
@@ -157,10 +162,11 @@ authorization separation, gate decision `execution_authorized=false`, and
 surfaced limitations are stable public contract.
 
 The evidence schema, gate decision sidecar, `--gate-summary`, human-readable
-gate explanation, imported evidence adapters, sample outputs, and execution
-authorization artifact are experimental in this version. Real-output-compatible
-fixture coverage and the Docker integration CI path are also experimental and
-limited to documented fixture, version, and CI scope.
+gate explanation, imported evidence adapters, sample outputs, execution
+authorization artifact, and `sandbox-run` approval/report surfaces are
+experimental in this version. Real-output-compatible fixture coverage and the
+Docker integration CI path are also experimental and limited to documented
+fixture, version, and CI scope.
 
 See [docs/public-contracts.md](docs/public-contracts.md) and
 [docs/versioning.md](docs/versioning.md).
@@ -216,7 +222,7 @@ repo-health-doctor list-allows . --fail-on expiring-soon
 repo-health-doctor diff-reports before.json after.json
 repo-health-doctor release-check .
 repo-health-doctor sandbox .
-repo-health-doctor sandbox-run . --approval approval.json --image python:3.12-slim --profile no-network-default -- python3 -c "print('hello')"
+repo-health-doctor sandbox-run . --approval approval.json --image python:3.12-slim --profile no-network-default --runner fake -- python3 -c "print('hello')"
 ```
 
 Command details are intentionally kept in docs:

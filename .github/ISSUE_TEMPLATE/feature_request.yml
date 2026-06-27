@@ -24,6 +24,7 @@ body:
         - gate evaluator
         - policy validation
         - redaction or public-safety
+        - sandbox-run
         - docs or runbook
         - CLI ergonomics
         - other
@@ -43,6 +44,7 @@ body:
         - label: This should not merge gate decisions with execution authorization.
         - label: This should not require host scanner install or host direct scanner execution by default.
         - label: This should not persist or display raw scanner output.
+        - label: This should not treat Docker or sandbox-run as proof of safety.
   - type: textarea
     id: suggested-change
     attributes:
