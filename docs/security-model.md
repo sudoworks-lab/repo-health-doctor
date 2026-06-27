@@ -2,10 +2,16 @@
 
 ## Mental Model
 
+- repo-health-doctor is a local-first pre-execution safety gate and evidence
+  normalizer for AI agents and developers reviewing unfamiliar repositories.
 - Static health is scoped evidence only. `PASS` means no blocking finding in
   the current check scope; it is not proof of safety.
 - A gate decision is a review outcome that surfaces limitations and required
-  actions. It remains separate from execution authorization.
+  actions. It remains separate from execution authorization and keeps
+  `execution_authorized=false`.
+- Imported scanner results are evidence inputs. Scanner silence, scanner
+  failure, missing binding, missing limitations, or degraded observation must
+  not become authorization to run repository-derived commands.
 - `sandbox-run` is an optional experimental add-on for one approved argv in a
   constrained Docker container. It produces bounded evidence, not complete
   containment or unrestricted permission to continue.
@@ -27,7 +33,9 @@
 - Legal or license review
 - Prevention of malicious contributors
 - Enterprise DLP use cases
-- Sandbox is not a full malware sandbox, and syscall/process observation is still incomplete even when gated runtime-hook probes are enabled
+- Security proof for unknown repositories or unknown code
+- Docker-based complete malware containment; syscall/process observation is
+  still incomplete even when gated runtime-hook probes are enabled
 
 ## Redaction Contract
 
@@ -81,7 +89,9 @@
 - runtime-hook event emission is covered by controlled local tests, but that does not prove full live coverage for repo-derived dynamic probes
 - host absolute paths are redacted into logical handles in report output
 - dynamic observation limits are reported explicitly instead of being treated as PASS
-- This is a Docker-based risk-reduction sandbox, not a complete malware sandbox; Docker daemon, mount, kernel, and platform-configuration escape risks remain outside its guarantee
+- This is Docker-based host-execution risk reduction, not a complete malware
+  sandbox; Docker daemon, mount, kernel, image, and platform-configuration
+  risks remain outside its guarantee
 - `sandbox-run` is an optional experimental add-on, not the default product
   workflow. It requires an approval artifact that matches exact argv, target
   fingerprint, image, profile, network mode, timeout, and resource limits.
@@ -93,8 +103,9 @@
   not available locally. Tag-based images remain less reproducible than
   digest-pinned images and are reported as a limitation.
 - A completed `sandbox-run` report is bounded execution evidence only. It is
-  not proof of safety, not complete containment, and not unrestricted execution
-  authorization.
+  not proof of safety, not complete containment, and not execution
+  authorization beyond the exact approved command. Completed does not mean
+  safe, and completed does not mean authorization to continue.
 
 ## Unknown Repository Design Boundary
 

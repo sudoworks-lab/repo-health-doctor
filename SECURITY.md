@@ -19,7 +19,9 @@ use [.github/ISSUE_TEMPLATE/security-model-review.yml](.github/ISSUE_TEMPLATE/se
 
 `repo-health-doctor` is a local-first pre-execution safety gate and evidence
 normalizer. It is not a complete secret scanner, security platform, malware
-sandbox, or permission system for repository-derived commands.
+sandbox, or permission system for repository-derived commands. A `PASS`, gate
+decision, imported scanner no-finding result, or completed `sandbox-run` report
+does not prove repository safety or authorize additional execution.
 
 Third-party security review is not done. See
 [docs/security-review-needed.md](docs/security-review-needed.md).

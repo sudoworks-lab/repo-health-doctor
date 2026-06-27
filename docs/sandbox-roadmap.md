@@ -5,7 +5,7 @@ identity: a local-first pre-execution safety gate and evidence normalizer.
 
 The roadmap below is personal-OSS-grade hardening. It is not an enterprise
 multi-tenant execution roadmap, not a Kubernetes plan, and not a claim that
-Docker proves safety.
+Docker proves safety for repository-derived code.
 
 ## S-002: Profile Hardening
 
@@ -28,6 +28,8 @@ Docker proves safety.
 
 - Import sandbox-run reports into the evidence and gate model without implying
   execution authorization.
+- Preserve the rule that completed does not mean safe and completed does not
+  mean authorization to continue.
 - Propagate timeout, cleanup failure, observer degraded, and boundary mismatch
   as evidence limitations.
 - Link gate decision sidecars and sandbox-run evidence.
@@ -46,7 +48,8 @@ Docker proves safety.
 
 - Keep fake runner tests as the default.
 - Add optional real Docker CI only with safe synthetic fixtures.
-- Do not pull images by default.
+- Use local images only; do not pull images by default.
+- Preserve `--pull=never` in runtime examples and tests.
 - Document Docker version and scope.
 - Keep sample outputs reproducible and redacted.
 

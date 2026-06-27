@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Do not include raw secrets, tokens, private paths, local IPs, raw scanner output, or unredacted policy values. Replace sensitive examples with redacted placeholders.
+        repo-health-doctor is a local-first pre-execution safety gate and evidence normalizer. Do not include raw secrets, tokens, private paths, local IPs, raw scanner output, or unredacted policy values. Replace sensitive examples with redacted placeholders.
   - type: textarea
     id: summary
     attributes:
@@ -43,6 +43,7 @@ body:
         - execution authorization artifact
         - sandbox-run
         - imported evidence adapter
+        - gate versus execution authorization boundary
         - docs or metadata only
         - unsure
   - type: textarea

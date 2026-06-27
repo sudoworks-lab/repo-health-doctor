@@ -5,8 +5,8 @@ This document captures the public product requirements for
 
 ## Product Requirement
 
-`repo-health-doctor` is a local-first pre-execution safety gate for people and
-AI agents reviewing unfamiliar repositories.
+`repo-health-doctor` is a local-first pre-execution safety gate and evidence
+normalizer for AI agents and developers reviewing unfamiliar repositories.
 
 ## Must Preserve
 
@@ -15,6 +15,7 @@ AI agents reviewing unfamiliar repositories.
 - Reports stay redacted and do not print raw secret-like values or private host paths
 - Policy validation remains separate from repository scanning
 - Missing or degraded evidence must not become safety proof or execution authorization
+- Gate decisions keep execution authorization separate
 
 ## Public Documentation Requirement
 

@@ -25,6 +25,8 @@ change. See [docs/versioning.md](docs/versioning.md).
   positioning.
 - Public launch docs now make the experimental sandbox-run boundary, local
   image requirement, and execution-authorization separation more visible.
+- README opening now centers first-time-user positioning: run the gate before
+  AI agents or developers execute commands from unfamiliar repositories.
 - Sandbox-run `--output` now writes machine-readable JSON regardless of stdout
   format, and Docker infrastructure failures include bounded redacted
   diagnostics when a report can be produced.
@@ -41,6 +43,8 @@ change. See [docs/versioning.md](docs/versioning.md).
   compatibility contracts and do not authorize execution.
 - Sandbox-run is an optional experimental add-on. It is not a complete malware
   sandbox, not a safety proof, and not unrestricted execution authorization.
+- A completed sandbox-run is documented as bounded evidence only, not safety
+  and not authorization to continue.
 
 ### Known Limitations
 
@@ -52,7 +56,7 @@ change. See [docs/versioning.md](docs/versioning.md).
 ### Added
 
 - Local-first pre-execution safety gate positioning for AI agents and
-  developers reviewing unknown repositories.
+  developers reviewing unfamiliar repositories.
 - Stable default v3 JSON compatibility for the existing check-oriented report.
 - Opt-in gate decision sidecar as an experimental review signal.
 - Experimental evidence and gate decision schemas.

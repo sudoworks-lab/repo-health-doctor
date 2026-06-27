@@ -5,7 +5,9 @@ have a reviewed command and want to avoid running that repository-derived
 command directly on the host.
 
 It does not prove safety. It does not provide complete malware containment. It
-does not grant unrestricted execution authorization.
+does not grant execution authorization beyond the exact approved command.
+Completed does not mean safe, and completed does not mean authorization to
+continue.
 
 ## Purpose
 
@@ -55,9 +57,10 @@ env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synth
 ```
 
 Real Docker mode never pulls images. The image must already be available
-locally, and the requested image must match the approval. Docker infrastructure
-failures, such as invalid Docker argv or daemon errors, are fail-closed and
-record bounded redacted diagnostics in the JSON report when possible.
+locally, Docker is invoked with `--pull=never`, and the requested image must
+match the approval. Docker infrastructure failures, such as invalid Docker argv
+or daemon errors, are fail-closed and record bounded redacted diagnostics in
+the JSON report when possible.
 
 ## Approval Requirements
 
@@ -109,12 +112,13 @@ capability additions, Docker socket mounts, host HOME mounts, credential
 mounts, arbitrary user volumes, or shell wrapping by default.
 
 Docker is still not a complete malware sandbox. Kernel, daemon, image, and
-platform risks remain outside the guarantee.
+platform risks remain outside the guarantee. Do not overstate this profile as
+complete containment, host-level isolation, or risk-free execution.
 
 ## Image Policy
 
 - Images are not pulled automatically.
-- The pull policy is `never`.
+- The pull policy is `never` and Docker runs with `--pull=never`.
 - Missing local images block execution.
 - Digest-pinned images are preferred.
 - Tag-based images are supported for usability, but the report records
@@ -189,5 +193,5 @@ commands outside the approved scope.
 - authorization for arbitrary unknown repository commands
 
 S-001 is a personal-OSS-grade add-on that reduces direct host execution risk
-and produces bounded evidence. Stronger claims require future hardening and
-external security review.
+and produces bounded evidence. Third-party security review has not been
+performed; stronger claims require future hardening and external review.

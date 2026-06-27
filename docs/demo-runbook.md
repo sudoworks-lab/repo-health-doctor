@@ -111,8 +111,8 @@ Expected lesson:
 - real Docker mode omits `--runner fake`, uses `--pull=never`, and blocks when
   the approved image is not already available locally.
 - a completed sandbox-run is bounded execution evidence only.
-- a completed sandbox-run is not proof of safety and not unrestricted execution
-  authorization.
+- completed does not mean safe.
+- completed does not mean authorization to continue.
 
 ## Safety Checks
 

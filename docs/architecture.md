@@ -1,7 +1,7 @@
 # Architecture
 
-`repo-health-doctor` is intentionally small: a local-first CLI that produces a
-bounded pre-execution review signal for unfamiliar repositories.
+`repo-health-doctor` is intentionally small: a local-first pre-execution safety
+gate and evidence normalizer for unfamiliar repositories.
 
 ## Core Shape
 
@@ -15,9 +15,9 @@ bounded pre-execution review signal for unfamiliar repositories.
 
 ## Output Model
 
-The tool renders the same review signal as human-readable text and machine-
-readable JSON. Reports keep stable `schema_version`, stable `rule_id` values,
-stable severities, and redacted findings.
+The tool renders bounded review evidence as human-readable text and
+machine-readable JSON. Reports keep stable `schema_version`, stable `rule_id`
+values, stable severities, and redacted findings.
 
 ## Deliberate Non-Goals
 

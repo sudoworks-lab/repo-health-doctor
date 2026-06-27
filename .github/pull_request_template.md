@@ -19,6 +19,7 @@
 - [ ] No finding is not described as proof of safety
 - [ ] Gate decision and execution authorization remain separate
 - [ ] Sandbox-run changes keep local-image-only, no-auto-pull, no-Docker-socket boundaries
+- [ ] Completed sandbox-run is not described as safe or authorization to continue
 - [ ] No generated artifacts, caches, local config, or history files are committed
 
 ## Compatibility And Contracts

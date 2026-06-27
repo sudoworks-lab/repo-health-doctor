@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        repo-health-doctor is a pre-execution safety gate, not a replacement for existing scanners. Prefer evidence adapters, policy checks, gate evaluator changes, or docs clarifications over scanner reimplementation.
+        repo-health-doctor is a local-first pre-execution safety gate and evidence normalizer, not a replacement for existing scanners. Prefer imported evidence adapters, policy checks, gate evaluator changes, or docs clarifications over scanner reimplementation.
   - type: textarea
     id: problem
     attributes:
@@ -45,6 +45,7 @@ body:
         - label: This should not require host scanner install or host direct scanner execution by default.
         - label: This should not persist or display raw scanner output.
         - label: This should not treat Docker or sandbox-run as proof of safety.
+        - label: This should not treat completed sandbox-run as safe or authorization to continue.
   - type: textarea
     id: suggested-change
     attributes:

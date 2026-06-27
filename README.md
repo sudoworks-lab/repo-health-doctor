@@ -6,17 +6,33 @@
 ![Version](https://img.shields.io/badge/version-0.1.0-blue)
 
 repo-health-doctor is a local-first pre-execution safety gate and evidence
-normalizer for people and AI agents working with unfamiliar repositories.
+normalizer for AI agents and developers reviewing unfamiliar repositories.
 
-It does not prove safety.
-It prevents false confidence.
+Run it before an AI agent, generated script, or developer runs commands from a
+repository you do not trust yet.
 
-Before an agent or developer runs `npm install`, `pip install`, `pytest`,
-`make`, or a generated script, repo-health-doctor collects bounded evidence,
-surfaces limitations, and keeps missing or degraded evidence from becoming a
-green light.
+It does not prove safety. It prevents false confidence.
 
-## Who Should Use This
+Before `npm install`, `pip install`, `pytest`, `make`, or a generated command,
+repo-health-doctor collects bounded evidence, normalizes native and imported
+signals, surfaces limitations, and keeps gate decisions separate from execution
+authorization.
+
+## Why This Exists
+
+Unfamiliar repositories often reach execution too quickly: a scanner reports no
+findings, an observer is missing, evidence is not bound to the reviewed commit,
+or an AI agent treats a review note as permission to continue.
+
+repo-health-doctor exists to stop those shortcuts. Its job is to make the
+review state explicit before host commands run:
+
+- no finding is not proof that the repository is safe
+- missing, degraded, or unbound evidence is not `PASS`
+- a gate decision is not execution authorization
+- `execution_authorized=false` is the default gate posture
+
+## When To Use It
 
 Use repo-health-doctor when you want a small, reviewable gate before touching a
 repository you do not fully trust:
@@ -25,6 +41,31 @@ repository you do not fully trust:
 - developers doing a first pass over an unfamiliar local checkout
 - coding agents that need a fail-closed pre-execution check
 - CI workflows that need redacted PASS / WARN / BLOCK reports
+
+## What It Does
+
+- Runs local-first checks and emits redacted text, Markdown, or JSON reports.
+- Normalizes bounded evidence from native checks and imported scanner outputs.
+- Records limitations as gate inputs instead of burying them as notes.
+- Treats scanner failure, parse failure, unsupported versions, missing evidence,
+  degraded observers, and commit mismatches as review-relevant conditions.
+- Keeps gate decisions and execution authorization as separate artifacts.
+
+Gitleaks, OSV-Scanner, zizmor-style, and similar integrations are imported
+evidence paths. repo-health-doctor does not replace those tools and does not
+claim their silence means a repository is safe.
+
+## What It Does Not Do
+
+repo-health-doctor is not:
+
+- a safety proof
+- a replacement for security review or dedicated scanners
+- a complete malware sandbox
+- a claim of Docker-enforced safety for repository-derived code
+- permission to run repository-derived commands
+
+Third-party security review has not been performed.
 
 ## 5-Minute Demo
 
@@ -80,14 +121,15 @@ More detail is in [docs/quickstart.md](docs/quickstart.md) and
 
 ## Experimental Sandbox-Run Add-on
 
-The default workflow remains pre-execution gate first. `sandbox-run` is an
-optional experimental Docker add-on for a human-reviewed command when the goal
-is to avoid running that repository-derived command directly on the host.
+The core tool is the pre-execution gate and evidence normalizer. `sandbox-run`
+is an optional experimental Docker add-on for one human-reviewed command when
+the goal is to avoid running that repository-derived command directly on the
+host.
 
 It runs one explicitly approved argv in a constrained Docker container, using a
 disposable workspace copy, and emits bounded redacted execution evidence. It is
-not a complete malware sandbox, not a safety proof, and not unrestricted
-execution authorization.
+not a complete malware sandbox, not a safety proof, and not execution
+authorization beyond the exact approved command.
 
 ```bash
 env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synthetic-supply-chain \
@@ -105,8 +147,15 @@ uses `--format`, so you can keep the terminal summary human-readable while
 writing JSON to the report path.
 
 Real Docker mode omits `--runner fake`. It never pulls images automatically;
-the approved image must already exist locally, and a completed sandbox-run is
-still bounded execution evidence only.
+the approved image must already exist locally, Docker uses `--pull=never`, and
+the image/profile/argv must match the approval. A completed sandbox-run is
+bounded execution evidence only:
+
+- completed does not mean safe
+- completed does not mean authorization to continue
+- Docker does not provide complete malware containment
+- host HOME, credentials, SSH agent, and Docker socket are not mounted by the
+  documented profiles
 
 See [docs/sandbox-run.md](docs/sandbox-run.md) and
 [docs/sandbox-roadmap.md](docs/sandbox-roadmap.md).
@@ -138,21 +187,6 @@ reimplement dedicated scanners.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, test, rule-change, and
 security-reporting guidance.
-
-## What This Is Not
-
-repo-health-doctor is not:
-
-- a replacement for Gitleaks, TruffleHog, OSV-Scanner, Grype, Syft, zizmor,
-  actionlint, Falco, Tracee, or an EDR
-- a complete malware sandbox
-- a dependency vulnerability database
-- proof that a repository is safe
-- permission to run repository-derived commands
-
-That boundary is deliberate. A clean scanner result is scoped evidence only. A
-failed scanner is not PASS. A degraded observer is not confidence. External
-scanner evidence can raise risk, but it does not authorize live execution.
 
 ## Stability And Public Contracts
 

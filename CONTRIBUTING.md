@@ -1,6 +1,7 @@
 # Contributing
 
-`repo-health-doctor` is a small local-first CLI. Keep changes reviewable, redacted, and fixture-backed.
+`repo-health-doctor` is a small local-first pre-execution safety gate and
+evidence normalizer. Keep changes reviewable, redacted, and fixture-backed.
 
 ## Setup
 
@@ -43,13 +44,14 @@ done and focused external review is still needed.
 ## Feature Requests
 
 Feature requests should preserve repo-health-doctor's role as a pre-execution
-safety gate. Prefer evidence adapters, gate evaluator improvements, policy
-validation, redaction hardening, or docs clarity over reimplementing dedicated
-scanners.
+safety gate and evidence normalizer. Prefer imported evidence adapters, gate
+evaluator improvements, policy validation, redaction hardening, or docs clarity
+over reimplementing dedicated scanners.
 
 Sandbox-run changes must keep the add-on optional and experimental. Do not add
 automatic image pulls, Docker socket access, host credential mounts, or wording
-that treats Docker execution as proof of safety.
+that treats Docker execution as proof of safety, completion, or authorization
+to continue.
 
 ## Scope
 
@@ -67,3 +69,4 @@ that treats Docker execution as proof of safety.
 - GitHub settings management
 - Release workflow or publishing automation in this repo
 - Making Docker or sandbox-run proof of safety for repository-derived code
+- Treating gate decisions as execution authorization

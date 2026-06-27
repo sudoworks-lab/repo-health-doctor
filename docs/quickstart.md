@@ -4,6 +4,10 @@ This quickstart is for a local checkout. It uses `PYTHONPATH=src` and does not
 install host scanners, run host scanners, contact remote APIs, or authorize
 execution.
 
+Use it before an AI agent or developer runs commands from an unfamiliar
+repository. The quickstart demonstrates the core gate / evidence normalizer,
+not a scanner replacement and not a safety proof.
+
 ## Install Assumption
 
 For local development, run commands from the repository root:
@@ -17,11 +21,11 @@ Editable install is optional and depends on the local packaging environment.
 
 ## 5-Minute Demo
 
-Run the clean native demo. The v3 report can be `pass`, but that does not prove
-runtime safety. The opt-in `--gate-summary` terminal output is the human
-readout; it explains that no finding plus missing or degraded observer evidence
-is not an execution green light. The JSON sidecar is available when you want
-details.
+Run the no-finding-but-degraded demo. The v3 report can be `pass`, but that
+does not prove runtime safety. The opt-in `--gate-summary` terminal output is
+the human readout; it explains that no finding plus missing or degraded
+observer evidence is not an execution green light. The JSON sidecar is
+available when you want details.
 
 ```bash
 env PYTHONPATH=src python3 -m repo_health_doctor examples/demo-no-finding-but-degraded \
@@ -73,7 +77,8 @@ string, workflow write-risk, and eval-like candidate. Both keep
 
 `allow_limited` is not a safety proof and is not unrestricted execution
 authorization. No scanner finding is not proof of safety. `PASS` in the current
-v3 report means no blocking finding in the current check scope only.
+v3 report means no blocking finding in the current check scope only. Gate
+decisions keep `execution_authorized=false` by design.
 
 The default v3 report remains the compatibility-stable output. The evidence
 schema, gate decision sidecar, `--gate-summary`, human-readable gate
@@ -85,9 +90,10 @@ scope. Stability details are in [public-contracts.md](public-contracts.md).
 
 ## Optional Sandbox-Run Smoke
 
-After reviewing the gate output, you can inspect the experimental sandbox-run
-add-on without requiring a Docker daemon by using the fake runner. This is a
-documentation and test smoke path, not real sandbox execution evidence:
+After reviewing the gate output, you can inspect the optional experimental
+sandbox-run add-on without requiring a Docker daemon by using the fake runner.
+This is a documentation and test smoke path, not real sandbox execution
+evidence:
 
 ```bash
 env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synthetic-supply-chain \
@@ -101,10 +107,11 @@ python3 -m json.tool /tmp/rhd-sandbox-run.json
 ```
 
 `--output` writes the machine-readable JSON report while stdout stays
-human-readable by default. Real Docker mode omits `--runner fake`, does not
-pull images, requires the approved image to exist locally, and still does not
-prove safety or grant unrestricted execution authorization. See
-[sandbox-run.md](sandbox-run.md).
+human-readable by default. Real Docker mode omits `--runner fake`, uses
+`--pull=never`, does not pull images, requires the approved image to exist
+locally, and still does not prove safety or grant execution authorization
+beyond the exact approved command. Completed does not mean safe, and completed
+does not mean authorization to continue. See [sandbox-run.md](sandbox-run.md).
 
 ## Sample Outputs
 
@@ -120,9 +127,10 @@ Sample outputs live in [sample-outputs](sample-outputs/):
 ## External Tool Adapters
 
 The Gitleaks and OSV-Scanner adapters normalize imported synthetic and redacted
-real-output-compatible fixtures into repo-health-doctor evidence. They are not
-scanner replacements, do not execute scanners, do not manage vulnerability
-databases, and do not authorize execution.
+real-output-compatible fixtures into repo-health-doctor evidence. They are
+imported evidence paths, not scanner replacements. They do not execute
+scanners, do not manage vulnerability databases, and do not authorize
+execution.
 
 Real-output-compatible redacted fixtures are documented in
 [real-gitleaks-compatibility.md](real-gitleaks-compatibility.md) and
