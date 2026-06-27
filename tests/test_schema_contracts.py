@@ -37,6 +37,7 @@ EXPECTED_SCHEMA_METADATA = {
         "sandbox_normalized_observer_evidence",
     ),
     "sandbox-report.schema.json": ("1.1", "sandbox"),
+    "sandbox-run.schema.json": ("0.1-draft", "sandbox_run"),
     "sandbox-runner-preflight.schema.json": ("0.1-draft", "sandbox_runner_preflight"),
     "sandbox-single-command-live-gate.schema.json": (
         "0.1-draft",

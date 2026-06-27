@@ -12,3 +12,5 @@
 - Improve optional metadata checks that still fit the local-first boundary
 - Add narrowly scoped rule families only when fixtures and redaction behavior stay easy to review
 - Keep public documentation aligned with actual CLI behavior and non-goals
+- Keep `sandbox-run` as an optional experimental add-on, with hardening tracked
+  in [sandbox-roadmap.md](sandbox-roadmap.md)

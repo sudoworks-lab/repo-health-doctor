@@ -33,6 +33,9 @@ examples that are not public contract.
 - Sample outputs in `docs/sample-outputs/`
 - `schemas/execution-authorization.schema.json`
 - Execution authorization artifact and validator
+- `sandbox-run`
+- `schemas/sandbox-run.schema.json`
+- Sandbox-run approval and report wording
 - Real-output-compatible fixture coverage for Gitleaks and OSV-Scanner
 - Docker integration CI path
 - Compatibility regeneration helper scripts
@@ -43,6 +46,10 @@ gate explanation, imported evidence adapters, and execution authorization
 artifact are experimental in this version. The real-output-compatible fixture
 coverage and Docker integration CI path are also experimental; they are limited
 to the documented fixture, version, and CI scope.
+Sandbox-run, its approval contract, report schema, fake runner, Docker argv
+shape, profile wording, and contextual report wording are experimental add-on
+surfaces. They do not change default CLI behavior, default v3 JSON output, or
+gate decision `execution_authorized=false` semantics.
 Contextual explanation wording may change without changing the stable default
 v3 report or default CLI behavior.
 

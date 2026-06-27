@@ -13,6 +13,8 @@ security review.
 - Review gate decision and execution authorization separation.
 - Review imported scanner compatibility assumptions.
 - Review Docker scanner boundary assumptions.
+- Review experimental sandbox-run approval, Docker argv, workspace, redaction,
+  and report boundary assumptions.
 - Review documentation for overclaims.
 
 Use the public security model review issue template for non-sensitive review

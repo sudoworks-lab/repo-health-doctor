@@ -25,6 +25,9 @@ The stable and experimental boundary is defined in
 - Human-readable gate decision explanations
 - `schemas/execution-authorization.schema.json`
 - Execution authorization artifacts and validator behavior
+- `sandbox-run`
+- `schemas/sandbox-run.schema.json`
+- Sandbox-run approval, profile, Docker argv, and report wording
 - Imported Gitleaks and OSV-Scanner evidence adapters
 - Real-output-compatible fixture coverage
 - Docker integration CI path
@@ -32,6 +35,9 @@ The stable and experimental boundary is defined in
 
 These surfaces may change in the v0.x series when the change is documented and
 does not break the stable default v3 JSON report or default CLI behavior.
+Sandbox-run is an optional add-on and does not change gate decision
+`execution_authorized=false` semantics or execution authorization artifact
+semantics.
 
 ## Public Contract Promotion
 

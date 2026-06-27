@@ -15,6 +15,9 @@ change. See [docs/versioning.md](docs/versioning.md).
 - Compatibility regeneration runbook and safe helper scripts for Gitleaks and
   OSV-Scanner fixture refresh work.
 - Release notes and versioning policy documentation.
+- Experimental Docker sandbox-run add-on with approval-bound command execution,
+  deterministic Docker argv, disposable workspace copy, bounded redacted output
+  previews, and an experimental `schemas/sandbox-run.schema.json` report.
 
 ### Changed
 
@@ -31,6 +34,8 @@ change. See [docs/versioning.md](docs/versioning.md).
 
 - Compatibility regeneration helpers are runbook aids only. They are not public
   compatibility contracts and do not authorize execution.
+- Sandbox-run is an optional experimental add-on. It is not a complete malware
+  sandbox, not a safety proof, and not unrestricted execution authorization.
 
 ### Known Limitations
 

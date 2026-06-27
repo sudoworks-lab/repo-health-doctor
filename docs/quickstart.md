@@ -83,6 +83,28 @@ Real-output-compatible fixture coverage and the Docker integration CI path are
 also experimental and limited to documented scope. Stability details are in
 [public-contracts.md](public-contracts.md).
 
+## Optional Sandbox-Run Smoke
+
+After reviewing the gate output, you can inspect the experimental sandbox-run
+add-on without requiring a Docker daemon by using the fake runner. This is a
+documentation and test smoke path, not real sandbox execution evidence:
+
+```bash
+env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synthetic-supply-chain \
+  --approval examples/approvals/demo-sandbox-run-approval.json \
+  --image python:3.12-slim \
+  --profile no-network-default \
+  --runner fake \
+  --format json \
+  --output /tmp/rhd-sandbox-run.json \
+  -- python3 -c "print('hello from sandbox')"
+python3 -m json.tool /tmp/rhd-sandbox-run.json
+```
+
+Real Docker mode omits `--runner fake`, does not pull images, requires the
+approved image to exist locally, and still does not prove safety or grant
+unrestricted execution authorization. See [sandbox-run.md](sandbox-run.md).
+
 ## Sample Outputs
 
 Sample outputs live in [sample-outputs](sample-outputs/):

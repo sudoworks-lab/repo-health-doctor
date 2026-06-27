@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repo-health-doctor://schemas/sandbox-run.schema.json",
+  "title": "Experimental Docker sandbox-run report",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "report_kind",
+    "kind",
+    "tool",
+    "version",
+    "experimental",
+    "target",
+    "approval",
+    "sandbox_profile",
+    "command",
+    "docker",
+    "disposable_workspace",
+    "workspace_diff",
+    "result",
+    "output_summary",
+    "boundary_statement",
+    "limitations",
+    "next_actions",
+    "safety_statement"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["0.1-draft"]},
+    "report_kind": {"type": "string", "enum": ["sandbox_run"]},
+    "kind": {"type": "string", "enum": ["sandbox_run"]},
+    "tool": {"type": "string", "enum": ["repo-health-doctor"]},
+    "version": {"type": "string"},
+    "experimental": {"type": "boolean", "const": true},
+    "target": {"type": "object"},
+    "approval": {"type": "object"},
+    "sandbox_profile": {"type": "object"},
+    "command": {"type": "object"},
+    "docker": {"type": "object"},
+    "disposable_workspace": {"type": "object"},
+    "workspace_diff": {"type": "object"},
+    "result": {
+      "type": "object",
+      "required": ["status", "exit_code", "timed_out", "duration_ms"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "blocked",
+            "completed",
+            "failed",
+            "timed_out",
+            "observer_degraded",
+            "cleanup_uncertain",
+            "redaction_failed"
+          ]
+        },
+        "exit_code": {"type": ["integer", "null"]},
+        "timed_out": {"type": "boolean"},
+        "duration_ms": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "output_summary": {"type": "object"},
+    "boundary_statement": {"type": "object"},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "next_actions": {"type": "array", "items": {"type": "string"}},
+    "safety_statement": {"type": "string"}
+  }
+}

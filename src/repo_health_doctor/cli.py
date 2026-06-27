@@ -22,6 +22,9 @@ from .doctor import (
     validate_policy,
 )
 from .sandbox import (
+    format_sandbox_run_json,
+    format_sandbox_run_markdown,
+    format_sandbox_run_text,
     format_sandbox_json,
     format_sandbox_markdown,
     format_sandbox_text,
@@ -32,8 +35,10 @@ from .sandbox import (
     format_unknown_repo_profile_markdown,
     format_unknown_repo_profile_text,
     generate_unknown_repo_approval_draft,
+    make_fake_runner,
     profile_unknown_repo,
     run_sandbox,
+    run_sandbox_run,
 )
 from .gate import (
     build_execution_authorization_draft,
@@ -45,6 +50,7 @@ from .gate import (
 
 def build_parser(command: str = "scan") -> argparse.ArgumentParser:
     sandbox_mode = command == "sandbox"
+    sandbox_run_mode = command == "sandbox-run"
     sandbox_profile_mode = command == "sandbox-profile"
     sandbox_approval_draft_mode = command == "sandbox-approval-draft"
     validate_mode = command == "validate-policy"
@@ -57,6 +63,8 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
         prog=(
             "repo-health-doctor sandbox"
             if sandbox_mode
+            else "repo-health-doctor sandbox-run"
+            if sandbox_run_mode
             else "repo-health-doctor sandbox-profile"
             if sandbox_profile_mode
             else "repo-health-doctor sandbox-approval-draft"
@@ -80,6 +88,8 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
         description=(
             "Plan sandbox checks and only run explicitly gated probes."
             if sandbox_mode
+            else "Run an explicitly approved command inside an experimental constrained Docker sandbox."
+            if sandbox_run_mode
             else "Profile an unknown repository read-only without generating approvals or executing code."
             if sandbox_profile_mode
             else "Generate a non-executable unknown-repository approval draft for human review."
@@ -103,6 +113,8 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
         epilog=(
             "Sandbox mode: repo-health-doctor sandbox <path> [--approval-file approvals.json] [--format json|markdown]"
             if sandbox_mode
+            else "Sandbox-run mode: repo-health-doctor sandbox-run <path> --approval approval.json --image IMAGE --profile no-network-default -- COMMAND ARG..."
+            if sandbox_run_mode
             else "Unknown repository profile mode: repo-health-doctor sandbox-profile <path> [--format json|markdown]"
             if sandbox_profile_mode
             else "Unknown repository approval draft mode: repo-health-doctor sandbox-approval-draft <path> [--format json|markdown] [--phase phase2_install_probe|phase3_runtime_probe --kind KIND --cwd /workspace --argv ARG ...]; --argv must be last"
@@ -146,7 +158,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
         action="version",
         version=f"repo-health-doctor {TOOL_VERSION}",
     )
-    if not validate_mode and not list_allows_mode and not diff_reports_mode and not sandbox_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode:
+    if not validate_mode and not list_allows_mode and not diff_reports_mode and not sandbox_mode and not sandbox_run_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode:
         parser.add_argument(
             "--fail-on",
             choices=("block", "warn"),
@@ -158,7 +170,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             action="store_true",
             help="Alias for --fail-on warn.",
         )
-    if not validate_mode and not list_allows_mode and not diff_reports_mode and not sandbox_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode:
+    if not validate_mode and not list_allows_mode and not diff_reports_mode and not sandbox_mode and not sandbox_run_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode:
         parser.add_argument(
             "--large-file-threshold-mb",
             type=int,
@@ -171,7 +183,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             default=[],
             help="Ignore a path prefix during secrets scanning. Can be passed multiple times.",
         )
-    if not validate_mode and not list_allows_mode and not diff_reports_mode and not release_check_mode and not sandbox_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode:
+    if not validate_mode and not list_allows_mode and not diff_reports_mode and not release_check_mode and not sandbox_mode and not sandbox_run_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode:
         parser.add_argument(
             "--public-safety",
             action="store_true",
@@ -262,6 +274,27 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             default=60,
             help="Timeout in seconds for each Phase 2 or Phase 3 dynamic probe command.",
         )
+    if sandbox_run_mode:
+        parser.add_argument("--approval", help="Sandbox-run approval artifact JSON. Missing or mismatched approval blocks execution.")
+        parser.add_argument("--image", help="Docker image reference. The image must match approval and be available locally.")
+        parser.add_argument(
+            "--profile",
+            default="no-network-default",
+            choices=("no-network-default", "no-network-readonly", "network-explicit"),
+            help="Sandbox profile. network-explicit is reserved and fails closed in S-001.",
+        )
+        parser.add_argument(
+            "--timeout-seconds",
+            type=int,
+            default=30,
+            help="Python-enforced timeout. It must not exceed the approved timeout.",
+        )
+        parser.add_argument(
+            "--runner",
+            default="docker",
+            choices=("docker", "fake", "fake-docker-unavailable", "fake-image-unavailable", "fake-timeout", "fake-failure"),
+            help="Runner backend. Fake modes are for tests and documentation smoke checks only.",
+        )
     if sandbox_approval_draft_mode:
         parser.add_argument("--phase", choices=("phase2_install_probe", "phase3_runtime_probe"))
         parser.add_argument("--kind", help="Normalized candidate kind. T0 requires a harmless_ kind.")
@@ -281,7 +314,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             choices=(POLICY_ALLOW_STATUS_EXPIRED, POLICY_ALLOW_STATUS_EXPIRING_SOON),
             help="Exit with code 1 when stale allow entries meet this threshold.",
         )
-    if not diff_reports_mode and not sandbox_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode:
+    if not diff_reports_mode and not sandbox_mode and not sandbox_run_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode:
         parser.add_argument(
             "--config",
             help="Read policy from this file. Defaults to repo-health-doctor.yml when present.",
@@ -301,6 +334,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     raw_args = list(sys.argv[1:] if argv is None else argv)
     command = "scan"
+    sandbox_run_argv: list[str] = []
     if raw_args and raw_args[0] == "validate-policy":
         command = "validate-policy"
         raw_args = raw_args[1:]
@@ -316,6 +350,9 @@ def main(argv: list[str] | None = None) -> int:
     elif raw_args and raw_args[0] == "sandbox":
         command = "sandbox"
         raw_args = raw_args[1:]
+    elif raw_args and raw_args[0] == "sandbox-run":
+        command = "sandbox-run"
+        raw_args = raw_args[1:]
     elif raw_args and raw_args[0] == "sandbox-profile":
         command = "sandbox-profile"
         raw_args = raw_args[1:]
@@ -329,6 +366,11 @@ def main(argv: list[str] | None = None) -> int:
         else:
             command = f"authorization-{raw_args[1]}"
             raw_args = raw_args[2:]
+
+    if command == "sandbox-run" and "--" in raw_args:
+        separator_index = raw_args.index("--")
+        sandbox_run_argv = raw_args[separator_index + 1:]
+        raw_args = raw_args[:separator_index]
 
     parser = build_parser(command)
     args = parser.parse_args(raw_args)
@@ -387,6 +429,20 @@ def main(argv: list[str] | None = None) -> int:
                 dynamic_timeout_seconds=args.dynamic_timeout_seconds,
             )
             fail_on = "block"
+        elif command == "sandbox-run":
+            if args.timeout_seconds <= 0:
+                parser.error("--timeout-seconds must be greater than 0")
+            runner = None if args.runner == "docker" else make_fake_runner(args.runner)
+            report = run_sandbox_run(
+                target,
+                approval_path=Path(args.approval) if args.approval else None,
+                image=args.image,
+                profile_name=args.profile,
+                command_argv=sandbox_run_argv,
+                timeout_seconds=args.timeout_seconds,
+                runner=runner,
+            )
+            fail_on = None
         elif command == "sandbox-profile":
             report = profile_unknown_repo(target)
             fail_on = "block"
@@ -458,6 +514,13 @@ def main(argv: list[str] | None = None) -> int:
             fail_on = "warn" if args.strict else args.fail_on
     if command in {"authorization-draft", "authorization-validate"}:
         output = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
+    elif command == "sandbox-run":
+        if args.format == "json":
+            output = format_sandbox_run_json(report)
+        elif args.format in {"markdown", "md"}:
+            output = format_sandbox_run_markdown(report)
+        else:
+            output = format_sandbox_run_text(report)
     elif command == "sandbox":
         if args.format == "json":
             output = format_sandbox_json(report)
@@ -504,6 +567,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if report["overall_status"] == "block" else 0
     if command == "sandbox-approval-draft":
         return 1 if report["source_risk_tier"] in {"T4", "T5"} else 0
+    if command == "sandbox-run":
+        return 0 if report["result"]["status"] == "completed" else 1
     if command == "authorization-validate":
         return 0 if authorization_valid else 1
     return 0 if fail_on is None else determine_exit_code(report, fail_on=fail_on)

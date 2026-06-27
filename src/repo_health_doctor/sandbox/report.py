@@ -15,6 +15,67 @@ def format_unknown_repo_approval_draft_json(report: dict) -> str:
     return json.dumps(report, indent=2, ensure_ascii=False) + "\n"
 
 
+def format_sandbox_run_json(report: dict) -> str:
+    return json.dumps(report, indent=2, ensure_ascii=False) + "\n"
+
+
+def format_sandbox_run_text(report: dict) -> str:
+    lines = [
+        f"Repo Health Doctor Sandbox-Run: {report['result']['status'].upper()}",
+        f"Schema: {report['schema_version']}",
+        f"Experimental: {str(report['experimental']).lower()}",
+        f"Approval matched: {str(report['approval']['matched']).lower()}",
+        f"Profile: {report['sandbox_profile']['name']}",
+        f"Docker image: {report['docker']['image']}",
+        f"Docker invoked: {str(report['docker']['docker_invoked']).lower()}",
+        f"Exit code: {report['result']['exit_code']}",
+        "",
+        "Refusal reasons:",
+        *[f"- {item}" for item in report["approval"]["refusal_reasons"]],
+        "",
+        "Workspace diff:",
+        f"- Created: {report['workspace_diff']['created_count']}",
+        f"- Modified: {report['workspace_diff']['modified_count']}",
+        f"- Deleted: {report['workspace_diff']['deleted_count']}",
+        "",
+        "Safety statement:",
+        f"- {report['safety_statement']}",
+        "",
+        "Next actions:",
+        *[f"- {item}" for item in report["next_actions"]],
+    ]
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def format_sandbox_run_markdown(report: dict) -> str:
+    return "\n".join(
+        [
+            "# Repo Health Doctor Sandbox-Run",
+            "",
+            f"- Status: `{report['result']['status']}`",
+            f"- Schema Version: `{report['schema_version']}`",
+            f"- Experimental: `{str(report['experimental']).lower()}`",
+            f"- Approval Matched: `{str(report['approval']['matched']).lower()}`",
+            f"- Profile: `{report['sandbox_profile']['name']}`",
+            f"- Docker Image: `{report['docker']['image']}`",
+            f"- Docker Invoked: `{str(report['docker']['docker_invoked']).lower()}`",
+            "",
+            "## Refusal Reasons",
+            "",
+            *[f"- `{item}`" for item in report["approval"]["refusal_reasons"]],
+            "",
+            "## Safety Statement",
+            "",
+            report["safety_statement"],
+            "",
+            "## Next Actions",
+            "",
+            *[f"- {item}" for item in report["next_actions"]],
+            "",
+        ]
+    )
+
+
 def format_unknown_repo_approval_draft_text(report: dict) -> str:
     candidate = report["candidate"]
     candidate_summary = "not generated"

@@ -79,6 +79,40 @@ does not change the default v3 report. The gate decision sidecar, its
 human-readable `explanation`, contextual wording, and the curated sample
 outputs remain experimental.
 
+## Optional Demo C: Sandbox-Run Smoke
+
+Purpose:
+
+```text
+Show the experimental approval-bound sandbox-run report shape without treating
+the result as a safety proof.
+```
+
+Fake-runner smoke, no Docker daemon required:
+
+```bash
+env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synthetic-supply-chain \
+  --approval examples/approvals/demo-sandbox-run-approval.json \
+  --image python:3.12-slim \
+  --profile no-network-default \
+  --runner fake \
+  --format json \
+  --output /tmp/rhd-sandbox-run.json \
+  -- python3 -c "print('hello from sandbox')"
+python3 -m json.tool /tmp/rhd-sandbox-run.json
+```
+
+Expected lesson:
+
+- the approval binds exact argv, target fingerprint, image, profile, network
+  mode, timeout, and resource limits.
+- fake runner mode is for tests and docs only and does not invoke Docker.
+- real Docker mode omits `--runner fake`, uses `--pull=never`, and blocks when
+  the approved image is not already available locally.
+- a completed sandbox-run is bounded execution evidence only.
+- a completed sandbox-run is not proof of safety and not unrestricted execution
+  authorization.
+
 ## Safety Checks
 
 The demo examples and sample outputs are covered by tests:

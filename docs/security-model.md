@@ -72,6 +72,19 @@
 - host absolute paths are redacted into logical handles in report output
 - dynamic observation limits are reported explicitly instead of being treated as PASS
 - This is a Docker-based risk-reduction sandbox, not a complete malware sandbox; Docker daemon, mount, kernel, and platform-configuration escape risks remain outside its guarantee
+- `sandbox-run` is an optional experimental add-on, not the default product
+  workflow. It requires an approval artifact that matches exact argv, target
+  fingerprint, image, profile, network mode, timeout, and resource limits.
+- `sandbox-run` copies the repository into a disposable workspace and mounts
+  that copy at `/workspace`; it does not mount the original repository path as
+  writable and does not mount host HOME, credentials, SSH agent, or Docker
+  socket.
+- `sandbox-run` uses `--pull=never` and fails closed when the approved image is
+  not available locally. Tag-based images remain less reproducible than
+  digest-pinned images and are reported as a limitation.
+- A completed `sandbox-run` report is bounded execution evidence only. It is
+  not proof of safety, not complete containment, and not unrestricted execution
+  authorization.
 
 ## Unknown Repository Design Boundary
 

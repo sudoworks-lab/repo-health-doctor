@@ -77,6 +77,31 @@ human-readable explanation, and contextual wording are experimental. Even
 More detail is in [docs/quickstart.md](docs/quickstart.md) and
 [docs/demo-runbook.md](docs/demo-runbook.md).
 
+## Experimental Sandbox-Run Add-on
+
+The default workflow remains pre-execution gate first. `sandbox-run` is an
+optional experimental Docker add-on for a human-reviewed command when the goal
+is to avoid running that repository-derived command directly on the host.
+
+It runs one explicitly approved argv in a constrained Docker container, using a
+disposable workspace copy, and emits bounded redacted execution evidence. It is
+not a complete malware sandbox, not a safety proof, and not unrestricted
+execution authorization.
+
+```bash
+env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synthetic-supply-chain \
+  --approval examples/approvals/demo-sandbox-run-approval.json \
+  --image python:3.12-slim \
+  --profile no-network-default \
+  --runner fake \
+  --format json \
+  --output /tmp/rhd-sandbox-run.json \
+  -- python3 -c "print('hello from sandbox')"
+```
+
+See [docs/sandbox-run.md](docs/sandbox-run.md) and
+[docs/sandbox-roadmap.md](docs/sandbox-roadmap.md).
+
 ## Contributing Welcome
 
 Issues and pull requests are welcome. This project is intentionally small and
@@ -187,6 +212,7 @@ repo-health-doctor list-allows . --fail-on expiring-soon
 repo-health-doctor diff-reports before.json after.json
 repo-health-doctor release-check .
 repo-health-doctor sandbox .
+repo-health-doctor sandbox-run . --approval approval.json --image python:3.12-slim --profile no-network-default -- python3 -c "print('hello')"
 ```
 
 Command details are intentionally kept in docs:
@@ -197,6 +223,7 @@ Command details are intentionally kept in docs:
 - [docs/ci-integration.md](docs/ci-integration.md): CI and GitHub Step Summary
 - [docs/maintainer-guide.md](docs/maintainer-guide.md): maintainer workflow
 - [docs/agent-guide.md](docs/agent-guide.md): agent workflow
+- [docs/sandbox-run.md](docs/sandbox-run.md): experimental Docker sandbox-run add-on
 
 ## Output And Redaction
 

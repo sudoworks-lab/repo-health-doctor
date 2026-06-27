@@ -1,0 +1,47 @@
+{
+  "approval_kind": "repo_health_sandbox_run_approval",
+  "schema_version": "0.1-draft",
+  "approved": true,
+  "approved_by": "demo-reviewer@example.invalid",
+  "approved_at": "2026-06-27T00:00:00Z",
+  "expires_at": "2099-01-01T00:00:00Z",
+  "action": "sandbox_run",
+  "target": {
+    "identity": "path:demo-synthetic-supply-chain",
+    "fingerprint": "sha256:62147ddecd5f471a95328244d86c7eef9a2d43649ed19ab40c5def41f436159f",
+    "fingerprint_method": "sandbox-run-file-inventory-v1"
+  },
+  "command": {
+    "argv": [
+      "python3",
+      "-c",
+      "print('hello from sandbox')"
+    ],
+    "shell": false
+  },
+  "image": {
+    "reference": "python:3.12-slim",
+    "pull_policy": "never"
+  },
+  "sandbox_profile": {
+    "name": "no-network-default",
+    "network": "none"
+  },
+  "network": "none",
+  "timeout_seconds": 30,
+  "resource_limits": {
+    "memory": "512m",
+    "cpus": "1.0",
+    "pids_limit": 256
+  },
+  "root_user_allowed": false,
+  "limitations": [
+    "Approval is scoped to one reviewed sandbox-run command.",
+    "A completed sandbox run is not proof that the repository is safe.",
+    "Docker isolation has limitations and does not grant unrestricted execution authorization."
+  ],
+  "residual_risks": [
+    "The container image, Docker daemon, host kernel, and copied repository content remain trust boundaries.",
+    "The disposable workspace evidence is bounded and does not prove absence of malicious behavior."
+  ]
+}

@@ -25,6 +25,9 @@ class PublicContractTests(unittest.TestCase):
         self.assertIn("Gitleaks imported evidence adapter", content)
         self.assertIn("OSV-Scanner imported evidence adapter", content)
         self.assertIn("Execution authorization artifact", content)
+        self.assertIn("`sandbox-run`", content)
+        self.assertIn("`schemas/sandbox-run.schema.json`", content)
+        self.assertIn("Sandbox-run, its approval contract", content)
         self.assertIn("Real-output-compatible fixture coverage", content)
         self.assertIn("Docker integration CI path", content)
         self.assertIn("Third-party security review is not done", content)
@@ -35,6 +38,7 @@ class PublicContractTests(unittest.TestCase):
             "The evidence schema, gate decision sidecar, `--gate-summary`, human-readable gate explanation",
             "imported evidence adapters",
             "execution authorization artifact",
+            "sandbox-run",
             "Real-output-compatible fixture coverage",
         )
         for path in (README, QUICKSTART):

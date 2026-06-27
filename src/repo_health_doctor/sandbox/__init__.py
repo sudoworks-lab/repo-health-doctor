@@ -1,6 +1,7 @@
 """Sandbox planning support for repo-health-doctor."""
 
 from .command import REPORT_KIND_SANDBOX, run_sandbox
+from .run import SANDBOX_RUN_REPORT_KIND, SANDBOX_RUN_SCHEMA_VERSION, make_fake_runner, run_sandbox_run
 from .approval_draft import (
     REPORT_KIND_APPROVAL_DRAFT,
     generate_unknown_repo_approval_draft,
@@ -72,6 +73,9 @@ from .runner_preflight import (
     run_non_executing_runner_preflight,
 )
 from .report import (
+    format_sandbox_run_json,
+    format_sandbox_run_markdown,
+    format_sandbox_run_text,
     format_sandbox_json,
     format_sandbox_markdown,
     format_sandbox_text,
@@ -86,6 +90,8 @@ from .unknown_profile import REPORT_KIND_UNKNOWN_REPO_PROFILE, profile_unknown_r
 
 __all__ = [
     "REPORT_KIND_SANDBOX",
+    "SANDBOX_RUN_REPORT_KIND",
+    "SANDBOX_RUN_SCHEMA_VERSION",
     "REPORT_KIND_UNKNOWN_REPO_PROFILE",
     "REPORT_KIND_APPROVAL_DRAFT",
     "COMMAND_APPROVAL_SCHEMA_VERSION",
@@ -113,6 +119,9 @@ __all__ = [
     "RUNNER_PREFLIGHT_SCHEMA_VERSION",
     "REPORT_KIND_RUNNER_PREFLIGHT",
     "format_sandbox_json",
+    "format_sandbox_run_json",
+    "format_sandbox_run_markdown",
+    "format_sandbox_run_text",
     "format_sandbox_markdown",
     "format_sandbox_text",
     "format_unknown_repo_approval_draft_json",
@@ -132,6 +141,8 @@ __all__ = [
     "run_controlled_static_transition",
     "run_non_executing_runner_preflight",
     "run_sandbox",
+    "run_sandbox_run",
+    "make_fake_runner",
     "validate_unknown_repo_approval_draft",
     "validate_unknown_repo_command_approval",
     "validate_unknown_repo_command_approval_report",
