@@ -33,6 +33,9 @@ Docker proves safety for repository-derived code.
 - Propagate timeout, cleanup failure, observer degraded, and boundary mismatch
   as evidence limitations.
 - Link gate decision sidecars and sandbox-run evidence.
+- Reuse the same experimental gate blocking convention as `--fail-on-gate` and
+  `gate-check`: gate-level blocks use exit `2` with redacted stderr reasons for
+  agent and hook integrations.
 - Keep artifacts redacted by default.
 
 ## S-005: AI Agent Contract

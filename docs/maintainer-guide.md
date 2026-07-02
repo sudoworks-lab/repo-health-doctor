@@ -39,7 +39,7 @@ Merge candidates should satisfy all of the following:
 
 ## Document Map
 
-- Agent instructions: [agent-guide.md](agent-guide.md)
+- Agent instructions: [agent-development-guide.md](agent-development-guide.md)
 - Safety boundary: [security-model.md](security-model.md)
 - Rule contract: [rules.md](rules.md)
 - Evaluation model: [evaluation-model.md](evaluation-model.md)

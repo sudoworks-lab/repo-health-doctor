@@ -2,15 +2,15 @@
   "decision_kind": "repo_health_gate_decision",
   "schema_version": "0.1-draft",
   "subject": {
-    "repo": "examples/demo-no-finding-but-degraded",
+    "repo": "<repo>",
     "commit": null,
     "tree_hash": null,
-    "binding_kind": "unbound"
+    "binding_kind": "path_bound"
   },
-  "verdict": "unknown",
+  "verdict": "warn",
   "execution_authorized": false,
-  "confidence": "unknown",
-  "confidence_reason": "no_finding_not_safety_proof:v3-check-0-readme; low_trust_no_finding:v3-check-0-readme; unbound_evidence:v3-check-0-readme; medium_limitation:missing_evidence_must_not_become_confidence; no_finding_not_safety_proof:v3-check-1-license; low_trust_no_finding:v3-check-1-license; unbound_evidence:v3-check-1-license; no_finding_not_safety_proof:v3-check-2-gitignore; low_trust_no_finding:v3-check-2-gitignore; unbound_evidence:v3-check-2-gitignore; no_finding_not_safety_proof:v3-check-3-ci; low_trust_no_finding:v3-check-3-ci; unbound_evidence:v3-check-3-ci; no_finding_not_safety_proof:v3-check-4-tests; low_trust_no_finding:v3-check-4-tests; unbound_evidence:v3-check-4-tests; no_finding_not_safety_proof:v3-check-5-docs; low_trust_no_finding:v3-check-5-docs; unbound_evidence:v3-check-5-docs; no_finding_not_safety_proof:v3-check-6-scripts; low_trust_no_finding:v3-check-6-scripts; unbound_evidence:v3-check-6-scripts; no_finding_not_safety_proof:v3-check-7-secrets_scan; low_trust_no_finding:v3-check-7-secrets_scan; unbound_evidence:v3-check-7-secrets_scan; no_finding_not_safety_proof:v3-check-8-large_files; low_trust_no_finding:v3-check-8-large_files; unbound_evidence:v3-check-8-large_files; no_finding_not_safety_proof:v3-check-9-public_text_safety; low_trust_no_finding:v3-check-9-public_text_safety; unbound_evidence:v3-check-9-public_text_safety; no_finding_not_safety_proof:v3-check-10-tracked_artifacts; low_trust_no_finding:v3-check-10-tracked_artifacts; unbound_evidence:v3-check-10-tracked_artifacts; no_finding_not_safety_proof:demo-context-no-finding-but-degraded; low_trust_no_finding:demo-context-no-finding-but-degraded; medium_limitation:observer evidence missing for demo context; missing_evidence",
+  "confidence": "low",
+  "confidence_reason": "no_finding_not_safety_proof:v3-check-0-readme; low_trust_no_finding:v3-check-0-readme; medium_limitation:missing_evidence_must_not_become_confidence; no_finding_not_safety_proof:v3-check-1-license; low_trust_no_finding:v3-check-1-license; no_finding_not_safety_proof:v3-check-2-gitignore; low_trust_no_finding:v3-check-2-gitignore; no_finding_not_safety_proof:v3-check-3-ci; low_trust_no_finding:v3-check-3-ci; no_finding_not_safety_proof:v3-check-4-tests; low_trust_no_finding:v3-check-4-tests; no_finding_not_safety_proof:v3-check-5-docs; low_trust_no_finding:v3-check-5-docs; no_finding_not_safety_proof:v3-check-6-scripts; low_trust_no_finding:v3-check-6-scripts; no_finding_not_safety_proof:v3-check-7-secrets_scan; low_trust_no_finding:v3-check-7-secrets_scan; no_finding_not_safety_proof:v3-check-8-large_files; low_trust_no_finding:v3-check-8-large_files; no_finding_not_safety_proof:v3-check-9-public_text_safety; low_trust_no_finding:v3-check-9-public_text_safety; no_finding_not_safety_proof:v3-check-10-tracked_artifacts; low_trust_no_finding:v3-check-10-tracked_artifacts; recommended_warn:demo-context-no-finding-but-degraded; no_finding_not_safety_proof:demo-context-no-finding-but-degraded; low_trust_no_finding:demo-context-no-finding-but-degraded; medium_limitation:observer evidence missing for demo context; missing_evidence",
   "explanation": {
     "summary": "Static checks did not find blocking issues, but missing or degraded evidence prevents this from being an execution green light.",
     "key_reasons": [
@@ -47,16 +47,14 @@
       "v3_report_lacks_formal_confidence_model",
       "v3_report_lacks_structured_raw_handling",
       "v3_report_is_check_oriented_not_gate_evaluator",
-      "runtime-observer",
-      "commit_or_tree_binding"
+      "runtime-observer"
     ],
     "degraded_observers": [
       "observer evidence missing for demo context"
     ]
   },
   "required_actions": [
-    "do not treat missing evidence as confidence",
-    "collect or review missing evidence"
+    "review warnings and limitations before execution"
   ],
   "limitations": [
     "not_execution_authorization",

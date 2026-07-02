@@ -18,6 +18,9 @@ class PublicContractTests(unittest.TestCase):
         self.assertIn("Default v3 JSON output compatibility remains stable", content)
         self.assertIn("`--gate-decision-output`", content)
         self.assertIn("`--gate-summary`", content)
+        self.assertIn("`--fail-on-gate`", content)
+        self.assertIn("`gate-check`", content)
+        self.assertIn("Exit `2`", content)
         self.assertIn("Human-readable gate decision `explanation`", content)
         self.assertIn("Contextual gate explanation wording", content)
         self.assertIn("Contextual explanation wording may change", content)
@@ -31,6 +34,7 @@ class PublicContractTests(unittest.TestCase):
         self.assertIn("Real-output-compatible fixture coverage", content)
         self.assertIn("Docker integration CI path", content)
         self.assertIn("Third-party security review is not done", content)
+        self.assertIn("docs.anthropic.com/en/docs/claude-code/hooks", content)
 
     def test_readme_and_quickstart_state_stable_and_experimental_surfaces(self) -> None:
         required = (

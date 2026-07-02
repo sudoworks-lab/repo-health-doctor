@@ -110,7 +110,7 @@
       "summary": "No obvious public-facing text issues detected.",
       "details": {
         "findings": [],
-        "scanned_files": 0,
+        "scanned_files": 6,
         "scan_scope": "tracked"
       }
     },

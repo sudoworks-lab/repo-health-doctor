@@ -2,17 +2,17 @@
   "decision_kind": "repo_health_gate_decision",
   "schema_version": "0.1-draft",
   "subject": {
-    "repo": "examples/demo-synthetic-supply-chain",
+    "repo": "<repo>",
     "commit": null,
     "tree_hash": null,
-    "binding_kind": "unbound"
+    "binding_kind": "path_bound"
   },
   "verdict": "quarantine",
   "execution_authorized": false,
   "confidence": "medium",
-  "confidence_reason": "no_finding_not_safety_proof:v3-check-0-readme; low_trust_no_finding:v3-check-0-readme; unbound_evidence:v3-check-0-readme; medium_limitation:missing_evidence_must_not_become_confidence; no_finding_not_safety_proof:v3-check-1-license; low_trust_no_finding:v3-check-1-license; unbound_evidence:v3-check-1-license; no_finding_not_safety_proof:v3-check-2-gitignore; low_trust_no_finding:v3-check-2-gitignore; unbound_evidence:v3-check-2-gitignore; no_finding_not_safety_proof:v3-check-3-ci; low_trust_no_finding:v3-check-3-ci; unbound_evidence:v3-check-3-ci; no_finding_not_safety_proof:v3-check-4-tests; low_trust_no_finding:v3-check-4-tests; unbound_evidence:v3-check-4-tests; no_finding_not_safety_proof:v3-check-5-docs; low_trust_no_finding:v3-check-5-docs; unbound_evidence:v3-check-5-docs; no_finding_not_safety_proof:v3-check-6-scripts; low_trust_no_finding:v3-check-6-scripts; unbound_evidence:v3-check-6-scripts; no_finding_not_safety_proof:v3-check-7-secrets_scan; low_trust_no_finding:v3-check-7-secrets_scan; unbound_evidence:v3-check-7-secrets_scan; no_finding_not_safety_proof:v3-check-8-large_files; low_trust_no_finding:v3-check-8-large_files; unbound_evidence:v3-check-8-large_files; no_finding_not_safety_proof:v3-check-9-public_text_safety; low_trust_no_finding:v3-check-9-public_text_safety; unbound_evidence:v3-check-9-public_text_safety; no_finding_not_safety_proof:v3-check-10-tracked_artifacts; low_trust_no_finding:v3-check-10-tracked_artifacts; unbound_evidence:v3-check-10-tracked_artifacts; quarantine_signal:demo-context-synthetic-supply-chain; missing_evidence",
+  "confidence_reason": "no_finding_not_safety_proof:v3-check-0-readme; low_trust_no_finding:v3-check-0-readme; medium_limitation:missing_evidence_must_not_become_confidence; no_finding_not_safety_proof:v3-check-1-license; low_trust_no_finding:v3-check-1-license; no_finding_not_safety_proof:v3-check-2-gitignore; low_trust_no_finding:v3-check-2-gitignore; no_finding_not_safety_proof:v3-check-3-ci; low_trust_no_finding:v3-check-3-ci; no_finding_not_safety_proof:v3-check-4-tests; low_trust_no_finding:v3-check-4-tests; no_finding_not_safety_proof:v3-check-5-docs; low_trust_no_finding:v3-check-5-docs; no_finding_not_safety_proof:v3-check-6-scripts; low_trust_no_finding:v3-check-6-scripts; no_finding_not_safety_proof:v3-check-7-secrets_scan; low_trust_no_finding:v3-check-7-secrets_scan; no_finding_not_safety_proof:v3-check-8-large_files; low_trust_no_finding:v3-check-8-large_files; no_finding_not_safety_proof:v3-check-9-public_text_safety; low_trust_no_finding:v3-check-9-public_text_safety; no_finding_not_safety_proof:v3-check-10-tracked_artifacts; low_trust_no_finding:v3-check-10-tracked_artifacts; recommended_quarantine:static-supply-chain-shape; quarantine_signal:static-supply-chain-shape; missing_evidence",
   "explanation": {
-    "summary": "The static health report may pass, but the repository contains synthetic supply-chain risk signals that prevent execution authorization.",
+    "summary": "The static health report may pass, but the repository contains supply-chain risk signals that prevent execution authorization.",
     "key_reasons": [
       "A package install hook or postinstall-like script is present.",
       "Credential-path or environment-access patterns are present.",
@@ -24,8 +24,7 @@
     "next_actions": [
       "Do not run install scripts locally.",
       "Review the install script and workflow changes.",
-      "Use a dedicated VM or stronger sandbox if execution is necessary.",
-      "Treat this as a quarantine-style demo, not a safety proof."
+      "Use a dedicated VM or stronger sandbox if execution is necessary."
     ]
   },
   "evidence_summary": {
@@ -43,15 +42,14 @@
       "v3-check-8-large_files",
       "v3-check-9-public_text_safety",
       "v3-check-10-tracked_artifacts",
-      "demo-context-synthetic-supply-chain"
+      "static-supply-chain-shape"
     ],
     "missing_evidence": [
       "v3_report_lacks_commit_binding",
       "v3_report_lacks_tree_hash",
       "v3_report_lacks_formal_confidence_model",
       "v3_report_lacks_structured_raw_handling",
-      "v3_report_is_check_oriented_not_gate_evaluator",
-      "commit_or_tree_binding"
+      "v3_report_is_check_oriented_not_gate_evaluator"
     ],
     "degraded_observers": []
   },
@@ -77,7 +75,7 @@
     "v3_check:large_files",
     "v3_check:public_text_safety",
     "v3_check:tracked_artifacts",
-    "synthetic fixture only; not real malware",
+    "static shape only; not proof of malicious behavior",
     "raw output not retained"
   ],
   "policy": {
@@ -88,7 +86,7 @@
     "execution_authorization_not_implemented",
     "v3_report_does_not_prove_safety",
     "commit_and_tree_binding_missing",
-    "synthetic_supply_chain_demo",
+    "supply_chain_static_shape",
     "install_script_execution",
     "package_lifecycle_hook",
     "postinstall",
@@ -97,12 +95,12 @@
     "network_request",
     "network_target_string",
     "outbound_network_target",
+    "obfuscation",
+    "dynamic_eval",
+    "eval_candidate",
     "workflow_modification",
     "pull_request_target_misuse",
     "untrusted_checkout",
-    "broad_token_permission",
-    "obfuscation",
-    "dynamic_eval",
-    "eval_candidate"
+    "broad_token_permission"
   ]
 }

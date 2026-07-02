@@ -5,7 +5,9 @@ const syntheticSignals = {
   credentialPathReference: "<redacted-credential-path>",
   workflowPathReference: "<repo>/.github/workflows/ci.yml",
   outboundTargetReference: "https://example.invalid/synthetic-collect",
-  obfuscatedEvalCandidate: ["ev", "al"].join("")
+  networkClientShape: "fetch(",
+  obfuscatedEvalCandidate: ["ev", "al"].join(""),
+  dynamicEvalShape: "Function("
 };
 
 function syntheticOutboundAttemptShape() {

@@ -13,3 +13,4 @@ snapshots/
 cache/
 .env
 .repo-health-doctor.local.yml
+.repo-health-doctor.local/

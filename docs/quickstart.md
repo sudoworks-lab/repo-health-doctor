@@ -57,12 +57,22 @@ python3 -m json.tool /tmp/rhd-demo-supply-chain.gate.json
 ```
 
 The terminal summary separates `Static health: PASS` from the gate decision and
-prints `Execution authorized: false`. The no-finding demo remains `unknown`
+prints `Execution authorized: false`. The no-finding demo remains a warning
 because observer evidence is missing or degraded. The synthetic supply-chain
 demo is expected to reach `quarantine` and name concrete safe fixture signals
 such as the postinstall hook, credential/environment pattern, outbound target
 string, workflow write-risk, and eval-like candidate. Both keep
 `execution_authorized=false`.
+
+To make a hook or CI job block on gate decisions, use the experimental
+`--fail-on-gate` contract. This exits `2` when the selected gate threshold is
+met:
+
+```bash
+env PYTHONPATH=src python3 -m repo_health_doctor examples/demo-synthetic-supply-chain \
+  --public-safety \
+  --fail-on-gate quarantine
+```
 
 ## Reading Gate Decisions
 
@@ -82,11 +92,12 @@ decisions keep `execution_authorized=false` by design.
 
 The default v3 report remains the compatibility-stable output. The evidence
 schema, gate decision sidecar, `--gate-summary`, human-readable gate
-explanation, contextual wording, imported evidence adapters, sample outputs,
-execution authorization artifact, and `sandbox-run` approval/report surfaces
-are experimental in this version. Real-output-compatible fixture coverage and
-the Docker integration CI path are also experimental and limited to documented
-scope. Stability details are in [public-contracts.md](public-contracts.md).
+explanation, contextual wording, `--fail-on-gate`, `gate-check`, imported
+evidence adapters, sample outputs, execution authorization artifact, and
+`sandbox-run` approval/report surfaces are experimental in this version.
+Real-output-compatible fixture coverage and the Docker integration CI path are
+also experimental and limited to documented scope. Stability details are in
+[public-contracts.md](public-contracts.md).
 
 ## Optional Sandbox-Run Smoke
 
@@ -121,6 +132,7 @@ Sample outputs live in [sample-outputs](sample-outputs/):
 - `demo-no-finding-but-degraded.gate-decision.json`
 - `demo-synthetic-supply-chain.v3.json`
 - `demo-synthetic-supply-chain.gate-decision.json`
+- `gate-check-blocked.txt`
 - `gitleaks-imported-evidence.gate-decision.json`
 - `osv-imported-evidence.gate-decision.json`
 

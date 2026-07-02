@@ -26,6 +26,8 @@ examples that are not public contract.
 - `schemas/gate-decision.schema.json`
 - `--gate-decision-output`
 - `--gate-summary`
+- `--fail-on-gate`
+- `gate-check`
 - Human-readable gate decision `explanation`
 - Contextual gate explanation wording
 - Gitleaks imported evidence adapter
@@ -52,6 +54,43 @@ surfaces. They do not change default CLI behavior, default v3 JSON output, or
 gate decision `execution_authorized=false` semantics.
 Contextual explanation wording may change without changing the stable default
 v3 report or default CLI behavior.
+
+### Experimental Gate Exit Contract
+
+`--fail-on-gate` connects the experimental gate decision to a machine-readable
+exit code without changing the existing `--fail-on` summary contract.
+
+- Exit `0`: the command completed and no selected failure threshold was met.
+- Exit `1`: existing non-gate CLI failure semantics, including `--fail-on`
+  static summary checks and authorization validation failures.
+- Exit `2`: the selected gate threshold blocked execution review.
+
+`--fail-on-gate` modes:
+
+- `block`: `BLOCK` exits `2`.
+- `quarantine`: `QUARANTINE` and `BLOCK` exit `2`.
+- `warn`: `WARN`, `QUARANTINE`, and `BLOCK` exit `2`.
+- `unknown`: `UNKNOWN`, `WARN`, `QUARANTINE`, and `BLOCK` exit `2`.
+
+When a gate threshold blocks, repo-health-doctor writes redacted key reasons
+and next actions to stderr. Stderr must not contain raw secrets, credentials,
+private host paths, local IPs, raw environment values, or raw policy values.
+
+`gate-check` is an experimental one-command agent surface. It generates a gate
+decision, validates a specified execution authorization artifact against an
+exact argv when provided, and exits `2` unless a valid authorization exists and
+the selected `--fail-on-gate` threshold allows the gate verdict. It does not
+auto-discover authorization artifacts in this version; callers must pass
+`--authorization` and `--argv-json`.
+
+Claude Code hook behavior is documented by Anthropic in the
+[hooks reference](https://docs.anthropic.com/en/docs/claude-code/hooks) and
+[hooks guide](https://docs.anthropic.com/en/docs/claude-code/hooks-guide).
+For a `PreToolUse` hook, exit `2` blocks the tool call and stderr is fed back
+to Claude. Exit `1` is a foot-gun for blocking hooks: for most hook events it is
+treated as a non-blocking error and the action can proceed. Hook wrappers that
+intend to block must map repo-health-doctor gate failures to exit `2` and write
+only redacted feedback to stderr.
 
 Versioning rules are documented in [versioning.md](versioning.md). Compatibility
 regeneration procedures are documented in

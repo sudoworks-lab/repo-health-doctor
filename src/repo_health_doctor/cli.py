@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
+from typing import Any, Mapping
 
 from .doctor import (
     DEFAULT_LARGE_FILE_THRESHOLD_MB,
@@ -48,6 +49,15 @@ from .gate import (
 )
 
 
+GATE_FAIL_MODES: Mapping[str, frozenset[str]] = {
+    "block": frozenset({"block"}),
+    "quarantine": frozenset({"quarantine", "block"}),
+    "warn": frozenset({"warn", "quarantine", "block"}),
+    "unknown": frozenset({"unknown", "warn", "quarantine", "block"}),
+}
+GATE_CHECK_SCHEMA_VERSION = "0.1-draft"
+
+
 def build_parser(command: str = "scan") -> argparse.ArgumentParser:
     sandbox_mode = command == "sandbox"
     sandbox_run_mode = command == "sandbox-run"
@@ -59,6 +69,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
     release_check_mode = command == "release-check"
     authorization_draft_mode = command == "authorization-draft"
     authorization_validate_mode = command == "authorization-validate"
+    gate_check_mode = command == "gate-check"
     parser = argparse.ArgumentParser(
         prog=(
             "repo-health-doctor sandbox"
@@ -78,6 +89,8 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             if authorization_draft_mode
             else "repo-health-doctor authorization validate"
             if authorization_validate_mode
+            else "repo-health-doctor gate-check"
+            if gate_check_mode
             else
             "repo-health-doctor validate-policy"
             if validate_mode
@@ -103,6 +116,8 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             if authorization_draft_mode
             else "Validate a human-controlled execution authorization artifact."
             if authorization_validate_mode
+            else "Run the experimental gate decision and authorization check as one fail-closed command."
+            if gate_check_mode
             else
             "Validate policy configuration without scanning repository contents."
             if validate_mode
@@ -128,9 +143,10 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             if authorization_draft_mode
             else "Authorization validate mode: repo-health-doctor authorization validate --authorization authorization.json --gate-decision gate.json --argv-json argv.json"
             if authorization_validate_mode
-            else
-            "Policy-only mode: repo-health-doctor validate-policy <path> [--format json|markdown]"
-            if not validate_mode and not list_allows_mode
+            else "Gate-check mode: repo-health-doctor gate-check <path> --authorization authorization.json --argv-json argv.json [--fail-on-gate unknown]"
+            if gate_check_mode
+            else "Policy-only mode: repo-health-doctor validate-policy <path> [--format json|markdown]"
+            if validate_mode
             else "Allow inventory mode: repo-health-doctor list-allows <path> [--format json|markdown]"
             if list_allows_mode
             else None
@@ -166,7 +182,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
         action="version",
         version=f"repo-health-doctor {TOOL_VERSION}",
     )
-    if not validate_mode and not list_allows_mode and not diff_reports_mode and not sandbox_mode and not sandbox_run_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode:
+    if not validate_mode and not list_allows_mode and not diff_reports_mode and not sandbox_mode and not sandbox_run_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode and not gate_check_mode:
         parser.add_argument(
             "--fail-on",
             choices=("block", "warn"),
@@ -198,14 +214,25 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             help="Enable extra checks for public release safety.",
         )
         parser.add_argument(
+            "--fail-on-gate",
+            choices=tuple(GATE_FAIL_MODES),
+            default="unknown" if gate_check_mode else None,
+            help=(
+                "Exit with code 2 when the gate decision is UNKNOWN, WARN, QUARANTINE, or BLOCK."
+                if gate_check_mode
+                else "Exit with code 2 when the gate decision meets the selected threshold."
+            ),
+        )
+        parser.add_argument(
             "--gate-decision-output",
             help="Opt-in sidecar path for a pre-execution gate decision JSON. The default v3 report output is unchanged.",
         )
-        parser.add_argument(
-            "--gate-summary",
-            action="store_true",
-            help="Opt-in human-readable gate summary for demos and review. The default v3 report output is unchanged.",
-        )
+        if not gate_check_mode:
+            parser.add_argument(
+                "--gate-summary",
+                action="store_true",
+                help="Opt-in human-readable gate summary for demos and review. The default v3 report output is unchanged.",
+            )
     if release_check_mode:
         parser.add_argument(
             "--baseline-report",
@@ -216,6 +243,9 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
         parser.add_argument("--argv-json", required=True, help="JSON array containing the exact argv to authorize or validate.")
     if authorization_validate_mode:
         parser.add_argument("--authorization", required=True, help="Execution authorization artifact JSON to validate.")
+    if gate_check_mode:
+        parser.add_argument("--authorization", help="Execution authorization artifact JSON to validate.")
+        parser.add_argument("--argv-json", help="JSON array containing the exact argv to validate.")
     if sandbox_mode:
         parser.add_argument(
             "--plan",
@@ -374,6 +404,9 @@ def main(argv: list[str] | None = None) -> int:
         else:
             command = f"authorization-{raw_args[1]}"
             raw_args = raw_args[2:]
+    elif raw_args and raw_args[0] == "gate-check":
+        command = "gate-check"
+        raw_args = raw_args[1:]
 
     if command == "sandbox-run" and "--" in raw_args:
         separator_index = raw_args.index("--")
@@ -469,6 +502,37 @@ def main(argv: list[str] | None = None) -> int:
             except ValueError as exc:
                 parser.error(str(exc))
             fail_on = "block"
+        elif command == "gate-check":
+            if args.large_file_threshold_mb <= 0:
+                parser.error("--large-file-threshold-mb must be greater than 0")
+            if args.authorization and not args.argv_json:
+                parser.error("--argv-json is required when --authorization is provided")
+            if args.argv_json and not args.authorization:
+                parser.error("--authorization is required when --argv-json is provided")
+            scan_report = diagnose_repo(
+                target,
+                large_file_threshold_mb=args.large_file_threshold_mb,
+                secrets_ignores=tuple(args.secrets_ignore),
+                public_safety=True,
+                config_path=args.config,
+                local_config_path=args.local_config,
+                load_local_config=not args.no_local_config,
+            )
+            gate_decision = evaluate_gate_decision_from_v3_report(scan_report, repo_root=target)
+            authorization_validation = None
+            if args.authorization:
+                try:
+                    authorization = _load_json_object(Path(args.authorization), "authorization")
+                    argv = _load_argv_json(Path(args.argv_json))
+                    authorization_validation = validate_execution_authorization(authorization, gate_decision, argv)
+                except ValueError as exc:
+                    parser.error(str(exc))
+            report = _build_gate_check_report(
+                gate_decision,
+                fail_on_gate=args.fail_on_gate,
+                authorization_validation=authorization_validation,
+            )
+            fail_on = None
         elif command == "validate-policy":
             report = validate_policy(
                 target,
@@ -543,6 +607,13 @@ def main(argv: list[str] | None = None) -> int:
             output = format_unknown_repo_profile_markdown(report)
         else:
             output = format_unknown_repo_profile_text(report)
+    elif command == "gate-check":
+        if args.format == "json":
+            output = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
+        elif args.format in {"markdown", "md"}:
+            output = _format_gate_check_markdown(report)
+        else:
+            output = _format_gate_check_text(report)
     elif command == "sandbox-approval-draft":
         if args.format == "json":
             output = format_unknown_repo_approval_draft_json(report)
@@ -558,14 +629,20 @@ def main(argv: list[str] | None = None) -> int:
         else:
             output = format_text(report)
     gate_decision = None
-    if command == "scan" and (getattr(args, "gate_decision_output", None) or getattr(args, "gate_summary", False)):
-        gate_decision = evaluate_gate_decision_from_v3_report(report)
+    if command == "scan" and (
+        getattr(args, "gate_decision_output", None)
+        or getattr(args, "gate_summary", False)
+        or getattr(args, "fail_on_gate", None)
+    ):
+        gate_decision = evaluate_gate_decision_from_v3_report(report, repo_root=target)
     if args.output:
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         file_output = format_sandbox_run_json(report) if command == "sandbox-run" else output
         output_path.write_text(file_output, encoding="utf-8")
-    if command == "scan" and getattr(args, "gate_decision_output", None) and gate_decision is not None:
+    if command == "gate-check":
+        gate_decision = _mapping(report.get("gate_decision"))
+    if command in {"scan", "gate-check"} and getattr(args, "gate_decision_output", None) and gate_decision is not None:
         gate_output_path = Path(args.gate_decision_output)
         gate_output_path.parent.mkdir(parents=True, exist_ok=True)
         gate_output_path.write_text(json.dumps(gate_decision, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -580,12 +657,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if report["result"]["status"] == "completed" else 1
     if command == "authorization-validate":
         return 0 if authorization_valid else 1
+    if command == "gate-check":
+        if report.get("status") != "authorized":
+            sys.stderr.write(_format_gate_block_stderr(_mapping(report.get("gate_decision")), report))
+            return 2
+        return 0
+    if command == "scan" and gate_decision is not None and getattr(args, "fail_on_gate", None):
+        if _gate_matches_fail_on(gate_decision, args.fail_on_gate):
+            sys.stderr.write(_format_gate_block_stderr(gate_decision))
+            return 2
     return 0 if fail_on is None else determine_exit_code(report, fail_on=fail_on)
 
 
 def _load_json_object(path: Path, label: str) -> dict[str, object]:
     if not path.exists():
-        raise ValueError(f"{label} path does not exist: {path}")
+        raise ValueError(f"{label} path does not exist: <path>")
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -597,7 +683,7 @@ def _load_json_object(path: Path, label: str) -> dict[str, object]:
 
 def _load_argv_json(path: Path) -> list[str]:
     if not path.exists():
-        raise ValueError(f"argv JSON path does not exist: {path}")
+        raise ValueError("argv JSON path does not exist: <path>")
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -605,6 +691,117 @@ def _load_argv_json(path: Path) -> list[str]:
     if not isinstance(payload, list) or not payload or not all(isinstance(item, str) and item for item in payload):
         raise ValueError("argv JSON must be a non-empty JSON array of strings")
     return payload
+
+
+def _build_gate_check_report(
+    gate_decision: Mapping[str, Any],
+    *,
+    fail_on_gate: str,
+    authorization_validation: Any | None,
+) -> dict[str, object]:
+    gate_blocked = _gate_matches_fail_on(gate_decision, fail_on_gate)
+    auth_payload = authorization_validation.to_dict() if authorization_validation is not None else None
+    auth_valid = bool(auth_payload and auth_payload.get("execution_authorized") is True)
+    blocking_reasons: list[str] = []
+    if gate_blocked:
+        blocking_reasons.append(f"gate_verdict_{str(gate_decision.get('verdict', 'unknown'))}")
+    if authorization_validation is None:
+        blocking_reasons.append("authorization_missing")
+    elif not auth_valid:
+        blocking_reasons.extend(_string_items(auth_payload.get("blocking_errors") if auth_payload else None))
+        if not blocking_reasons:
+            blocking_reasons.append("authorization_invalid")
+    status = "authorized" if auth_valid and not gate_blocked else "blocked"
+    return {
+        "report_kind": "gate_check",
+        "schema_version": GATE_CHECK_SCHEMA_VERSION,
+        "status": status,
+        "execution_authorized": status == "authorized",
+        "fail_on_gate": fail_on_gate,
+        "gate_decision": dict(gate_decision),
+        "authorization": auth_payload,
+        "blocking_reasons": list(dict.fromkeys(blocking_reasons)),
+        "limitations": [
+            "experimental_gate_check_contract",
+            "gate_decision_is_not_execution_authorization",
+            "authorization_must_match_exact_scope_argv_policy_and_gate_decision",
+        ],
+    }
+
+
+def _gate_matches_fail_on(gate_decision: Mapping[str, Any], fail_on_gate: str | None) -> bool:
+    if fail_on_gate is None:
+        return False
+    verdict = str(gate_decision.get("verdict", "unknown")).lower()
+    return verdict in GATE_FAIL_MODES[fail_on_gate]
+
+
+def _format_gate_block_stderr(
+    gate_decision: Mapping[str, Any],
+    gate_check_report: Mapping[str, Any] | None = None,
+) -> str:
+    explanation = gate_decision.get("explanation") if isinstance(gate_decision.get("explanation"), Mapping) else {}
+    key_reasons = _string_items(explanation.get("key_reasons"))
+    next_actions = _string_items(explanation.get("next_actions"))
+    if not key_reasons:
+        key_reasons = ["Gate decision did not authorize execution."]
+    if not next_actions:
+        next_actions = ["Review gate evidence and obtain explicit authorization before execution."]
+    lines = [
+        "Repo Health Doctor gate blocked execution.",
+        f"Gate decision: {str(gate_decision.get('verdict', 'unknown')).upper()}",
+        f"Execution authorized: {'true' if gate_check_report and gate_check_report.get('execution_authorized') is True else 'false'}",
+    ]
+    blocking_reasons = _string_items(gate_check_report.get("blocking_reasons") if gate_check_report else None)
+    if blocking_reasons:
+        lines.extend(["", "Blocking reasons:"])
+        lines.extend(f"- {item}" for item in blocking_reasons[:6])
+    lines.extend(["", "Key reasons:"])
+    lines.extend(f"- {item}" for item in key_reasons[:6])
+    lines.extend(["", "Next actions:"])
+    lines.extend(f"- {item}" for item in next_actions[:6])
+    return "\n".join(lines) + "\n"
+
+
+def _format_gate_check_text(report: Mapping[str, Any]) -> str:
+    gate_decision = _mapping(report.get("gate_decision"))
+    lines = [
+        "Repo Health Doctor Gate Check",
+        f"Status: {str(report.get('status', 'blocked')).upper()}",
+        f"Gate decision: {str(gate_decision.get('verdict', 'unknown')).upper()}",
+        f"Execution authorized: {'true' if report.get('execution_authorized') is True else 'false'}",
+        f"Fail-on-gate: {report.get('fail_on_gate', 'unknown')}",
+    ]
+    blocking_reasons = _string_items(report.get("blocking_reasons"))
+    if blocking_reasons:
+        lines.extend(["", "Blocking reasons:"])
+        lines.extend(f"- {item}" for item in blocking_reasons)
+    return "\n".join(lines) + "\n"
+
+
+def _format_gate_check_markdown(report: Mapping[str, Any]) -> str:
+    gate_decision = _mapping(report.get("gate_decision"))
+    lines = [
+        "# Repo Health Doctor Gate Check",
+        "",
+        f"- Status: `{str(report.get('status', 'blocked')).upper()}`",
+        f"- Gate decision: `{str(gate_decision.get('verdict', 'unknown')).upper()}`",
+        f"- Execution authorized: `{'true' if report.get('execution_authorized') is True else 'false'}`",
+        f"- Fail-on-gate: `{report.get('fail_on_gate', 'unknown')}`",
+    ]
+    blocking_reasons = _string_items(report.get("blocking_reasons"))
+    if blocking_reasons:
+        lines.extend(["", "## Blocking Reasons"])
+        lines.extend(f"- `{item}`" for item in blocking_reasons)
+    return "\n".join(lines) + "\n"
+
+
+def _mapping(value: object) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _string_items(value: object) -> list[str]:
+    return [item for item in value if isinstance(item, str) and item] if isinstance(value, list) else []
 
 
 if __name__ == "__main__":

@@ -21,8 +21,11 @@ The stable and experimental boundary is defined in
 - `schemas/gate-decision.schema.json`
 - `--gate-decision-output`
 - `--gate-summary`
+- `--fail-on-gate`
+- `gate-check`
 - Gate decision sidecar payloads
 - Human-readable gate decision explanations
+- Static supply-chain shape evidence
 - `schemas/execution-authorization.schema.json`
 - Execution authorization artifacts and validator behavior
 - `sandbox-run`

@@ -1,0 +1,17 @@
+Repo Health Doctor gate blocked execution.
+Gate decision: QUARANTINE
+Execution authorized: false
+
+Blocking reasons:
+- gate_verdict_quarantine
+- authorization_missing
+
+Key reasons:
+- A package install hook or postinstall-like script is present.
+- Credential-path or environment-access patterns are present.
+- An outbound network target or network-attempt string is present.
+
+Next actions:
+- Do not run install scripts locally.
+- Review the install script and workflow changes.
+- Use a dedicated VM or stronger sandbox if execution is necessary.

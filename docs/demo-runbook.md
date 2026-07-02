@@ -36,14 +36,14 @@ Expected lesson:
 - the gate decision is not `allow_limited`.
 - `execution_authorized=false`.
 
-## Demo B: Synthetic Supply-Chain Chain
+## Demo B: Synthetic Supply-Chain Shape
 
 Purpose:
 
 ```text
 A postinstall script, environment enumeration shape, redacted credential path
-reference, workflow write-risk shape, example.invalid outbound target, and
-obfuscated eval candidate can combine into quarantine evidence.
+reference, workflow write-risk shape, outbound target shape, and obfuscated
+eval candidate can combine into quarantine evidence.
 ```
 
 Run:
@@ -63,6 +63,9 @@ python3 -m json.tool docs/sample-outputs/demo-synthetic-supply-chain.gate-decisi
 Expected lesson:
 
 - the synthetic repository contains no real malware.
+- the demo is a fixture; the current detector looks for the general static
+  shape family in arbitrary repo names and does not depend on the demo repo
+  name.
 - static health can show `PASS` while the gate summary still withholds an
   execution green light.
 - the gate summary names concrete safe fixture signals: postinstall,

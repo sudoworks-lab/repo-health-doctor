@@ -1,4 +1,4 @@
-# Agent Guide
+# Agent Development Guide
 
 ## What Agents May Do
 
@@ -20,14 +20,14 @@
 
 ### Pre-Agent
 
-`PYTHONPATH=src python3 -m repo_health_doctor . --fail-on block --public-safety`
+`PYTHONPATH=src python3 -m repo_health_doctor . --fail-on block --public-safety --fail-on-gate quarantine`
 
-Stop if the result is `BLOCK`.
+Stop if the result is `BLOCK`, `QUARANTINE`, or exit `2`.
 
 ### Post-Agent
 
 - `PYTHONPATH=src python3 -m unittest discover -s tests -v`
-- `PYTHONPATH=src python3 -m repo_health_doctor . --fail-on block --public-safety`
+- `PYTHONPATH=src python3 -m repo_health_doctor . --fail-on block --public-safety --fail-on-gate quarantine`
 - `PYTHONPATH=src python3 -m repo_health_doctor validate-policy .`
 
 ### Release

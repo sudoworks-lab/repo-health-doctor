@@ -10,6 +10,16 @@ change. See [docs/versioning.md](docs/versioning.md).
 
 ### Added
 
+- Experimental `--fail-on-gate` exit-2 gate contract and `gate-check`
+  one-command authorization gate for agent integrations.
+- General static supply-chain shape evidence for arbitrary repository names,
+  covering lifecycle hooks, Python build-hook candidates, environment
+  enumeration, credential-path references, outbound network target shape,
+  workflow write-risk, and obfuscated eval candidates.
+- Claude Code integration guide with PreToolUse hook examples and redacted
+  sample blocked output.
+- PyPI Trusted Publishing release workflow scaffolding and CI self-scan
+  dogfooding gate.
 - GitHub community health templates for bug reports, feature requests, security
   model review requests, and pull requests.
 - Compatibility regeneration runbook and safe helper scripts for Gitleaks and
@@ -21,6 +31,10 @@ change. See [docs/versioning.md](docs/versioning.md).
 
 ### Changed
 
+- Synthetic supply-chain demo wording now states the fixture boundary and the
+  current generalized static-shape scope.
+- Agent workflow docs now distinguish repo development instructions from
+  external Claude Code integration.
 - README and project metadata now align on the pre-execution safety gate
   positioning.
 - Public launch docs now make the experimental sandbox-run boundary, local
@@ -39,6 +53,8 @@ change. See [docs/versioning.md](docs/versioning.md).
 
 ### Experimental
 
+- `--fail-on-gate`, `gate-check`, and static supply-chain shape evidence are
+  experimental contracts in this version.
 - Compatibility regeneration helpers are runbook aids only. They are not public
   compatibility contracts and do not authorize execution.
 - Sandbox-run is an optional experimental add-on. It is not a complete malware
@@ -48,6 +64,8 @@ change. See [docs/versioning.md](docs/versioning.md).
 
 ### Known Limitations
 
+- `gate-check` requires explicit `--authorization` and `--argv-json`; it does
+  not auto-discover authorization artifacts.
 - Real compatibility remains limited to documented fixture, version, and scope.
 - No scanner result proves a repository is safe.
 

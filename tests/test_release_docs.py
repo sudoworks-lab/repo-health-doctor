@@ -66,6 +66,15 @@ class ReleaseDocsTests(unittest.TestCase):
         self.assertIn("compatibility-regeneration.md", content)
         self.assertIn("versioning.md", content)
         self.assertIn("release-notes/v0.1.0.md", content)
+        self.assertIn("integration-claude-code.md", content)
+
+    def test_release_workflow_uses_trusted_publishing(self) -> None:
+        content = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+
+        self.assertIn("id-token: write", content)
+        self.assertIn("pypa/gh-action-pypi-publish", content)
+        self.assertNotIn("password:", content)
+        self.assertNotIn("api-token", content)
 
     def test_release_notes_include_sandbox_run_boundary(self) -> None:
         content = " ".join(

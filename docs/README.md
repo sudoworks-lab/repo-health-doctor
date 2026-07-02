@@ -7,7 +7,8 @@ This directory contains the public documentation set for `repo-health-doctor`.
 - `quickstart.md`: first-run commands and demo flow
 - `demo-runbook.md`: safe synthetic demo walkthrough
 - `maintainer-guide.md`: maintainer workflow and review boundaries
-- `agent-guide.md`: coding-agent workflow and guardrails
+- `agent-development-guide.md`: coding-agent workflow and guardrails for this repo
+- `integration-claude-code.md`: Claude Code pre-execution gate integration
 - `architecture.md`: product scope and design boundaries
 - `security-model.md`: redaction rules, limits, and sandbox boundary
 - `evaluation-model.md`: tests, fixtures, and regression expectations
@@ -39,6 +40,7 @@ This directory contains the public documentation set for `repo-health-doctor`.
 ## Sample Outputs
 
 - `sample-outputs/`: safe synthetic v3 reports and gate decision sidecars
+- `sample-outputs/gate-check-blocked.txt`: redacted hook-style blocked gate output
 
 ## Schemas And Policies
 

@@ -81,7 +81,7 @@ def build_gate_decision_candidate_from_v3_report(report: Mapping[str, Any]) -> M
             "repo": _repo(report),
             "commit": None,
             "tree_hash": None,
-            "binding_kind": "unbound",
+            "binding_kind": "path_bound",
         },
         "verdict": verdict,
         "execution_authorized": False,
@@ -136,13 +136,14 @@ def _candidate_for_finding(
     location = {"path": str(path) if isinstance(path, str) else "<repo>", "line": line if isinstance(line, int) else None}
     redacted = finding.get("redacted") is True
     redaction_status = "redacted" if redacted else "unknown"
+    severity = "warn" if finding.get("allowed") is True else _severity(str(finding.get("severity", check.get("status", "warn"))))
     return _base_candidate(
         report=report,
         check=check,
         evidence_id=f"v3-finding-{check_index}-{finding_index}-{_safe_token(finding.get('rule_id'))}",
         category=_category_for_rule_or_check(str(finding.get("rule_id", "")), str(check.get("name", "unknown"))),
         subcategory=str(finding.get("pattern") or finding.get("rule_id") or "unknown"),
-        severity=_severity(str(finding.get("severity", check.get("status", "warn")))),
+        severity=severity,
         finding_present=True,
         finding_count=1,
         locations=[location],
@@ -187,7 +188,7 @@ def _base_candidate(
             "commit": None,
             "tree_hash": None,
             "path_scope": path_scope,
-            "binding_kind": "unbound",
+            "binding_kind": "path_bound",
         },
         "classification": {
             "category": category,
@@ -296,8 +297,7 @@ def _path_scope(details: Any, locations: list[Mapping[str, Any]]) -> list[str]:
 
 
 def _repo(report: Mapping[str, Any]) -> str:
-    repo = report.get("repo_path")
-    return repo if isinstance(repo, str) and repo else "<repo>"
+    return "<repo>"
 
 
 def _safe_token(value: Any) -> str:

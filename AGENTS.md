@@ -39,7 +39,7 @@ python3 -m json.tool /tmp/repo-health-doctor-result.json >/dev/null
 
 ## Pointers
 
-- Agent workflow details: [docs/agent-guide.md](docs/agent-guide.md)
+- Agent workflow details: [docs/agent-development-guide.md](docs/agent-development-guide.md)
 - Maintainer workflow: [docs/maintainer-guide.md](docs/maintainer-guide.md)
 - Safety boundary: [docs/security-model.md](docs/security-model.md)
 - Evaluation model: [docs/evaluation-model.md](docs/evaluation-model.md)

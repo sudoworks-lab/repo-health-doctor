@@ -65,5 +65,11 @@ jobs:
           test -s /tmp/repo-health-doctor-policy.json
           python -m json.tool /tmp/repo-health-doctor-policy.json >/dev/null
 
+      - name: Run self-scan gate
+        run: |
+          repo-health-doctor . --public-safety --fail-on-gate quarantine --gate-decision-output /tmp/repo-health-doctor-self.gate.json
+          test -s /tmp/repo-health-doctor-self.gate.json
+          python -m json.tool /tmp/repo-health-doctor-self.gate.json >/dev/null
+
       - name: Run release-check smoke
         run: bash scripts/release-check-smoke.sh

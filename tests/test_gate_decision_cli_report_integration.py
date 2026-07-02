@@ -8,11 +8,32 @@ import sys
 import tempfile
 import unittest
 
-from repo_health_doctor.gate import validate_gate_decision
+from repo_health_doctor.gate import build_execution_authorization_draft, validate_gate_decision
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEMO_REPO = ROOT / "tests" / "fixtures" / "demo-repo"
+SYNTHETIC_SUPPLY_CHAIN = ROOT / "examples" / "demo-synthetic-supply-chain"
+FORBIDDEN_PATTERNS = (
+    "/home/",
+    "/Users/",
+    "C:\\Users\\",
+    ".ssh",
+    ".aws",
+    ".npmrc",
+    ".pypirc",
+    ".netrc",
+    "BEGIN OPENSSH PRIVATE KEY",
+    "BEGIN RSA PRIVATE KEY",
+    "AKIA",
+    "ghp_",
+    "github_pat_",
+    "xoxb-",
+    "sk-",
+    "-----BEGIN",
+    "password=",
+    "token=",
+)
 
 
 class GateDecisionCliReportIntegrationTests(unittest.TestCase):
@@ -81,6 +102,123 @@ class GateDecisionCliReportIntegrationTests(unittest.TestCase):
             )
             self.assertTrue(report_path.is_file())
             self.assertFalse(gate_path.exists())
+
+    def test_fail_on_gate_quarantine_exits_2_and_writes_redacted_stderr(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor.cli",
+                str(SYNTHETIC_SUPPLY_CHAIN),
+                "--public-safety",
+                "--fail-on-gate",
+                "quarantine",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=self._cli_env(),
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Repo Health Doctor gate blocked execution.", result.stderr)
+        self.assertIn("Gate decision: QUARANTINE", result.stderr)
+        self.assertIn("Key reasons:", result.stderr)
+        self.assertIn("Next actions:", result.stderr)
+        for pattern in FORBIDDEN_PATTERNS:
+            with self.subTest(pattern=pattern):
+                self.assertNotIn(pattern, result.stderr)
+
+    def test_gate_check_without_authorization_blocks_with_exit_2(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "repo_health_doctor.cli",
+                "gate-check",
+                str(DEMO_REPO),
+                "--format",
+                "json",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=self._cli_env(),
+        )
+
+        self.assertEqual(result.returncode, 2)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["status"], "blocked")
+        self.assertFalse(payload["execution_authorized"])
+        self.assertIn("authorization_missing", payload["blocking_reasons"])
+        self.assertIn("authorization_missing", result.stderr)
+
+    def test_gate_check_with_matching_authorization_can_exit_0_when_gate_threshold_allows_warn(self) -> None:
+        argv = ["python3", "-m", "pytest", "tests"]
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            gate_path = tmp_path / "gate.json"
+            auth_path = tmp_path / "authorization.json"
+            argv_path = tmp_path / "argv.json"
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "repo_health_doctor.cli",
+                    str(DEMO_REPO),
+                    "--public-safety",
+                    "--gate-decision-output",
+                    str(gate_path),
+                    "--output",
+                    str(tmp_path / "report.txt"),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                env=self._cli_env(),
+            )
+            gate = json.loads(gate_path.read_text(encoding="utf-8"))
+            self.assertEqual(gate["verdict"], "warn")
+            authorization = dict(
+                build_execution_authorization_draft(
+                    gate,
+                    argv,
+                    expires_at="2099-01-01T00:00:00Z",
+                )
+            )
+            authorization["approved"] = True
+            authorization["approved_by"] = "redacted@example.test"
+            authorization["approved_at"] = "2026-01-01T00:00:00Z"
+            auth_path.write_text(json.dumps(authorization, indent=2) + "\n", encoding="utf-8")
+            argv_path.write_text(json.dumps(argv, indent=2) + "\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "repo_health_doctor.cli",
+                    "gate-check",
+                    str(DEMO_REPO),
+                    "--fail-on-gate",
+                    "quarantine",
+                    "--authorization",
+                    str(auth_path),
+                    "--argv-json",
+                    str(argv_path),
+                    "--format",
+                    "json",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=self._cli_env(),
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["status"], "authorized")
+        self.assertTrue(payload["execution_authorized"])
+        self.assertEqual(payload["gate_decision"]["verdict"], "warn")
 
 
 if __name__ == "__main__":

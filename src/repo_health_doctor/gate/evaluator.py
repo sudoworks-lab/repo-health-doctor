@@ -118,7 +118,7 @@ def evaluate_gate_decision(
 
         if source.get("execution_mode") in {"sandbox_observer", "docker_isolated"}:
             any_runtime_observation = True
-        if subject_data.get("binding_kind") in {"commit_bound", "tree_bound", "synthetic"}:
+        if subject_data.get("binding_kind") in {"path_bound", "commit_bound", "tree_bound", "synthetic"}:
             any_binding_acceptable = True
         if trust.get("level") not in LOW_TRUST_LEVELS:
             all_low_trust = False
@@ -142,6 +142,14 @@ def evaluate_gate_decision(
             verdict_candidates.append("block")
             verdict_reasons.append(f"recommended_block:{evidence_id}")
             blocking_evidence.append(evidence_id)
+        elif effects.get("recommended_gate_effect") == "quarantine":
+            verdict_candidates.append("quarantine")
+            verdict_reasons.append(f"recommended_quarantine:{evidence_id}")
+            warning_evidence.append(evidence_id)
+        elif effects.get("recommended_gate_effect") == "warn":
+            verdict_candidates.append("warn")
+            verdict_reasons.append(f"recommended_warn:{evidence_id}")
+            warning_evidence.append(evidence_id)
 
         tokens = _tokens(item)
         if _has_any(tokens, BLOCKING_LIMITATION_MARKERS) or "raw_secret_leak" in tokens or "raw_host_path_leak" in tokens:

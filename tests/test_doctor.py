@@ -370,7 +370,7 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
             repo_root / ".github" / "pull_request_template.md",
             repo_root / "docs" / "requirements.md",
             repo_root / "docs" / "maintainer-guide.md",
-            repo_root / "docs" / "agent-guide.md",
+            repo_root / "docs" / "agent-development-guide.md",
             repo_root / "docs" / "security-model.md",
             repo_root / "docs" / "evaluation-model.md",
             repo_root / "docs" / "ci-integration.md",

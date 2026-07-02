@@ -55,6 +55,25 @@ Gitleaks, OSV-Scanner, zizmor-style, and similar integrations are imported
 evidence paths. repo-health-doctor does not replace those tools and does not
 claim their silence means a repository is safe.
 
+## Install
+
+After the package is published, the intended user install path is:
+
+```bash
+pipx install repo-health-doctor
+repo-health-doctor --help
+```
+
+For one-off runs after publication:
+
+```bash
+uvx repo-health-doctor --help
+```
+
+The project currently has no runtime package dependencies (`dependencies = []`
+in `pyproject.toml`). Packaging/build tools are still needed to build or install
+from source.
+
 ## What It Does Not Do
 
 repo-health-doctor is not:
@@ -110,6 +129,14 @@ or degraded observer evidence; the synthetic supply-chain demo calls out the
 postinstall, credential/environment, outbound target, workflow, and eval-like
 signals. The sidecar JSON is available when you want to inspect the
 experimental gate details.
+
+The synthetic supply-chain demo is a fixture, not malware and not proof of a
+real-world scanner finding. The current experimental static shape detector now
+looks for the same general family in arbitrary repo names: package lifecycle
+hooks, Python build-hook candidates, environment enumeration, credential-path
+references, outbound network target shape, workflow write-risk, and obfuscated
+eval candidates. A single axis starts as review evidence; multiple axes can
+recommend quarantine. These signals are still gate inputs, not a safety proof.
 
 `--gate-summary` is opt-in and intended as a human-readable demo / review aid.
 It does not change the default v3 report contract. The gate decision sidecar,
@@ -198,9 +225,10 @@ surfaced limitations are stable public contract.
 The evidence schema, gate decision sidecar, `--gate-summary`, human-readable
 gate explanation, imported evidence adapters, sample outputs, execution
 authorization artifact, and `sandbox-run` approval/report surfaces are
-experimental in this version. Real-output-compatible fixture coverage and the
-Docker integration CI path are also experimental and limited to documented
-fixture, version, and CI scope.
+experimental in this version. `--fail-on-gate`, `gate-check`, and the static
+supply-chain shape detector are also experimental. Real-output-compatible
+fixture coverage and the Docker integration CI path are also experimental and
+limited to documented fixture, version, and CI scope.
 
 See [docs/public-contracts.md](docs/public-contracts.md) and
 [docs/versioning.md](docs/versioning.md).
@@ -212,8 +240,16 @@ policy validation, schema checks, and compatibility fixtures are not a
 substitute for external review. Security model review is welcome; use the
 public template for non-sensitive review and avoid raw sensitive data.
 
-See [docs/security-review-needed.md](docs/security-review-needed.md) and
-[docs/threat-model.md](docs/threat-model.md).
+See [docs/security-review-needed.md](docs/security-review-needed.md),
+[docs/threat-model.md](docs/threat-model.md), and the
+[security model review issue template](.github/ISSUE_TEMPLATE/security-model-review.yml).
+
+## Dogfooding
+
+CI includes a self-scan job that runs repo-health-doctor against this repository
+with `--public-safety` and `--fail-on-gate quarantine`. This is trust evidence,
+not proof of safety: it checks that the repo can pass its own quarantine/block
+gate while keeping warnings visible for review.
 
 ## Quick Local Checks
 
@@ -248,6 +284,8 @@ repo-health-doctor . --fail-on block --public-safety
 repo-health-doctor .
 repo-health-doctor . --public-safety
 repo-health-doctor . --fail-on warn --public-safety
+repo-health-doctor . --public-safety --fail-on-gate quarantine
+repo-health-doctor gate-check . --authorization authorization.json --argv-json argv.json
 repo-health-doctor . --public-safety --format json --output /tmp/repo-health-doctor-public-safety.json
 repo-health-doctor . --public-safety --format markdown --output /tmp/repo-health-doctor-public-safety.md
 repo-health-doctor validate-policy .
@@ -266,7 +304,8 @@ Command details are intentionally kept in docs:
 - [docs/policy.md](docs/policy.md): policy and `validate-policy`
 - [docs/ci-integration.md](docs/ci-integration.md): CI and GitHub Step Summary
 - [docs/maintainer-guide.md](docs/maintainer-guide.md): maintainer workflow
-- [docs/agent-guide.md](docs/agent-guide.md): agent workflow
+- [docs/agent-development-guide.md](docs/agent-development-guide.md): agent workflow for this repo
+- [docs/integration-claude-code.md](docs/integration-claude-code.md): Claude Code pre-execution gate integration
 - [docs/sandbox-run.md](docs/sandbox-run.md): experimental Docker sandbox-run add-on
 
 ## Output And Redaction
@@ -390,6 +429,8 @@ it does not replace them.
 - [docs/security-model.md](docs/security-model.md): redaction and safety boundary
 - [docs/evaluation-model.md](docs/evaluation-model.md): tests, fixtures, and golden outputs
 - [docs/public-contracts.md](docs/public-contracts.md): stable / experimental / non-contract surfaces
+- [docs/integration-claude-code.md](docs/integration-claude-code.md): Claude Code hook integration
+- [docs/agent-development-guide.md](docs/agent-development-guide.md): agent workflow for this repo
 - [docs/security-review-needed.md](docs/security-review-needed.md): third-party review status
 - [docs/compatibility-regeneration.md](docs/compatibility-regeneration.md): safe compatibility fixture regeneration
 - [docs/release-notes/v0.1.0.md](docs/release-notes/v0.1.0.md): release notes

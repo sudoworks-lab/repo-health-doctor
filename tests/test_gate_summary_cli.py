@@ -81,7 +81,7 @@ class GateSummaryCliTests(unittest.TestCase):
         )
 
         self.assertIn("Static health: PASS", result.stdout)
-        self.assertIn("Gate decision: UNKNOWN", result.stdout)
+        self.assertIn("Gate decision: WARN", result.stdout)
         self.assertIn("Execution authorized: false", result.stdout)
         self.assertIn("No scanner finding is not proof of safety.", result.stdout)
         self.assertIn("Runtime or observer evidence is missing or degraded.", result.stdout)
