@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import unittest
 
 from repo_health_doctor.sandbox.approval import build_demo_sandbox_run_approval
 from repo_health_doctor.sandbox.profiles import get_sandbox_profile
@@ -93,14 +94,14 @@ def _base_args(approval_path: Path, runner: str = "fake") -> list[str]:
     ]
 
 
-def test_cli_refuses_missing_approval(tmp_path: Path) -> None:
+def test_cli_allows_missing_legacy_approval(tmp_path: Path) -> None:
     repo = _repo(tmp_path / "repo")
     result = _run_cli(repo, "--image", IMAGE, "--profile", "no-network-default", "--runner", "fake", "--", *COMMAND)
     report = json.loads(result.stdout)
 
-    assert result.returncode == 1
-    assert report["result"]["status"] == "blocked"
-    assert "approval_missing" in report["approval"]["refusal_reasons"]
+    assert result.returncode == 0
+    assert report["result"]["status"] == "completed"
+    assert report["approval"]["refusal_reasons"] == []
 
 
 def test_cli_refuses_invalid_approval(tmp_path: Path) -> None:
@@ -110,7 +111,7 @@ def test_cli_refuses_invalid_approval(tmp_path: Path) -> None:
     result = _run_cli(repo, *_base_args(approval_path))
     report = json.loads(result.stdout)
 
-    assert result.returncode == 1
+    assert result.returncode == 2
     assert "approval_invalid_json" in report["approval"]["refusal_reasons"]
 
 
@@ -157,7 +158,7 @@ def test_cli_refuses_approval_binding_mismatches(tmp_path: Path) -> None:
         args = [str(approval_path) if arg.endswith(filename) else arg for arg in args]
         result = _run_cli(repo, *args)
         report = json.loads(result.stdout)
-        assert result.returncode == 1
+        assert result.returncode == 2
         assert expected in report["approval"]["refusal_reasons"]
 
 
@@ -258,12 +259,12 @@ def test_missing_approval_writes_valid_json_output_when_stdout_is_text(tmp_path:
     )
     report = json.loads(output_path.read_text(encoding="utf-8"))
 
-    assert result.returncode == 1
-    assert result.stdout.startswith("Repo Health Doctor Sandbox-Run: BLOCKED")
+    assert result.returncode == 0
+    assert result.stdout.startswith("Repo Health Doctor Sandbox-Run: COMPLETED")
     _assert_json_tool_parses(output_path)
     _assert_sandbox_run_schema_valid(report)
-    assert report["result"]["status"] == "blocked"
-    assert "approval_missing" in report["approval"]["refusal_reasons"]
+    assert report["result"]["status"] == "completed"
+    assert report["approval"]["refusal_reasons"] == []
 
 
 def test_command_mismatch_writes_valid_json_output_when_stdout_is_text(tmp_path: Path) -> None:
@@ -291,7 +292,7 @@ def test_command_mismatch_writes_valid_json_output_when_stdout_is_text(tmp_path:
     )
     report = json.loads(output_path.read_text(encoding="utf-8"))
 
-    assert result.returncode == 1
+    assert result.returncode == 2
     assert result.stdout.startswith("Repo Health Doctor Sandbox-Run: BLOCKED")
     _assert_json_tool_parses(output_path)
     _assert_sandbox_run_schema_valid(report)
@@ -328,3 +329,54 @@ def test_failed_runner_writes_valid_json_output_and_human_diagnostic(tmp_path: P
     _assert_sandbox_run_schema_valid(report)
     assert report["result"]["status"] == "failed"
     assert report["docker"]["failure_class"] == "sandbox_command_or_runner_failure"
+
+
+class SandboxRunCliContractTests(unittest.TestCase):
+    def test_cli_dry_run_locked_down_without_legacy_approval_writes_evidence(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = _repo(Path(tmp) / "repo")
+            output_path = Path(tmp) / "sandbox-run.json"
+            result = _run_cli(
+                repo,
+                "--dry-run",
+                "--profile",
+                "locked-down",
+                "--evidence-output",
+                str(output_path),
+                "--",
+                "python",
+                "-c",
+                "print('hello')",
+            )
+            report = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(report["result"]["status"], "dry_run")
+        self.assertFalse(report["policy_blocked"])
+        self.assertFalse(report["command_started"])
+        self.assertFalse(report["docker"]["docker_invoked"])
+        self.assertEqual(report["sandbox_profile"]["name"], "locked-down")
+
+    def test_cli_policy_block_uses_exit_2_prefix_and_does_not_invoke_runner(self) -> None:
+        result = _run_cli(
+            ROOT / "examples" / "demo-synthetic-supply-chain",
+            "--profile",
+            "locked-down",
+            "--fail-on-gate",
+            "quarantine",
+            "--runner",
+            "fake",
+            "--",
+            "python",
+            "-c",
+            "print('should not run')",
+        )
+        report = json.loads(result.stdout)
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("SANDBOX-RUN POLICY BLOCK", result.stderr)
+        self.assertTrue(report["policy_blocked"])
+        self.assertFalse(report["command_started"])
+        self.assertFalse(report["docker"]["docker_invoked"])

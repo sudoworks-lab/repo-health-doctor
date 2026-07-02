@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
+from uuid import uuid4
 
 from ..doctor import TOOL_VERSION
 from .approval import load_sandbox_run_approval, validate_sandbox_run_approval
@@ -14,8 +16,12 @@ from .docker_runner import (
     build_docker_run_argv,
     docker_report_fields,
 )
-from .profiles import PROFILE_NO_NETWORK_DEFAULT, SandboxProfile, get_sandbox_profile
+from .profiles import PROFILE_LOCKED_DOWN, PROFILE_INSPECT_ONLY, SandboxProfile, get_sandbox_profile
 from .run_workspace import (
+    CopyBudget,
+    DEFAULT_MAX_FILE_BYTES,
+    DEFAULT_MAX_FILE_COUNT,
+    DEFAULT_MAX_TOTAL_BYTES,
     FINGERPRINT_METHOD,
     DisposableWorkspace,
     InventoryResult,
@@ -35,7 +41,17 @@ STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"
 STATUS_TIMED_OUT = "timed_out"
 STATUS_CLEANUP_UNCERTAIN = "cleanup_uncertain"
+STATUS_DRY_RUN = "dry_run"
 DOCKER_INFRASTRUCTURE_EXIT_CODES = {125}
+DEFAULT_SANDBOX_IMAGE = "python:3.12-slim"
+SANDBOX_POLICY_BLOCK_EXIT_CODE = 2
+SANDBOX_INFRASTRUCTURE_EXIT_CODE = 1
+GATE_FAIL_MODES: Mapping[str, frozenset[str]] = {
+    "block": frozenset({"block"}),
+    "quarantine": frozenset({"quarantine", "block"}),
+    "warn": frozenset({"warn", "quarantine", "block"}),
+    "unknown": frozenset({"unknown", "warn", "quarantine", "block"}),
+}
 
 SECRET_PATTERNS = (
     re.compile(
@@ -61,55 +77,73 @@ PRIVATE_PATH_PATTERNS = (
 def run_sandbox_run(
     target: Path,
     *,
-    approval_path: Path | None,
-    image: str | None,
-    profile_name: str = PROFILE_NO_NETWORK_DEFAULT,
+    approval_path: Path | None = None,
+    image: str | None = None,
+    profile_name: str = PROFILE_LOCKED_DOWN,
     command_argv: list[str],
     timeout_seconds: int = 30,
     runner: SandboxDockerRunner | None = None,
     output_preview_chars: int = DEFAULT_OUTPUT_PREVIEW_CHARS,
+    dry_run: bool = False,
+    preserve_workspace: bool = False,
+    copy_budget: CopyBudget | None = None,
+    gate_decision: Mapping[str, Any] | None = None,
+    fail_on_gate: str | None = None,
+    authorization_path: Path | None = None,
+    authorization_validation: Any | None = None,
 ) -> dict[str, Any]:
     target = target.resolve()
     command_argv = _normalize_command_argv(command_argv)
-    image = image or ""
+    image = image or DEFAULT_SANDBOX_IMAGE
     profile = get_sandbox_profile(profile_name)
     runner = DockerRunner() if runner is None else runner
     limitations: list[str] = []
     next_actions: list[str] = []
-    refusal_reasons: list[str] = []
+    policy_reasons: list[str] = []
+    infrastructure_reasons: list[str] = []
 
-    target_inventory = _fingerprint_or_none(target, refusal_reasons, limitations)
+    target_inventory = _fingerprint_or_none(target, policy_reasons, limitations)
     base_report = _base_report(
         target=target,
         target_inventory=target_inventory,
         approval_path=approval_path,
+        authorization_path=authorization_path,
         image=image,
         profile=profile,
         command_argv=command_argv,
         runner=runner,
         limitations=limitations,
         next_actions=next_actions,
+        dry_run=dry_run,
+        preserve_workspace=preserve_workspace,
+        gate_decision=gate_decision,
+        fail_on_gate=fail_on_gate,
+        authorization_validation=authorization_validation,
     )
 
     if not command_argv:
-        refusal_reasons.append("command_argv_missing")
-    if not image:
-        refusal_reasons.append("image_missing")
+        infrastructure_reasons.append("command_argv_missing")
     if timeout_seconds <= 0:
-        refusal_reasons.append("timeout_seconds_invalid")
+        infrastructure_reasons.append("timeout_seconds_invalid")
     if not profile.implemented:
-        refusal_reasons.append(profile.refusal_reason or "profile_not_implemented")
+        infrastructure_reasons.append(profile.refusal_reason or "profile_not_implemented")
+    if profile.name == PROFILE_INSPECT_ONLY and not dry_run:
+        policy_reasons.append("inspect_only_profile_requires_dry_run")
     if target_inventory is None:
-        refusal_reasons.append("target_fingerprint_unavailable")
+        policy_reasons.append("target_fingerprint_unavailable")
+    gate_block_reason = _gate_block_reason(gate_decision, fail_on_gate)
+    authorization_authorized = _authorization_execution_authorized(authorization_validation)
+    if gate_block_reason is not None and not authorization_authorized:
+        policy_reasons.append(gate_block_reason)
+    if authorization_path is not None and not authorization_authorized:
+        policy_reasons.extend(_authorization_blocking_reasons(authorization_validation))
 
     approval_validation = None
-    if approval_path is None:
-        refusal_reasons.append("approval_missing")
-    elif target_inventory is not None and image and command_argv:
+    if approval_path is not None and target_inventory is not None and image and command_argv:
         try:
             approval = load_sandbox_run_approval(approval_path)
         except ValueError as exc:
-            refusal_reasons.append(str(exc))
+            policy_reasons.append(str(exc))
         else:
             approval_validation = validate_sandbox_run_approval(
                 approval,
@@ -120,24 +154,36 @@ def run_sandbox_run(
                 profile=profile,
                 timeout_seconds=timeout_seconds,
             )
-            refusal_reasons.extend(approval_validation.refusal_reasons)
+            policy_reasons.extend(approval_validation.refusal_reasons)
             limitations.extend(approval_validation.limitations)
             limitations.extend(approval_validation.warnings)
 
-    if refusal_reasons:
-        return _blocked_report(
+    if policy_reasons:
+        return _policy_blocked_report(
             base_report,
             approval_path=approval_path,
-            refusal_reasons=refusal_reasons,
+            refusal_reasons=policy_reasons,
             approval_validation=approval_validation,
             next_actions=[
-                "Provide a valid sandbox-run approval artifact for the exact target, image, profile, network mode, timeout, resource limits, and command.",
-                "Review the sandbox-run report limitations before retrying.",
+                "Review gate, authorization, copy policy, and approval refusal reasons before retrying.",
+                "Do not run the repository-derived command on the host as a fallback.",
             ],
         )
 
-    if not runner.docker_available():
-        return _blocked_report(
+    if infrastructure_reasons:
+        return _infrastructure_error_report(
+            base_report,
+            approval_path=approval_path,
+            refusal_reasons=infrastructure_reasons,
+            approval_validation=approval_validation,
+            next_actions=[
+                "Do not fall back to running the repository-derived command directly on the host.",
+                "Fix the sandbox-run configuration and retry.",
+            ],
+        )
+
+    if not dry_run and not runner.docker_available():
+        return _infrastructure_error_report(
             base_report,
             approval_path=approval_path,
             refusal_reasons=["docker_unavailable"],
@@ -147,8 +193,8 @@ def run_sandbox_run(
                 "Do not fall back to running the repository-derived command directly on the host.",
             ],
         )
-    if not runner.image_available_locally(image):
-        return _blocked_report(
+    if not dry_run and not runner.image_available_locally(image):
+        return _infrastructure_error_report(
             base_report,
             approval_path=approval_path,
             refusal_reasons=["image_unavailable_local_only_policy"],
@@ -163,25 +209,30 @@ def run_sandbox_run(
     before_snapshot: InventoryResult | None = None
     after_snapshot: InventoryResult | None = None
     try:
-        workspace = create_disposable_workspace(target)
+        workspace = create_disposable_workspace(target, copy_budget=copy_budget)
         base_report["disposable_workspace"] = workspace.to_report()
         if not workspace.copy_safety_ok:
-            return _blocked_report(
+            copy_refusals = ["workspace_copy_safety_check_failed"]
+            if workspace.copy_budget_exceeded:
+                copy_refusals.append("copy_budget_exceeded")
+            return _policy_blocked_report(
                 base_report,
                 approval_path=approval_path,
-                refusal_reasons=["workspace_copy_safety_check_failed"],
+                refusal_reasons=copy_refusals,
                 approval_validation=approval_validation,
                 next_actions=[
                     "Remove or review unsupported entries before sandbox execution.",
                     "Do not run the command on the host as a fallback.",
                 ],
                 workspace=workspace,
+                preserve_workspace=preserve_workspace,
             )
         before_snapshot = snapshot_workspace(workspace.workspace)
         docker_argv = build_docker_run_argv(
             image=image,
             command_argv=command_argv,
             workspace_host_path=workspace.workspace,
+            out_host_path=workspace.out,
             profile=profile,
         )
         docker_argv_redacted = [_redact_text(token, target=target, workspace=workspace) for token in docker_argv]
@@ -191,8 +242,28 @@ def run_sandbox_run(
             argv_redacted=docker_argv_redacted,
             runtime=runner.detect_runtime(),
             runner_name=runner.runner_name,
-            docker_invoked=runner.docker_invoked,
+            docker_invoked=bool(runner.docker_invoked and not dry_run),
         )
+        if dry_run:
+            report = dict(base_report)
+            report["result"] = {
+                "status": STATUS_DRY_RUN,
+                "exit_code": 0,
+                "timed_out": False,
+                "duration_ms": 0,
+            }
+            report["workspace_diff"] = summarize_workspace_diff(before_snapshot, before_snapshot)
+            report["approval"] = _approval_report(
+                approval_path=approval_path,
+                approval_validation=approval_validation,
+                refusal_reasons=[],
+            )
+            report["next_actions"] = [
+                "Dry-run generated sandbox-run evidence without invoking Docker.",
+                "Run without --dry-run only after reviewing the planned boundary.",
+            ]
+            report["sandbox_exit_code"] = 0
+            return _finalize_report(report, workspace=workspace, preserve_workspace=preserve_workspace)
         run_result = runner.run(docker_argv, timeout_seconds)
         after_snapshot = snapshot_workspace(workspace.workspace)
         output_summary = _build_output_summary(
@@ -213,6 +284,15 @@ def run_sandbox_run(
             status = STATUS_TIMED_OUT
         elif run_result.exit_code not in {0, None}:
             status = STATUS_FAILED
+        command_started = not _is_docker_infrastructure_failure(run_result, runner=runner)
+        command_exit_code = run_result.exit_code if command_started else None
+        sandbox_exit_code = (
+            SANDBOX_INFRASTRUCTURE_EXIT_CODE
+            if _is_docker_infrastructure_failure(run_result, runner=runner)
+            else run_result.exit_code
+            if run_result.exit_code is not None
+            else SANDBOX_INFRASTRUCTURE_EXIT_CODE
+        )
         report = dict(base_report)
         report["docker"] = docker_with_result
         report["workspace_diff"] = summarize_workspace_diff(before_snapshot, after_snapshot)
@@ -223,6 +303,11 @@ def run_sandbox_run(
             "timed_out": run_result.timed_out,
             "duration_ms": run_result.duration_ms,
         }
+        report["policy_blocked"] = False
+        report["command_started"] = command_started
+        report["command_exit_code"] = command_exit_code
+        report["sandbox_exit_code"] = sandbox_exit_code
+        report["block_reason"] = None
         report["approval"] = _approval_report(
             approval_path=approval_path,
             approval_validation=approval_validation,
@@ -237,7 +322,7 @@ def run_sandbox_run(
             report["next_actions"] = _next_actions_for_docker_infrastructure_failure()
         else:
             report["next_actions"] = _next_actions_for_status(status)
-        return _finalize_report(report, workspace=workspace)
+        return _finalize_report(report, workspace=workspace, preserve_workspace=preserve_workspace)
     except Exception as exc:
         report = dict(base_report)
         report["limitations"].append(_redact_text(f"sandbox-run infrastructure error: {exc.__class__.__name__}", target=target, workspace=workspace))
@@ -253,6 +338,11 @@ def run_sandbox_run(
             "timed_out": False,
             "duration_ms": 0,
         }
+        report["policy_blocked"] = False
+        report["command_started"] = False
+        report["command_exit_code"] = None
+        report["sandbox_exit_code"] = SANDBOX_INFRASTRUCTURE_EXIT_CODE
+        report["block_reason"] = "sandbox_run_infrastructure_error"
         report["workspace_diff"] = summarize_workspace_diff(before_snapshot, after_snapshot)
         report["output_summary"] = _empty_output_summary()
         report["approval"] = _approval_report(
@@ -264,7 +354,7 @@ def run_sandbox_run(
             "Treat the sandbox-run evidence as incomplete.",
             "Do not run the repository-derived command directly on the host as a fallback.",
         ]
-        return _finalize_report(report, workspace=workspace)
+        return _finalize_report(report, workspace=workspace, preserve_workspace=preserve_workspace)
 
 
 def make_fake_runner(mode: str) -> FakeDockerRunner:
@@ -283,12 +373,18 @@ def _base_report(
     target: Path,
     target_inventory: InventoryResult | None,
     approval_path: Path | None,
+    authorization_path: Path | None,
     image: str,
     profile: SandboxProfile,
     command_argv: list[str],
     runner: SandboxDockerRunner,
     limitations: list[str],
     next_actions: list[str],
+    dry_run: bool,
+    preserve_workspace: bool,
+    gate_decision: Mapping[str, Any] | None,
+    fail_on_gate: str | None,
+    authorization_validation: Any | None,
 ) -> dict[str, Any]:
     target_limitations = []
     if target_inventory is not None:
@@ -303,7 +399,22 @@ def _base_report(
         "kind": SANDBOX_RUN_REPORT_KIND,
         "tool": "repo-health-doctor",
         "version": TOOL_VERSION,
-        "experimental": True,
+        "experimental": False,
+        "contract": {
+            "stage": "sandbox-run-v1-core",
+            "core_execution_backend": True,
+            "absolute_safety_claimed": False,
+            "malware_proof_claimed": False,
+            "safety_proof_claimed": False,
+        },
+        "run": {
+            "run_id": f"rhd-sandbox-run-{uuid4().hex}",
+            "started_at": _utc_now(),
+            "ended_at": None,
+            "duration_ms": 0,
+            "dry_run": dry_run,
+            "preserve_workspace": preserve_workspace,
+        },
         "target": {
             "path_redacted": "<repo>",
             "identity": target_identity(target),
@@ -316,10 +427,17 @@ def _base_report(
             approval_validation=None,
             refusal_reasons=[],
         ),
+        "gate": _gate_report(gate_decision, fail_on_gate),
+        "authorization": _authorization_report(
+            authorization_path=authorization_path,
+            authorization_validation=authorization_validation,
+        ),
         "sandbox_profile": profile.to_report(),
         "command": {
             "argv_redacted": [_redact_text(token, target=target, workspace=None) for token in command_argv],
-            "shell": False,
+            "shell": _command_uses_explicit_shell(command_argv),
+            "shell_wrapped_by_runner": False,
+            "cwd": "/workspace",
         },
         "docker": docker_report_fields(
             image=image,
@@ -335,7 +453,22 @@ def _base_report(
             "timed_out": False,
             "duration_ms": 0,
         },
+        "policy_blocked": False,
+        "command_started": False,
+        "command_exit_code": None,
+        "sandbox_exit_code": SANDBOX_INFRASTRUCTURE_EXIT_CODE,
+        "block_reason": None,
         "output_summary": _empty_output_summary(),
+        "env_policy": {
+            "host_environment_inherited": False,
+            "injected_env_keys": sorted(profile.env),
+            "values_recorded": False,
+        },
+        "cleanup_policy": {
+            "default": "cleanup_run_root",
+            "preserve_workspace": preserve_workspace,
+            "delete_scope": "sandbox_run_root_only",
+        },
         "boundary_statement": _boundary_statement(),
         "limitations": list(dict.fromkeys(limitations)),
         "next_actions": next_actions,
@@ -343,7 +476,7 @@ def _base_report(
     }
 
 
-def _blocked_report(
+def _policy_blocked_report(
     report: dict[str, Any],
     *,
     approval_path: Path | None,
@@ -351,36 +484,96 @@ def _blocked_report(
     approval_validation: Any,
     next_actions: list[str],
     workspace: DisposableWorkspace | None = None,
+    preserve_workspace: bool = False,
 ) -> dict[str, Any]:
     report = dict(report)
+    reasons = list(dict.fromkeys(refusal_reasons))
     report["approval"] = _approval_report(
         approval_path=approval_path,
         approval_validation=approval_validation,
-        refusal_reasons=refusal_reasons,
+        refusal_reasons=reasons,
     )
     report["result"] = {
         "status": STATUS_BLOCKED,
-        "exit_code": None,
+        "exit_code": SANDBOX_POLICY_BLOCK_EXIT_CODE,
         "timed_out": False,
         "duration_ms": 0,
     }
+    report["policy_blocked"] = True
+    report["command_started"] = False
+    report["command_exit_code"] = None
+    report["sandbox_exit_code"] = SANDBOX_POLICY_BLOCK_EXIT_CODE
+    report["block_reason"] = reasons[0] if reasons else "policy_block"
     report["next_actions"] = next_actions
-    return _finalize_report(report, workspace=workspace)
+    return _finalize_report(report, workspace=workspace, preserve_workspace=preserve_workspace)
 
 
-def _finalize_report(report: dict[str, Any], *, workspace: DisposableWorkspace | None) -> dict[str, Any]:
+def _infrastructure_error_report(
+    report: dict[str, Any],
+    *,
+    approval_path: Path | None,
+    refusal_reasons: list[str],
+    approval_validation: Any,
+    next_actions: list[str],
+    workspace: DisposableWorkspace | None = None,
+    preserve_workspace: bool = False,
+) -> dict[str, Any]:
+    report = dict(report)
+    reasons = list(dict.fromkeys(refusal_reasons))
+    report["approval"] = _approval_report(
+        approval_path=approval_path,
+        approval_validation=approval_validation,
+        refusal_reasons=reasons,
+    )
+    report["result"] = {
+        "status": STATUS_FAILED,
+        "exit_code": SANDBOX_INFRASTRUCTURE_EXIT_CODE,
+        "timed_out": False,
+        "duration_ms": 0,
+    }
+    report["policy_blocked"] = False
+    report["command_started"] = False
+    report["command_exit_code"] = None
+    report["sandbox_exit_code"] = SANDBOX_INFRASTRUCTURE_EXIT_CODE
+    report["block_reason"] = reasons[0] if reasons else "sandbox_run_infrastructure_error"
+    report["docker"] = _docker_report_with_infrastructure_error(
+        report["docker"],
+        diagnostic=report["block_reason"] or "sandbox-run infrastructure error",
+        target=Path("."),
+        workspace=workspace,
+    )
+    report["next_actions"] = next_actions
+    return _finalize_report(report, workspace=workspace, preserve_workspace=preserve_workspace)
+
+
+def _finalize_report(
+    report: dict[str, Any],
+    *,
+    workspace: DisposableWorkspace | None,
+    preserve_workspace: bool,
+) -> dict[str, Any]:
     cleanup_status = "not_started"
     if workspace is not None:
-        workspace.cleanup()
+        if preserve_workspace:
+            workspace.cleanup_status = "preserved"
+        else:
+            workspace.cleanup()
         cleanup_status = workspace.cleanup_status
         report["disposable_workspace"] = workspace.to_report()
     if cleanup_status == "failed":
         report["result"]["status"] = STATUS_CLEANUP_UNCERTAIN
+        report["sandbox_exit_code"] = SANDBOX_INFRASTRUCTURE_EXIT_CODE
+        report["block_reason"] = "workspace_cleanup_failed"
         report["limitations"].append("Disposable workspace cleanup failed; treat the result as fail-closed evidence.")
         report["next_actions"] = [
             "Inspect and remove the disposable workspace manually before retrying.",
-            "Do not treat this sandbox-run report as clean completed evidence.",
+            "Do not treat this sandbox-run report as clean execution evidence.",
         ]
+    run = report.get("run")
+    if isinstance(run, dict):
+        run["ended_at"] = _utc_now()
+        if isinstance(report.get("result"), dict):
+            run["duration_ms"] = report["result"].get("duration_ms", 0)
     report["limitations"] = list(dict.fromkeys(report["limitations"]))
     report["next_actions"] = list(dict.fromkeys(report["next_actions"]))
     report["safety_statement"] = _safety_statement()
@@ -401,6 +594,75 @@ def _approval_report(
         "matched": bool(approval_validation.matched) if approval_validation is not None else False,
         "refusal_reasons": reasons,
     }
+
+
+def _gate_report(gate_decision: Mapping[str, Any] | None, fail_on_gate: str | None) -> dict[str, Any]:
+    verdict = str(gate_decision.get("verdict", "unknown")).lower() if gate_decision is not None else None
+    return {
+        "evaluated": gate_decision is not None,
+        "fail_on_gate": fail_on_gate,
+        "verdict": verdict,
+        "execution_authorized": False if gate_decision is not None else None,
+        "decision_kind": gate_decision.get("decision_kind") if gate_decision is not None else None,
+        "schema_version": gate_decision.get("schema_version") if gate_decision is not None else None,
+        "policy_blocked": _gate_block_reason(gate_decision, fail_on_gate) is not None,
+    }
+
+
+def _authorization_report(
+    *,
+    authorization_path: Path | None,
+    authorization_validation: Any | None,
+) -> dict[str, Any]:
+    payload = authorization_validation.to_dict() if authorization_validation is not None else None
+    return {
+        "artifact_path_redacted": "<authorization>" if authorization_path is not None else None,
+        "validated": authorization_validation is not None,
+        "execution_authorized": _authorization_execution_authorized(authorization_validation),
+        "blocking_errors": _authorization_blocking_reasons(authorization_validation),
+        "warnings": _string_items(payload.get("warnings") if isinstance(payload, Mapping) else None),
+    }
+
+
+def _gate_block_reason(gate_decision: Mapping[str, Any] | None, fail_on_gate: str | None) -> str | None:
+    if gate_decision is None or fail_on_gate is None:
+        return None
+    verdict = str(gate_decision.get("verdict", "unknown")).lower()
+    if verdict in GATE_FAIL_MODES[fail_on_gate]:
+        return f"gate_verdict_{verdict}"
+    return None
+
+
+def _authorization_execution_authorized(authorization_validation: Any | None) -> bool:
+    return bool(
+        authorization_validation is not None
+        and getattr(authorization_validation, "execution_authorized", False) is True
+    )
+
+
+def _authorization_blocking_reasons(authorization_validation: Any | None) -> list[str]:
+    if authorization_validation is None:
+        return ["authorization_missing"]
+    payload = authorization_validation.to_dict()
+    reasons = _string_items(payload.get("blocking_errors") if isinstance(payload, Mapping) else None)
+    return reasons or ["authorization_invalid"]
+
+
+def _command_uses_explicit_shell(command_argv: list[str]) -> bool:
+    if len(command_argv) < 2:
+        return False
+    executable = Path(command_argv[0]).name
+    return executable in {"sh", "bash"} and command_argv[1] in {"-c", "-lc"}
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _string_items(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str) and item]
 
 
 def _fingerprint_or_none(
@@ -547,6 +809,7 @@ def _redact_text(
     redacted = value.replace(str(target), "<repo>")
     if workspace is not None:
         redacted = redacted.replace(str(workspace.workspace), "<disposable-workspace>")
+        redacted = redacted.replace(str(workspace.out), "<sandbox-out>")
         redacted = redacted.replace(str(workspace.root), "<sandbox-run-root>")
     for pattern in PRIVATE_PATH_PATTERNS:
         redacted = pattern.sub("<host-private-path>", redacted)
@@ -576,26 +839,48 @@ def _workspace_not_created() -> dict[str, Any]:
         "copy_policy": "not_started",
         "excluded_path_categories": [],
         "files_copied": 0,
+        "total_bytes_copied": 0,
         "copy_safety_ok": False,
         "unsafe_symlink_count": 0,
         "copy_error_count": 0,
+        "copy_budget": {
+            "max_file_count": DEFAULT_MAX_FILE_COUNT,
+            "max_total_bytes": DEFAULT_MAX_TOTAL_BYTES,
+            "max_file_bytes": DEFAULT_MAX_FILE_BYTES,
+            "files_copied": 0,
+            "total_bytes_copied": 0,
+            "copy_budget_exceeded": False,
+            "copy_budget_exceeded_reason": None,
+        },
+        "symlink_policy": {
+            "follow_symlinks": False,
+            "absolute_symlinks": "skip",
+            "outside_repo_symlinks": "skip",
+            "copied_symlink_count": 0,
+            "unsafe_symlink_count": 0,
+        },
+        "special_file_policy": {
+            "copy_special_files": False,
+            "unsupported_entry_count": 0,
+        },
         "source_path_redacted": "<repo>",
         "workspace_path_redacted": None,
+        "out_path_redacted": None,
     }
 
 
 def _boundary_statement() -> dict[str, list[str]]:
     return {
         "what_was_constrained": [
-            "The approved command argv is compared exactly before execution.",
-            "The requested Docker image, profile, network mode, timeout, resource limits, and target fingerprint must match the approval.",
+            "The command is passed to Docker as argv; sandbox-run does not add implicit shell wrapping.",
+            "Gate, authorization, and optional legacy approval checks can block before Docker is invoked.",
             "The original repository is copied to a disposable workspace and is not mounted directly as writable.",
-            "The default profile disables container networking and avoids Docker socket, host HOME, credential, and SSH-agent mounts.",
+            "The locked-down profile disables container networking and avoids Docker socket, host HOME, credential, and SSH-agent mounts.",
         ],
         "what_was_not_guaranteed": [
             "Docker isolation is not complete malware containment.",
-            "A completed sandbox run is not proof that the repository is safe.",
-            "A completed sandbox run is not unrestricted execution authorization.",
+            "A successful sandbox run is not proof that the repository is safe.",
+            "A successful sandbox run is not unrestricted execution authorization.",
             "The report contains bounded redacted output previews, not raw exhaustive execution logs.",
         ],
     }
@@ -603,9 +888,9 @@ def _boundary_statement() -> dict[str, list[str]]:
 
 def _safety_statement() -> str:
     return (
-        "Sandbox-run is an experimental add-on to reduce direct host execution risk. "
-        "A sandbox run is not proof that the repository is safe, is not unrestricted "
-        "execution authorization, and Docker isolation has limitations."
+        "Sandbox-run v1 is repo-health-doctor's practical strong isolation runtime for "
+        "unknown-repository command execution evidence. It is not proof that the repository "
+        "is safe, is not unrestricted execution authorization, and Docker isolation has limitations."
     )
 
 
@@ -613,7 +898,7 @@ def _next_actions_for_status(status: str) -> list[str]:
     if status == STATUS_COMPLETED:
         return [
             "Review the bounded output preview and workspace diff summary.",
-            "Do not treat completion as proof of safety or unrestricted authorization.",
+            "Do not treat successful execution as proof of safety or unrestricted authorization.",
             "Use gate evidence and human review before any further execution.",
         ]
     if status == STATUS_TIMED_OUT:

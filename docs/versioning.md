@@ -11,6 +11,8 @@ the v0.x series.
 - No finding is not proof of safety.
 - Gate decisions and execution authorization remain separate.
 - Gate decisions keep `execution_authorized=false`.
+- `sandbox-run` is the v1 core runtime for bounded unknown-repository command
+  evidence, without claiming proof of safety or complete containment.
 
 The stable and experimental boundary is defined in
 [public-contracts.md](public-contracts.md).
@@ -28,7 +30,6 @@ The stable and experimental boundary is defined in
 - Static supply-chain shape evidence
 - `schemas/execution-authorization.schema.json`
 - Execution authorization artifacts and validator behavior
-- `sandbox-run`
 - `schemas/sandbox-run.schema.json`
 - Sandbox-run approval, profile, Docker argv, and report wording
 - Imported Gitleaks and OSV-Scanner evidence adapters
@@ -38,7 +39,8 @@ The stable and experimental boundary is defined in
 
 These surfaces may change in the v0.x series when the change is documented and
 does not break the stable default v3 JSON report or default CLI behavior.
-Sandbox-run is an optional add-on and does not change gate decision
+The sandbox-run runtime is core product behavior; its schema and report wording
+remain draft surfaces in the v0.x series. It does not change gate decision
 `execution_authorized=false` semantics or execution authorization artifact
 semantics.
 

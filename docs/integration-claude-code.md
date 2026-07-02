@@ -93,7 +93,8 @@ repository checkout
   -> repo-health-doctor gate decision
   -> human reviews evidence and writes authorization artifact
   -> repo-health-doctor authorization validate or gate-check
-  -> command execution only when authorization is valid
+  -> sandbox-run executes the exact argv in a locked-down disposable workspace
+     when policy allows it
 ```
 
 ## Handling Decisions
@@ -121,6 +122,24 @@ secrets, command bodies, local paths, or environment values into logs or chat.
 A gate decision is not execution authorization; validate an explicit
 authorization artifact for the exact argv before running commands.
 ```
+
+## Sandbox-Run Execution
+
+When an agent needs execution evidence after the gate step, use `sandbox-run`
+instead of running the repository-derived command on the host:
+
+```bash
+repo-health-doctor sandbox-run "$PWD" \
+  --profile locked-down \
+  --fail-on-gate quarantine \
+  --authorization .repo-health-doctor.local/authorization.json \
+  --evidence-output /tmp/repo-health-doctor-sandbox-run.json \
+  -- python -m pytest
+```
+
+The sandbox-run policy block exit is `2` and uses stderr prefix
+`SANDBOX-RUN POLICY BLOCK`. If the command itself exits `2`, stderr uses
+`SANDBOX-RUN COMMAND EXIT` and the evidence has `command_started=true`.
 
 See [sample-outputs/gate-check-blocked.txt](sample-outputs/gate-check-blocked.txt)
 for a redacted blocked-hook style message.

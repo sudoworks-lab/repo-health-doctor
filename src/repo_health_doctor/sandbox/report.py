@@ -20,15 +20,18 @@ def format_sandbox_run_json(report: dict) -> str:
 
 
 def format_sandbox_run_text(report: dict) -> str:
+    contract = report.get("contract", {})
     lines = [
         f"Repo Health Doctor Sandbox-Run: {report['result']['status'].upper()}",
         f"Schema: {report['schema_version']}",
-        f"Experimental: {str(report['experimental']).lower()}",
+        f"Contract: {contract.get('stage', 'sandbox-run')}",
         f"Approval matched: {str(report['approval']['matched']).lower()}",
+        f"Policy blocked: {str(report.get('policy_blocked', False)).lower()}",
+        f"Command started: {str(report.get('command_started', False)).lower()}",
         f"Profile: {report['sandbox_profile']['name']}",
         f"Docker image: {report['docker']['image']}",
         f"Docker invoked: {str(report['docker']['docker_invoked']).lower()}",
-        f"Exit code: {report['result']['exit_code']}",
+        f"Sandbox exit code: {report.get('sandbox_exit_code', report['result']['exit_code'])}",
         "",
         "Refusal reasons:",
         *[f"- {item}" for item in report["approval"]["refusal_reasons"]],
@@ -65,6 +68,7 @@ def format_sandbox_run_text(report: dict) -> str:
 
 def format_sandbox_run_markdown(report: dict) -> str:
     docker_diagnostic = report["docker"].get("diagnostic_redacted")
+    contract = report.get("contract", {})
     diagnostic_lines = []
     if docker_diagnostic:
         diagnostic_lines = [
@@ -79,8 +83,10 @@ def format_sandbox_run_markdown(report: dict) -> str:
             "",
             f"- Status: `{report['result']['status']}`",
             f"- Schema Version: `{report['schema_version']}`",
-            f"- Experimental: `{str(report['experimental']).lower()}`",
+            f"- Contract: `{contract.get('stage', 'sandbox-run')}`",
             f"- Approval Matched: `{str(report['approval']['matched']).lower()}`",
+            f"- Policy Blocked: `{str(report.get('policy_blocked', False)).lower()}`",
+            f"- Command Started: `{str(report.get('command_started', False)).lower()}`",
             f"- Profile: `{report['sandbox_profile']['name']}`",
             f"- Docker Image: `{report['docker']['image']}`",
             f"- Docker Invoked: `{str(report['docker']['docker_invoked']).lower()}`",

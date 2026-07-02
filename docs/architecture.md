@@ -10,8 +10,8 @@ gate and evidence normalizer for unfamiliar repositories.
   IPs, tracked artifacts, cache candidates, and env-file candidates
 - Policy validation and allow inventory commands that keep raw policy values out
   of reports
-- Plan-first sandbox surfaces that keep execution disabled unless later gated
-  by explicit approval
+- `sandbox-run` core runtime for one bounded command in a disposable,
+  locked-down Docker workspace after gate / authorization policy is evaluated
 
 ## Output Model
 
@@ -29,7 +29,13 @@ values, stable severities, and redacted findings.
 
 ## Sandbox Boundary
 
-Sandbox-related commands remain plan-first by default. Unknown-repository live
-execution is not the default operating mode. Approval artifacts, behavior
-policies, image locks, and observer evidence exist to keep future execution
-paths fail-closed rather than permissive.
+`sandbox-run` is the live execution boundary for unknown-repository command
+evidence. It does not run in the real repository. It copies allowed files to a
+disposable workspace, excludes secrets and local state, blocks on copy-budget
+overflow, uses Docker `--network none` by default, avoids host HOME and Docker
+socket mounts, and records redacted evidence.
+
+The runtime remains fail-closed: gate, authorization, legacy approval, copy
+policy, image availability, and Docker infrastructure checks can stop execution
+before the command starts. This is practical strong isolation for review
+evidence, not a safety proof or complete malware sandbox.

@@ -1,197 +1,198 @@
-# Experimental Sandbox-Run Add-on
+# Sandbox-Run V1 Core Runtime
 
-`sandbox-run` is an optional experimental Docker add-on for users who already
-have a reviewed command and want to avoid running that repository-derived
-command directly on the host.
+`sandbox-run` is repo-health-doctor's core execution backend for AI-agent-safe
+unknown-repository work. It exists for the point after review has decided that
+one bounded command should run, but should not run directly on the host.
 
-It does not prove safety. It does not provide complete malware containment. It
-does not grant execution authorization beyond the exact approved command.
-Completed does not mean safe, and completed does not mean authorization to
-continue.
+It provides practical strong isolation, disposable execution, default-deny
+networking, redacted evidence capture, and gate / authorization binding. It is
+not a proof of safety, not complete malware containment, and not unrestricted
+execution authorization.
 
 ## Purpose
 
-The add-on runs one explicitly approved argv inside a constrained Docker
-container, using a disposable copy of the target repository, and emits a
-redacted sandbox execution report.
+The v1 flow is:
 
-The default workflow remains:
+1. Run the pre-execution gate.
+2. Review the gate decision, limitations, and required actions.
+3. If bounded execution evidence is still needed, run exactly one command with
+   `sandbox-run`.
+4. Keep the original repository unchanged.
+5. Use the JSON evidence to decide the next review step.
 
-1. Run the pre-execution gate first.
-2. Review the gate decision, limitations, and human-readable summary.
-3. If a human still wants bounded execution evidence, create a scoped
-   sandbox-run approval for exactly one command.
-4. Run `sandbox-run`.
-5. Treat the result as bounded evidence, not as a safety proof.
+The command is passed as argv. sandbox-run does not silently convert it to a
+shell string. If a shell is required, the caller must explicitly pass it as the
+command, for example `sh -c "..."`.
 
 ## CLI Usage
 
-Stdout defaults to a human-readable text summary. `--format json` or
-`--format markdown` changes stdout only. `--output` always writes the
-machine-readable sandbox-run JSON report, including blocked, failed, timed-out,
-or cleanup-uncertain results when a report can be produced.
-
-Safe synthetic fake-runner smoke, requiring no Docker daemon:
+Dry-run evidence without invoking Docker:
 
 ```bash
-env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synthetic-supply-chain \
-  --approval examples/approvals/demo-sandbox-run-approval.json \
-  --image python:3.12-slim \
-  --profile no-network-default \
-  --runner fake \
-  --output /tmp/rhd-sandbox-run.json \
-  -- python3 -c "print('hello from sandbox')"
+env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run tests/fixtures/demo-repo \
+  --dry-run \
+  --profile locked-down \
+  --evidence-output /tmp/rhd-sandbox-run-dry.json \
+  -- python -c "print('hello')"
+python3 -m json.tool /tmp/rhd-sandbox-run-dry.json
+```
+
+Real Docker execution:
+
+```bash
+env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run tests/fixtures/demo-repo \
+  --profile locked-down \
+  --evidence-output /tmp/rhd-sandbox-run.json \
+  -- python -c "from pathlib import Path; Path('created.txt').write_text('ok')"
 python3 -m json.tool /tmp/rhd-sandbox-run.json
 ```
 
-Real Docker mode uses the same approval and command shape, but omits
-`--runner fake`:
+Gate-bound execution:
 
 ```bash
 env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synthetic-supply-chain \
-  --approval examples/approvals/demo-sandbox-run-approval.json \
-  --image python:3.12-slim \
-  --profile no-network-default \
-  --output /tmp/rhd-sandbox-run.json \
-  -- python3 -c "print('hello from sandbox')"
+  --profile locked-down \
+  --fail-on-gate quarantine \
+  --evidence-output /tmp/rhd-sandbox-run-block.json \
+  -- python -c "print('will not start when gate blocks')"
 ```
 
-Real Docker mode never pulls images. The image must already be available
-locally, Docker is invoked with `--pull=never`, and the requested image must
-match the approval. Docker infrastructure failures, such as invalid Docker argv
-or daemon errors, are fail-closed and record bounded redacted diagnostics in
-the JSON report when possible.
+`--output` and `--evidence-output` both write the machine-readable JSON report.
+Use one of them. Stdout still follows `--format`.
 
-## Approval Requirements
+## Locked-Down Profile
 
-The approval artifact must bind:
+`locked-down` is the v1 default profile.
 
-- `action: sandbox_run`
-- exact command argv
-- target identity and fingerprint
-- Docker image reference
-- sandbox profile
-- network mode
-- timeout
-- resource limits
-- root user allowance
-- expiry, when present
+It generates Docker argv with:
 
-Any mismatch blocks execution before Docker is invoked.
+- `--pull=never`
+- `--network none`
+- `/workspace` as the working directory
+- a disposable repository copy mounted at `/workspace`
+- a disposable output directory mounted at `/out`
+- read-only container root filesystem
+- `/tmp` tmpfs
+- `--cap-drop ALL`
+- `--security-opt no-new-privileges`
+- non-root numeric `uid:gid`
+- memory, CPU, and PID limits
+- fake `HOME=/tmp/home`
+- minimal injected env keys only
 
-## Sandbox Profiles
-
-`no-network-default` is the default practical host-execution-avoidance profile:
-
-- Docker network mode is `none`.
-- Docker socket, host HOME, credentials, and SSH agent are not mounted.
-- The original repository path is not mounted directly as writable.
-- A disposable copy is mounted at `/workspace`.
-- The container is not privileged.
-- Capabilities are dropped with `--cap-drop ALL`.
-- `no-new-privileges` is set.
-- memory, CPU, and PID limits are set.
-- stdin is closed and TTY is disabled.
-- timeout is enforced by Python.
-- stdout and stderr are bounded and redacted in the report.
-
-`no-network-readonly` adds a read-only root filesystem plus a small `/tmp`
-tmpfs. It remains experimental and image-dependent.
-
-`network-explicit` is reserved for future work and fails closed in S-001.
-
-## Docker Boundary
-
-The generated Docker argv is deterministic and tested. It includes
-`docker run`, `--rm`, `--pull=never`, `--network none`, `/workspace` workdir,
-capability drop, no-new-privileges, resource limits, a disposable workspace
-mount, the approved image, and the approved argv.
-
-It does not include privileged mode, host networking, host PID/IPC/UTS modes,
-capability additions, Docker socket mounts, host HOME mounts, credential
-mounts, arbitrary user volumes, or shell wrapping by default.
-
-Docker is still not a complete malware sandbox. Kernel, daemon, image, and
-platform risks remain outside the guarantee. Do not overstate this profile as
-complete containment, host-level isolation, or risk-free execution.
+It does not mount the original repository, host HOME, host credentials, SSH
+agent, or Docker socket. It does not use privileged mode, host network, host
+PID, host IPC, or capability additions.
 
 ## Image Policy
 
-- Images are not pulled automatically.
-- The pull policy is `never` and Docker runs with `--pull=never`.
-- Missing local images block execution.
-- Digest-pinned images are preferred.
-- Tag-based images are supported for usability, but the report records
-  `image_digest_pinned=false`.
-- `latest` tags are reported as a limitation.
+sandbox-run never pulls images automatically. Docker is invoked with
+`--pull=never`, so the image must already exist locally. The default image is
+`python:3.12-slim` for local development and fixture verification. Digest-pinned
+images are preferred; tag-based images are reported as a reproducibility
+limitation.
 
 ## Workspace Copy Policy
 
-The source repository is copied to a disposable workspace. The original path is
-not mounted directly as writable.
+sandbox-run never runs inside the real repository. It creates a disposable run
+root, copies allowed repository files into `/workspace`, runs the command
+there, captures a diff summary, and then removes the run root unless
+`--preserve-workspace` is explicitly set.
 
-The copy policy excludes `.git`, `.env`, common caches, virtual environments,
-build outputs, and credential-like files. Symlinks and unsupported filesystem
-entries are skipped and recorded. Unsafe or uncertain workspace copy evidence
-blocks execution.
+The copy policy excludes `.git`, `.env`, `.env.*`, credential directories,
+shell history, common caches, dependency trees, virtual environments, build
+outputs, coverage artifacts, OS metadata, and local IDE metadata. Symlinks are
+not followed. Unsafe symlinks, path traversal attempts, and unsupported
+filesystem entries such as FIFOs, sockets, and device files are not copied and
+are recorded in evidence.
 
-Post-run diff evidence records bounded counts and redacted interesting paths:
-created, modified, deleted, before fingerprint, after fingerprint, and
-`raw_contents_persisted=false`.
+The copy has a budget:
 
-## Output Redaction
+- maximum file count
+- maximum total copied bytes
+- maximum single-file bytes
 
-stdout and stderr are captured as bounded previews only. Reports include:
+If the budget is exceeded, sandbox-run does not start the command. It records
+`copy_budget_exceeded`, sets `policy_blocked=true`, keeps
+`command_started=false`, and exits `2`.
 
-- `stdout_preview_redacted`
-- `stderr_preview_redacted`
-- truncation flags
-- `redaction_applied`
-- `raw_stdout_stderr_persisted=false`
+## Network Policy
 
-Raw unbounded stdout/stderr is not persisted by default.
+The default network policy is deny. The Docker backend uses `--network none`.
+Network failure inside the command is recorded as command failure evidence, not
+as policy failure. Host allowlists are not implemented in v1 and are not
+claimed.
 
-Docker diagnostics are also bounded and redacted in the `docker` object. The
-report can include `docker.exit_code`, `docker.failure_class`,
-`docker.diagnostic_redacted`, `docker.stderr_preview_redacted`, and
-`docker.stdout_preview_redacted`. Docker exit code 125 is treated as Docker
-infrastructure failure, not as evidence that the approved command completed.
+## Gate And Authorization Binding
 
-## Report Fields
+`--fail-on-gate` generates a gate decision before Docker is invoked and blocks
+with exit `2` when the verdict meets the selected threshold:
 
-The experimental report is `schemas/sandbox-run.schema.json` with
-`report_kind: sandbox_run`. It includes target fingerprint, approval match,
-profile, Docker boundary, disposable workspace status, workspace diff, result,
-output summary, boundary statement, limitations, next actions, and safety
-statement.
+- `block`: `BLOCK`
+- `quarantine`: `QUARANTINE` or `BLOCK`
+- `warn`: `WARN`, `QUARANTINE`, or `BLOCK`
+- `unknown`: `UNKNOWN`, `WARN`, `QUARANTINE`, or `BLOCK`
 
-The report schema is experimental and may change in the v0.x series.
+When `--authorization PATH` is supplied, sandbox-run validates the
+human-controlled execution authorization artifact against the generated gate
+decision and exact argv. A gate decision is still not execution authorization.
 
-## Agent Usage Guidance
+The legacy `--approval` artifact is still supported for exact sandbox-run
+approval compatibility. If supplied, mismatches block before Docker.
 
-Agents should not run repository-derived commands on the host by default. Use:
+## Exit Code Contract
 
-1. gate first
-2. human approval for the exact sandbox-run command
-3. sandbox-run second
-4. fail closed on missing approval, mismatch, missing image, timeout, degraded
-   evidence, redaction failure, or cleanup uncertainty
+- Policy, gate, authorization, legacy approval, or copy-budget block: exit `2`
+  with stderr prefix `SANDBOX-RUN POLICY BLOCK`.
+- sandbox-run infrastructure or configuration error: exit `1` with stderr
+  prefix `SANDBOX-RUN ERROR`.
+- Command started: return the command exit code with stderr prefix
+  `SANDBOX-RUN COMMAND EXIT` when nonzero.
 
-Do not treat a completed sandbox-run as permission to continue executing
-commands outside the approved scope.
+This means a command that exits `2` is distinguishable from a policy block:
+`command_started=true`, `command_exit_code=2`, and stderr uses the command-exit
+prefix.
 
-## Limitations And Non-Goals
+## Evidence Report
 
-`sandbox-run` is not:
+The JSON report is `schemas/sandbox-run.schema.json` with
+`report_kind: sandbox_run`. It includes:
 
+- run id, timestamps, dry-run and preserve flags
+- target identity and fingerprint
+- redacted argv and command cwd
+- profile, backend, Docker argv, image, and network policy
+- copy policy, exclusions, symlink policy, special-file policy, and copy budget
+- env policy with keys only
+- gate and authorization summaries
+- `policy_blocked`, `command_started`, `command_exit_code`,
+  `sandbox_exit_code`, and `block_reason`
+- bounded redacted stdout/stderr previews
+- created / modified / deleted file summary
+- cleanup status and limitations
+
+Reports must not contain raw secrets, raw host private paths, raw local
+environment values, or unbounded stdout/stderr.
+
+## Fake Runner And Dry-Run
+
+The fake runner and `--dry-run` are test and documentation helpers. They are
+useful for argv validation, policy validation, schema checks, and CI without a
+local daemon. They are not substitutes for real Docker verification of the
+product path.
+
+## Non-Goals
+
+sandbox-run v1 is not:
+
+- a safety proof
 - complete malware containment
 - VM-grade isolation
 - an exploit detector
 - an EDR replacement
 - a scanner replacement
 - a remote execution service
-- authorization for arbitrary unknown repository commands
+- authorization for arbitrary unknown-repository commands
 
-S-001 is a personal-OSS-grade add-on that reduces direct host execution risk
-and produces bounded evidence. Third-party security review has not been
-performed; stronger claims require future hardening and external review.
+Docker daemon, kernel, image, platform, and local configuration risks remain
+review boundaries.

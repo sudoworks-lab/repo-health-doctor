@@ -25,9 +25,10 @@ change. See [docs/versioning.md](docs/versioning.md).
 - Compatibility regeneration runbook and safe helper scripts for Gitleaks and
   OSV-Scanner fixture refresh work.
 - Release notes and versioning policy documentation.
-- Experimental Docker sandbox-run add-on with approval-bound command execution,
-  deterministic Docker argv, disposable workspace copy, bounded redacted output
-  previews, and an experimental `schemas/sandbox-run.schema.json` report.
+- Docker sandbox-run v1 core runtime with gate / authorization binding,
+  locked-down profile, deterministic argv execution, disposable workspace copy,
+  copy-budget fail-closed behavior, bounded redacted output previews, and a
+  draft `schemas/sandbox-run.schema.json` report.
 
 ### Changed
 
@@ -37,8 +38,8 @@ change. See [docs/versioning.md](docs/versioning.md).
   external Claude Code integration.
 - README and project metadata now align on the pre-execution safety gate
   positioning.
-- Public launch docs now make the experimental sandbox-run boundary, local
-  image requirement, and execution-authorization separation more visible.
+- Public launch docs now make the sandbox-run v1 runtime boundary, local image
+  requirement, and execution-authorization separation more visible.
 - README opening now centers first-time-user positioning: run the gate before
   AI agents or developers execute commands from unfamiliar repositories.
 - Sandbox-run `--output` now writes machine-readable JSON regardless of stdout
@@ -57,9 +58,10 @@ change. See [docs/versioning.md](docs/versioning.md).
   experimental contracts in this version.
 - Compatibility regeneration helpers are runbook aids only. They are not public
   compatibility contracts and do not authorize execution.
-- Sandbox-run is an optional experimental add-on. It is not a complete malware
-  sandbox, not a safety proof, and not unrestricted execution authorization.
-- A completed sandbox-run is documented as bounded evidence only, not safety
+- Sandbox-run is the core unknown-repo execution runtime. It is not a complete
+  malware sandbox, not a safety proof, and not unrestricted execution
+  authorization.
+- A successful sandbox-run is documented as bounded evidence only, not safety
   and not authorization to continue.
 
 ### Known Limitations

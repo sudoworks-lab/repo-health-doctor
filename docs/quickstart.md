@@ -93,36 +93,34 @@ decisions keep `execution_authorized=false` by design.
 The default v3 report remains the compatibility-stable output. The evidence
 schema, gate decision sidecar, `--gate-summary`, human-readable gate
 explanation, contextual wording, `--fail-on-gate`, `gate-check`, imported
-evidence adapters, sample outputs, execution authorization artifact, and
-`sandbox-run` approval/report surfaces are experimental in this version.
+evidence adapters, sample outputs, and execution authorization artifact are
+experimental in this version. `sandbox-run` is the v1 core execution runtime,
+while its schema and wording remain draft contract surfaces in the v0.x series.
 Real-output-compatible fixture coverage and the Docker integration CI path are
 also experimental and limited to documented scope. Stability details are in
 [public-contracts.md](public-contracts.md).
 
-## Optional Sandbox-Run Smoke
+## Sandbox-Run Smoke
 
-After reviewing the gate output, you can inspect the optional experimental
-sandbox-run add-on without requiring a Docker daemon by using the fake runner.
-This is a documentation and test smoke path, not real sandbox execution
-evidence:
+After reviewing the gate output, you can inspect sandbox-run evidence without
+invoking Docker by using `--dry-run`. This is a documentation and test smoke
+path, not real Docker execution evidence:
 
 ```bash
 env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synthetic-supply-chain \
-  --approval examples/approvals/demo-sandbox-run-approval.json \
-  --image python:3.12-slim \
-  --profile no-network-default \
-  --runner fake \
-  --output /tmp/rhd-sandbox-run.json \
+  --dry-run \
+  --profile locked-down \
+  --evidence-output /tmp/rhd-sandbox-run.json \
   -- python3 -c "print('hello from sandbox')"
 python3 -m json.tool /tmp/rhd-sandbox-run.json
 ```
 
-`--output` writes the machine-readable JSON report while stdout stays
-human-readable by default. Real Docker mode omits `--runner fake`, uses
-`--pull=never`, does not pull images, requires the approved image to exist
-locally, and still does not prove safety or grant execution authorization
-beyond the exact approved command. Completed does not mean safe, and completed
-does not mean authorization to continue. See [sandbox-run.md](sandbox-run.md).
+`--evidence-output` writes the machine-readable JSON report while stdout stays
+human-readable by default. Real Docker mode omits `--dry-run`, uses
+`--pull=never`, does not pull images, requires the image to exist locally, and
+still does not prove safety or grant unrestricted execution authorization.
+Successful sandbox execution does not mean safe, and does not mean
+authorization to continue. See [sandbox-run.md](sandbox-run.md).
 
 ## Sample Outputs
 

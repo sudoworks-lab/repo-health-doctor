@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import unittest
 
+from repo_health_doctor.sandbox.docker_runner import FakeDockerRunner
+from repo_health_doctor.sandbox.run import run_sandbox_run
 from repo_health_doctor.sandbox.run_workspace import (
+    CopyBudget,
     create_disposable_workspace,
     snapshot_workspace,
     summarize_workspace_diff,
@@ -69,3 +74,87 @@ def test_workspace_diff_reports_created_modified_deleted_without_raw_contents(tm
     assert diff["deleted_count"] == 1
     assert diff["raw_contents_persisted"] is False
     assert "<workspace>/created.txt" in diff["interesting_paths_redacted"]
+
+
+class SandboxRunWorkspaceContractTests(unittest.TestCase):
+    def test_copy_policy_excludes_secret_cache_history_git_and_special_files(self) -> None:
+        with self.subTest("copy exclusions"):
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp) / "repo"
+                repo.mkdir()
+                (repo / "README.md").write_text("demo\n", encoding="utf-8")
+                (repo / ".env.local").write_text("TOKEN=not-copied\n", encoding="utf-8")
+                (repo / ".bash_history").write_text("secret command\n", encoding="utf-8")
+                (repo / ".git").mkdir()
+                (repo / ".git" / "config").write_text("[core]\n", encoding="utf-8")
+                (repo / ".ssh").mkdir()
+                (repo / ".ssh" / "id_rsa").write_text("not-copied\n", encoding="utf-8")
+                (repo / "node_modules").mkdir()
+                (repo / "node_modules" / "pkg.js").write_text("not-copied\n", encoding="utf-8")
+                if hasattr(os, "mkfifo"):
+                    os.mkfifo(repo / "pipe")
+
+                workspace = create_disposable_workspace(repo)
+                try:
+                    self.assertTrue((workspace.workspace / "README.md").is_file())
+                    self.assertFalse((workspace.workspace / ".env.local").exists())
+                    self.assertFalse((workspace.workspace / ".bash_history").exists())
+                    self.assertFalse((workspace.workspace / ".git").exists())
+                    self.assertFalse((workspace.workspace / ".ssh").exists())
+                    self.assertFalse((workspace.workspace / "node_modules").exists())
+                    self.assertFalse((workspace.workspace / "pipe").exists())
+                    categories = {
+                        item["category"]
+                        for item in workspace.to_report()["excluded_path_categories"]
+                    }
+                    self.assertIn("credential_like", categories)
+                    self.assertIn("history", categories)
+                    self.assertIn("vcs_metadata", categories)
+                    self.assertIn("dependency_tree", categories)
+                    if hasattr(os, "mkfifo"):
+                        self.assertIn("unsupported_filesystem_entry", categories)
+                finally:
+                    workspace.cleanup()
+
+    def test_copy_budget_exceeded_blocks_before_runner_starts(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            (repo / "large.txt").write_text("too large\n", encoding="utf-8")
+
+            report = run_sandbox_run(
+                repo,
+                image="python:3.12-slim",
+                profile_name="locked-down",
+                command_argv=["python", "-c", "print('should not run')"],
+                runner=FakeDockerRunner(),
+                copy_budget=CopyBudget(max_file_bytes=1),
+            )
+
+        self.assertTrue(report["policy_blocked"])
+        self.assertFalse(report["command_started"])
+        self.assertEqual(report["sandbox_exit_code"], 2)
+        self.assertIn("copy_budget_exceeded", report["approval"]["refusal_reasons"])
+
+    def test_symlink_escape_is_skipped_and_blocks_execution(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            outside = root / "outside.txt"
+            outside.write_text("outside\n", encoding="utf-8")
+            (repo / "escape").symlink_to(outside)
+
+            workspace = create_disposable_workspace(repo)
+            try:
+                self.assertFalse(workspace.copy_safety_ok)
+                self.assertEqual(workspace.unsafe_symlinks, ["escape"])
+                self.assertFalse((workspace.workspace / "escape").exists())
+            finally:
+                workspace.cleanup()

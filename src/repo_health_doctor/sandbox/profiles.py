@@ -5,6 +5,9 @@ import os
 from typing import Any
 
 
+PROFILE_LOCKED_DOWN = "locked-down"
+PROFILE_INSPECT_ONLY = "inspect-only"
+PROFILE_DEV_PERMISSIVE = "dev-permissive"
 PROFILE_NO_NETWORK_DEFAULT = "no-network-default"
 PROFILE_NO_NETWORK_READONLY = "no-network-readonly"
 PROFILE_NETWORK_EXPLICIT = "network-explicit"
@@ -13,6 +16,9 @@ DEFAULT_MEMORY_LIMIT = "512m"
 DEFAULT_CPU_LIMIT = "1.0"
 DEFAULT_PIDS_LIMIT = 256
 WORKDIR = "/workspace"
+OUTDIR = "/out"
+HOME = "/tmp/home"
+TMPDIR = "/tmp"
 
 
 @dataclass(frozen=True)
@@ -27,6 +33,14 @@ class SandboxProfile:
     cpus: str
     pids_limit: int
     user: str
+
+    @property
+    def env(self) -> dict[str, str]:
+        return {
+            "HOME": HOME,
+            "TMPDIR": TMPDIR,
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
 
     @property
     def resource_limits(self) -> dict[str, Any]:
@@ -50,12 +64,14 @@ class SandboxProfile:
             "credential_mounts": False,
             "ssh_agent_mounted": False,
             "read_only_rootfs": self.read_only_rootfs,
+            "env_allowlist": sorted(self.env),
         }
 
     def to_report(self) -> dict[str, Any]:
         filesystem = {
             "workdir": WORKDIR,
             "workspace_mount": "disposable_bind_mount_rw",
+            "out_mount": "disposable_bind_mount_rw",
             "original_repo_mounted": False,
             "read_only_rootfs": self.read_only_rootfs,
             "tmpfs": list(self.tmpfs),
@@ -73,6 +89,11 @@ class SandboxProfile:
             },
             "resource_limits": self.resource_limits,
             "security_options": self.security_options,
+            "environment": {
+                "keys": sorted(self.env),
+                "values_recorded": False,
+                "host_environment_inherited": False,
+            },
         }
 
 
@@ -86,6 +107,19 @@ def default_container_user() -> str:
 
 def get_sandbox_profile(name: str) -> SandboxProfile:
     user = default_container_user()
+    if name in {PROFILE_LOCKED_DOWN, PROFILE_NO_NETWORK_READONLY}:
+        return SandboxProfile(
+            name=name,
+            implemented=True,
+            refusal_reason=None,
+            network="none",
+            read_only_rootfs=True,
+            tmpfs=("/tmp:rw,nosuid,nodev,size=64m",),
+            memory=DEFAULT_MEMORY_LIMIT,
+            cpus=DEFAULT_CPU_LIMIT,
+            pids_limit=DEFAULT_PIDS_LIMIT,
+            user=user,
+        )
     if name == PROFILE_NO_NETWORK_DEFAULT:
         return SandboxProfile(
             name=name,
@@ -99,7 +133,7 @@ def get_sandbox_profile(name: str) -> SandboxProfile:
             pids_limit=DEFAULT_PIDS_LIMIT,
             user=user,
         )
-    if name == PROFILE_NO_NETWORK_READONLY:
+    if name == PROFILE_INSPECT_ONLY:
         return SandboxProfile(
             name=name,
             implemented=True,
@@ -107,6 +141,19 @@ def get_sandbox_profile(name: str) -> SandboxProfile:
             network="none",
             read_only_rootfs=True,
             tmpfs=("/tmp:rw,nosuid,nodev,size=64m",),
+            memory=DEFAULT_MEMORY_LIMIT,
+            cpus=DEFAULT_CPU_LIMIT,
+            pids_limit=DEFAULT_PIDS_LIMIT,
+            user=user,
+        )
+    if name == PROFILE_DEV_PERMISSIVE:
+        return SandboxProfile(
+            name=name,
+            implemented=False,
+            refusal_reason="profile_not_implemented",
+            network="explicit",
+            read_only_rootfs=False,
+            tmpfs=(),
             memory=DEFAULT_MEMORY_LIMIT,
             cpus=DEFAULT_CPU_LIMIT,
             pids_limit=DEFAULT_PIDS_LIMIT,
@@ -141,6 +188,9 @@ def get_sandbox_profile(name: str) -> SandboxProfile:
 
 def recognized_profiles() -> tuple[str, ...]:
     return (
+        PROFILE_LOCKED_DOWN,
+        PROFILE_INSPECT_ONLY,
+        PROFILE_DEV_PERMISSIVE,
         PROFILE_NO_NETWORK_DEFAULT,
         PROFILE_NO_NETWORK_READONLY,
         PROFILE_NETWORK_EXPLICIT,

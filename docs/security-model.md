@@ -12,8 +12,8 @@
 - Imported scanner results are evidence inputs. Scanner silence, scanner
   failure, missing binding, missing limitations, or degraded observation must
   not become authorization to run repository-derived commands.
-- `sandbox-run` is an optional experimental add-on for one approved argv in a
-  constrained Docker container. It produces bounded evidence, not complete
+- `sandbox-run` is the core v1 runtime for one bounded argv in a locked-down
+  disposable Docker workspace. It produces bounded evidence, not complete
   containment or unrestricted permission to continue.
 
 ## What This Tool Protects
@@ -92,20 +92,20 @@
 - This is Docker-based host-execution risk reduction, not a complete malware
   sandbox; Docker daemon, mount, kernel, image, and platform-configuration
   risks remain outside its guarantee
-- `sandbox-run` is an optional experimental add-on, not the default product
-  workflow. It requires an approval artifact that matches exact argv, target
-  fingerprint, image, profile, network mode, timeout, and resource limits.
+- `sandbox-run` is the core unknown-repo execution runtime. It can bind to the
+  gate and execution authorization artifacts, and it still supports a legacy
+  exact approval artifact for compatibility.
 - `sandbox-run` copies the repository into a disposable workspace and mounts
   that copy at `/workspace`; it does not mount the original repository path as
   writable and does not mount host HOME, credentials, SSH agent, or Docker
-  socket.
+  socket. It also mounts a disposable `/out` directory for command artifacts.
 - `sandbox-run` uses `--pull=never` and fails closed when the approved image is
   not available locally. Tag-based images remain less reproducible than
   digest-pinned images and are reported as a limitation.
-- A completed `sandbox-run` report is bounded execution evidence only. It is
+- A successful `sandbox-run` report is bounded execution evidence only. It is
   not proof of safety, not complete containment, and not execution
-  authorization beyond the exact approved command. Completed does not mean
-  safe, and completed does not mean authorization to continue.
+  authorization beyond the exact command. Successful execution does not mean
+  safe, and successful execution does not mean authorization to continue.
 
 ## Unknown Repository Design Boundary
 

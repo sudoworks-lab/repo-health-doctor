@@ -8,7 +8,7 @@ import time
 from typing import Any, Protocol
 
 from .docker import is_digest_pinned
-from .profiles import SandboxProfile, WORKDIR
+from .profiles import OUTDIR, SandboxProfile, WORKDIR
 
 
 PULL_POLICY = "never"
@@ -51,9 +51,11 @@ def build_docker_run_argv(
     command_argv: list[str],
     workspace_host_path: Path,
     profile: SandboxProfile,
+    out_host_path: Path | None = None,
 ) -> list[str]:
     if not command_argv:
         raise ValueError("command argv must not be empty")
+    out_host_path = workspace_host_path.parent / "out" if out_host_path is None else out_host_path
     argv = [
         "docker",
         "run",
@@ -76,6 +78,8 @@ def build_docker_run_argv(
         "--user",
         profile.user,
     ]
+    for key, value in profile.env.items():
+        argv.extend(["--env", f"{key}={value}"])
     if profile.read_only_rootfs:
         argv.append("--read-only")
         for tmpfs in profile.tmpfs:
@@ -84,6 +88,8 @@ def build_docker_run_argv(
         [
             "--mount",
             f"type=bind,src={workspace_host_path},dst={WORKDIR}",
+            "--mount",
+            f"type=bind,src={out_host_path},dst={OUTDIR}",
             image,
             *command_argv,
         ]
@@ -118,6 +124,11 @@ def docker_report_fields(
                 "target": WORKDIR,
                 "read_only": False,
             },
+            "out": {
+                "source": "<sandbox-out>",
+                "target": OUTDIR,
+                "read_only": False,
+            },
             "docker_socket": "not_mounted",
             "host_home": "not_mounted",
             "credentials": "not_mounted",
@@ -125,6 +136,11 @@ def docker_report_fields(
         },
         "resource_limits": profile.resource_limits,
         "security_options": profile.security_options,
+        "env": {
+            "keys": sorted(profile.env),
+            "values_recorded": False,
+            "host_environment_inherited": False,
+        },
         "user": profile.user,
         "root_container_user": profile.user in {"0", "0:0", "root"},
         "rootless_docker_detected": runtime["rootless_docker_detected"],
@@ -334,7 +350,7 @@ def _assert_no_prohibited_docker_options(argv: list[str]) -> None:
             raise ValueError(f"prohibited mount target generated: {token}")
         if "docker.sock" in token:
             raise ValueError("docker socket mount generated")
-        if "dst=/" in token and "dst=/workspace" not in token:
+        if "dst=/" in token and "dst=/workspace" not in token and "dst=/out" not in token:
             raise ValueError("prohibited root-like mount generated")
         index += 1
 

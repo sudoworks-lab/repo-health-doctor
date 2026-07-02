@@ -82,40 +82,36 @@ does not change the default v3 report. The gate decision sidecar, its
 human-readable `explanation`, contextual wording, and the curated sample
 outputs remain experimental.
 
-## Optional Demo C: Sandbox-Run Smoke
+## Demo C: Sandbox-Run Smoke
 
 Purpose:
 
 ```text
-Show the experimental approval-bound sandbox-run report shape without treating
-the result as a safety proof.
+Show the sandbox-run v1 evidence shape without treating the result as a safety proof.
 ```
 
-Fake-runner smoke, no Docker daemon required:
+Dry-run smoke, no Docker invocation:
 
 ```bash
 env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synthetic-supply-chain \
-  --approval examples/approvals/demo-sandbox-run-approval.json \
-  --image python:3.12-slim \
-  --profile no-network-default \
-  --runner fake \
-  --output /tmp/rhd-sandbox-run.json \
+  --dry-run \
+  --profile locked-down \
+  --evidence-output /tmp/rhd-sandbox-run.json \
   -- python3 -c "print('hello from sandbox')"
 python3 -m json.tool /tmp/rhd-sandbox-run.json
 ```
 
 Expected lesson:
 
-- the approval binds exact argv, target fingerprint, image, profile, network
-  mode, timeout, and resource limits.
-- `--output` writes machine-readable JSON; stdout remains human-readable unless
-  `--format json` or `--format markdown` is selected.
-- fake runner mode is for tests and docs only and does not invoke Docker.
-- real Docker mode omits `--runner fake`, uses `--pull=never`, and blocks when
-  the approved image is not already available locally.
-- a completed sandbox-run is bounded execution evidence only.
-- completed does not mean safe.
-- completed does not mean authorization to continue.
+- `--evidence-output` writes machine-readable JSON; stdout remains
+  human-readable unless `--format json` or `--format markdown` is selected.
+- dry-run and fake runner modes are for tests and docs only and do not replace
+  real Docker verification.
+- real Docker mode omits `--dry-run`, uses `--pull=never`, and blocks when the
+  image is not already available locally.
+- a successful sandbox-run is bounded execution evidence only.
+- successful execution does not mean safe.
+- successful execution does not mean authorization to continue.
 
 ## Safety Checks
 

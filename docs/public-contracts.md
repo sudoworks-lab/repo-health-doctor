@@ -19,6 +19,10 @@ examples that are not public contract.
   outcome, not permission to run repository derived commands.
 - Gate decisions keep `execution_authorized=false`.
 - Limitations must be surfaced and treated as gate inputs.
+- `sandbox-run` is the v1 core execution runtime for bounded unknown-repository
+  command evidence. It uses a disposable workspace, default-deny network,
+  locked-down Docker profile, redacted evidence, and gate / authorization
+  binding. It is not a safety proof and not complete malware containment.
 
 ## Experimental
 
@@ -35,7 +39,6 @@ examples that are not public contract.
 - Sample outputs in `docs/sample-outputs/`
 - `schemas/execution-authorization.schema.json`
 - Execution authorization artifact and validator
-- `sandbox-run`
 - `schemas/sandbox-run.schema.json`
 - Sandbox-run approval and report wording
 - Real-output-compatible fixture coverage for Gitleaks and OSV-Scanner
@@ -48,10 +51,11 @@ gate explanation, imported evidence adapters, and execution authorization
 artifact are experimental in this version. The real-output-compatible fixture
 coverage and Docker integration CI path are also experimental; they are limited
 to the documented fixture, version, and CI scope.
-Sandbox-run, its approval contract, report schema, fake runner, Docker argv
-shape, profile wording, and contextual report wording are experimental add-on
-surfaces. They do not change default CLI behavior, default v3 JSON output, or
-gate decision `execution_authorized=false` semantics.
+The sandbox-run product path is a core v1 runtime. Its report schema, legacy
+approval compatibility surface, fake runner, profile wording, and contextual
+report wording remain draft contract surfaces. They do not change default CLI
+behavior, default v3 JSON output, or gate decision `execution_authorized=false`
+semantics.
 Contextual explanation wording may change without changing the stable default
 v3 report or default CLI behavior.
 

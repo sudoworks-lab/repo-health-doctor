@@ -55,7 +55,7 @@ class SandboxRunDockerCommandTests(unittest.TestCase):
         self.assertIn("--mount", argv)
         mount_spec = argv[argv.index("--mount") + 1]
         self.assertEqual(f"type=bind,src={workspace_path},dst=/workspace", mount_spec)
-        self.assertNotIn(",rw", mount_spec)
+        self.assertTrue(any(item.endswith("dst=/out") for item in argv))
         self.assertIn("python:3.12-slim", argv)
         self.assertEqual(["python3", "-c", "print('hello')"], argv[-3:])
 
@@ -76,7 +76,7 @@ class SandboxRunDockerCommandTests(unittest.TestCase):
         self.assertNotIn("--uts host", rendered)
         self.assertNotIn("--cap-add", argv)
         self.assertNotIn("/var/run/docker.sock", rendered)
-        self.assertNotIn("dst=/", rendered.replace("dst=/workspace", ""))
+        self.assertNotIn("dst=/", rendered.replace("dst=/workspace", "").replace("dst=/out", ""))
         command_pairs = [argv[index : index + 2] for index in range(len(argv) - 1)]
         self.assertNotIn(["sh", "-c"], command_pairs)
         self.assertNotIn(["bash", "-c"], command_pairs)
@@ -135,6 +135,24 @@ class SandboxRunDockerCommandTests(unittest.TestCase):
         self.assertIn("--read-only", argv)
         self.assertIn("--tmpfs", argv)
         self.assertTrue(any(item.startswith("/tmp:rw") for item in argv))
+
+    def test_locked_down_profile_adds_v1_env_out_mount_and_read_only_rootfs(self) -> None:
+        profile = get_sandbox_profile("locked-down")
+        argv = build_docker_run_argv(
+            image="python:3.12-slim",
+            command_argv=["python3", "-c", "print('hello')"],
+            workspace_host_path=self._workspace_path(),
+            profile=profile,
+        )
+
+        self.assertIn("--read-only", argv)
+        self.assertIn("--tmpfs", argv)
+        self.assertIn("--env", argv)
+        self.assertIn("HOME=/tmp/home", argv)
+        self.assertIn("TMPDIR=/tmp", argv)
+        self.assertTrue(any(item.endswith("dst=/out") for item in argv))
+        self.assertEqual(profile.network, "none")
+        self.assertFalse(profile.user in {"0", "0:0", "root"})
 
 
 if __name__ == "__main__":

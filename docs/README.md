@@ -19,7 +19,7 @@ This directory contains the public documentation set for `repo-health-doctor`.
 - `public-contracts.md`: stable versus experimental surfaces
 - `versioning.md`: compatibility and experimental-surface versioning
 - `roadmap.md`: future work that still fits the public product boundary
-- `sandbox-run.md`: experimental Docker sandbox-run add-on
+- `sandbox-run.md`: Docker sandbox-run v1 core runtime
 - `sandbox-roadmap.md`: sandbox-run hardening roadmap
 
 ## Additional Reference

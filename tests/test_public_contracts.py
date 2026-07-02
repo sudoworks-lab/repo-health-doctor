@@ -30,7 +30,7 @@ class PublicContractTests(unittest.TestCase):
         self.assertIn("Execution authorization artifact", content)
         self.assertIn("`sandbox-run`", content)
         self.assertIn("`schemas/sandbox-run.schema.json`", content)
-        self.assertIn("Sandbox-run, its approval contract", content)
+        self.assertIn("The sandbox-run product path is a core v1 runtime", content)
         self.assertIn("Real-output-compatible fixture coverage", content)
         self.assertIn("Docker integration CI path", content)
         self.assertIn("Third-party security review is not done", content)
@@ -43,6 +43,7 @@ class PublicContractTests(unittest.TestCase):
             "imported evidence adapters",
             "execution authorization artifact",
             "sandbox-run",
+            "v1 core execution runtime",
             "Real-output-compatible fixture coverage",
         )
         for path in (README, QUICKSTART):

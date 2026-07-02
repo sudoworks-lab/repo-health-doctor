@@ -42,25 +42,47 @@ DIRECTORY_EXCLUSIONS = {
     "build": "build_output",
     ".cache": "cache",
     ".aws": "credential_like",
+    ".azure": "credential_like",
+    ".gcp": "credential_like",
+    ".gnupg": "credential_like",
     ".ssh": "credential_like",
+    ".kube": "credential_like",
+    ".config/gcloud": "credential_like",
+    ".idea": "ide_metadata",
+    ".vscode": "ide_metadata",
+    ".history": "history",
+    ".Trash": "os_metadata",
+    "$RECYCLE.BIN": "os_metadata",
+    "coverage": "coverage_artifact",
+    "htmlcov": "coverage_artifact",
+    ".coverage": "coverage_artifact",
 }
 
 FILE_EXCLUSIONS = {
     ".env": "credential_like",
+    ".bash_history": "history",
+    ".zsh_history": "history",
+    ".python_history": "history",
+    ".psql_history": "history",
+    ".mysql_history": "history",
     ".npmrc": "credential_like",
     ".pypirc": "credential_like",
     ".netrc": "credential_like",
     ".git-credentials": "credential_like",
     ".gitconfig": "credential_like",
+    "credentials": "credential_like",
     ".DS_Store": "os_metadata",
     "Thumbs.db": "os_metadata",
     "Desktop.ini": "os_metadata",
+    ".coverage": "coverage_artifact",
 }
 
 FILE_SUFFIX_EXCLUSIONS = {
     ".pyc": "bytecode",
     ".pyo": "bytecode",
     ":Zone.Identifier": "os_metadata",
+    ".cover": "coverage_artifact",
+    ".lcov": "coverage_artifact",
 }
 
 HONEYPOT_ENVIRONMENTS = {

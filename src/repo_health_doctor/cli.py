@@ -101,7 +101,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
         description=(
             "Plan sandbox checks and only run explicitly gated probes."
             if sandbox_mode
-            else "Run an explicitly approved command inside an experimental constrained Docker sandbox."
+            else "Run one explicit argv in the sandbox-run v1 locked-down Docker runtime and emit redacted evidence."
             if sandbox_run_mode
             else "Profile an unknown repository read-only without generating approvals or executing code."
             if sandbox_profile_mode
@@ -128,7 +128,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
         epilog=(
             "Sandbox mode: repo-health-doctor sandbox <path> [--approval-file approvals.json] [--format json|markdown]"
             if sandbox_mode
-            else "Sandbox-run mode: repo-health-doctor sandbox-run <path> --approval approval.json --image IMAGE --profile no-network-default -- COMMAND ARG..."
+            else "Sandbox-run mode: repo-health-doctor sandbox-run <path> --profile locked-down [--fail-on-gate quarantine] -- COMMAND ARG..."
             if sandbox_run_mode
             else "Unknown repository profile mode: repo-health-doctor sandbox-profile <path> [--format json|markdown]"
             if sandbox_profile_mode
@@ -313,19 +313,39 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             help="Timeout in seconds for each Phase 2 or Phase 3 dynamic probe command.",
         )
     if sandbox_run_mode:
-        parser.add_argument("--approval", help="Sandbox-run approval artifact JSON. Missing or mismatched approval blocks execution.")
-        parser.add_argument("--image", help="Docker image reference. The image must match approval and be available locally.")
+        parser.add_argument("--approval", help="Legacy sandbox-run approval artifact JSON. If supplied, mismatches block execution.")
+        parser.add_argument("--authorization", help="Execution authorization artifact JSON for gate-bound sandbox-run execution.")
+        parser.add_argument("--image", default="python:3.12-slim", help="Docker image reference. It must be available locally; sandbox-run uses --pull=never.")
         parser.add_argument(
             "--profile",
-            default="no-network-default",
-            choices=("no-network-default", "no-network-readonly", "network-explicit"),
-            help="Sandbox profile. network-explicit is reserved and fails closed in S-001.",
+            default="locked-down",
+            choices=("locked-down", "inspect-only", "dev-permissive", "no-network-default", "no-network-readonly", "network-explicit"),
+            help="Sandbox profile. locked-down is the v1 default; dev-permissive and network-explicit fail closed.",
+        )
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Generate sandbox-run evidence and Docker argv without invoking Docker.",
+        )
+        parser.add_argument(
+            "--evidence-output",
+            help="Write the sandbox-run JSON evidence report to a file. Alias for --output.",
+        )
+        parser.add_argument(
+            "--fail-on-gate",
+            choices=tuple(GATE_FAIL_MODES),
+            help="Exit with code 2 before Docker when the generated gate decision meets the selected threshold.",
+        )
+        parser.add_argument(
+            "--preserve-workspace",
+            action="store_true",
+            help="Do not delete the disposable run root. Evidence still redacts the host path.",
         )
         parser.add_argument(
             "--timeout-seconds",
             type=int,
             default=30,
-            help="Python-enforced timeout. It must not exceed the approved timeout.",
+            help="Python-enforced timeout for the Docker command.",
         )
         parser.add_argument(
             "--runner",
@@ -473,7 +493,32 @@ def main(argv: list[str] | None = None) -> int:
         elif command == "sandbox-run":
             if args.timeout_seconds <= 0:
                 parser.error("--timeout-seconds must be greater than 0")
+            if args.output and args.evidence_output:
+                parser.error("--output and --evidence-output cannot both be used")
             runner = None if args.runner == "docker" else make_fake_runner(args.runner)
+            sandbox_gate_decision = None
+            sandbox_authorization_validation = None
+            if args.fail_on_gate or args.authorization:
+                scan_report = diagnose_repo(
+                    target,
+                    large_file_threshold_mb=DEFAULT_LARGE_FILE_THRESHOLD_MB,
+                    secrets_ignores=(),
+                    public_safety=True,
+                    config_path=None,
+                    local_config_path=None,
+                    load_local_config=True,
+                )
+                sandbox_gate_decision = evaluate_gate_decision_from_v3_report(scan_report, repo_root=target)
+            if args.authorization:
+                try:
+                    authorization = _load_json_object(Path(args.authorization), "authorization")
+                    sandbox_authorization_validation = validate_execution_authorization(
+                        authorization,
+                        _mapping(sandbox_gate_decision),
+                        sandbox_run_argv,
+                    )
+                except ValueError as exc:
+                    parser.error(str(exc))
             report = run_sandbox_run(
                 target,
                 approval_path=Path(args.approval) if args.approval else None,
@@ -482,6 +527,12 @@ def main(argv: list[str] | None = None) -> int:
                 command_argv=sandbox_run_argv,
                 timeout_seconds=args.timeout_seconds,
                 runner=runner,
+                dry_run=args.dry_run,
+                preserve_workspace=args.preserve_workspace,
+                gate_decision=sandbox_gate_decision,
+                fail_on_gate=args.fail_on_gate,
+                authorization_path=Path(args.authorization) if args.authorization else None,
+                authorization_validation=sandbox_authorization_validation,
             )
             fail_on = None
         elif command == "sandbox-profile":
@@ -635,8 +686,9 @@ def main(argv: list[str] | None = None) -> int:
         or getattr(args, "fail_on_gate", None)
     ):
         gate_decision = evaluate_gate_decision_from_v3_report(report, repo_root=target)
-    if args.output:
-        output_path = Path(args.output)
+    sandbox_output_path = getattr(args, "evidence_output", None) if command == "sandbox-run" else None
+    if args.output or sandbox_output_path:
+        output_path = Path(sandbox_output_path or args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         file_output = format_sandbox_run_json(report) if command == "sandbox-run" else output
         output_path.write_text(file_output, encoding="utf-8")
@@ -654,7 +706,7 @@ def main(argv: list[str] | None = None) -> int:
     if command == "sandbox-approval-draft":
         return 1 if report["source_risk_tier"] in {"T4", "T5"} else 0
     if command == "sandbox-run":
-        return 0 if report["result"]["status"] == "completed" else 1
+        return _sandbox_run_exit_code(report)
     if command == "authorization-validate":
         return 0 if authorization_valid else 1
     if command == "gate-check":
@@ -794,6 +846,23 @@ def _format_gate_check_markdown(report: Mapping[str, Any]) -> str:
         lines.extend(["", "## Blocking Reasons"])
         lines.extend(f"- `{item}`" for item in blocking_reasons)
     return "\n".join(lines) + "\n"
+
+
+def _sandbox_run_exit_code(report: Mapping[str, Any]) -> int:
+    sandbox_exit_code = report.get("sandbox_exit_code")
+    code = sandbox_exit_code if isinstance(sandbox_exit_code, int) else 1
+    if report.get("policy_blocked") is True:
+        sys.stderr.write(f"SANDBOX-RUN POLICY BLOCK: {report.get('block_reason') or 'policy_block'}\n")
+        return 2
+    command_started = report.get("command_started") is True
+    command_exit_code = report.get("command_exit_code")
+    if not command_started and code != 0:
+        sys.stderr.write(f"SANDBOX-RUN ERROR: {report.get('block_reason') or 'sandbox_run_error'}\n")
+        return 1
+    if command_started and isinstance(command_exit_code, int) and command_exit_code != 0:
+        sys.stderr.write(f"SANDBOX-RUN COMMAND EXIT: command exited {command_exit_code}\n")
+        return command_exit_code
+    return code
 
 
 def _mapping(value: object) -> Mapping[str, Any]:

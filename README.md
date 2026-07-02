@@ -146,26 +146,20 @@ human-readable explanation, and contextual wording are experimental. Even
 More detail is in [docs/quickstart.md](docs/quickstart.md) and
 [docs/demo-runbook.md](docs/demo-runbook.md).
 
-## Experimental Sandbox-Run Add-on
+## Sandbox-Run V1 Core Runtime
 
-The core tool is the pre-execution gate and evidence normalizer. `sandbox-run`
-is an optional experimental Docker add-on for one human-reviewed command when
-the goal is to avoid running that repository-derived command directly on the
-host.
-
-It runs one explicitly approved argv in a constrained Docker container, using a
-disposable workspace copy, and emits bounded redacted execution evidence. It is
-not a complete malware sandbox, not a safety proof, and not execution
-authorization beyond the exact approved command.
+`sandbox-run` is repo-health-doctor's core execution backend for AI-agent-safe
+unknown-repository work. It runs one explicit argv in a locked-down Docker
+profile, using a disposable workspace copy, and emits bounded redacted
+execution evidence. It is not a complete malware sandbox, not a safety proof,
+and not unrestricted execution authorization.
 
 ```bash
 env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synthetic-supply-chain \
-  --approval examples/approvals/demo-sandbox-run-approval.json \
-  --image python:3.12-slim \
-  --profile no-network-default \
-  --runner fake \
+  --dry-run \
+  --profile locked-down \
   --format json \
-  --output /tmp/rhd-sandbox-run.json \
+  --evidence-output /tmp/rhd-sandbox-run.json \
   -- python3 -c "print('hello from sandbox')"
 ```
 
@@ -173,16 +167,15 @@ For `sandbox-run`, `--output` writes the machine-readable JSON report. Stdout
 uses `--format`, so you can keep the terminal summary human-readable while
 writing JSON to the report path.
 
-Real Docker mode omits `--runner fake`. It never pulls images automatically;
-the approved image must already exist locally, Docker uses `--pull=never`, and
-the image/profile/argv must match the approval. A completed sandbox-run is
-bounded execution evidence only:
+Real Docker mode omits `--dry-run`. It never pulls images automatically; the
+image must already exist locally and Docker uses `--pull=never`. A successful
+sandbox-run is bounded execution evidence only:
 
-- completed does not mean safe
-- completed does not mean authorization to continue
+- successful execution does not mean safe
+- successful execution does not mean authorization to continue
 - Docker does not provide complete malware containment
 - host HOME, credentials, SSH agent, and Docker socket are not mounted by the
-  documented profiles
+  locked-down profile
 
 See [docs/sandbox-run.md](docs/sandbox-run.md) and
 [docs/sandbox-roadmap.md](docs/sandbox-roadmap.md).
@@ -223,10 +216,11 @@ authorization separation, gate decision `execution_authorized=false`, and
 surfaced limitations are stable public contract.
 
 The evidence schema, gate decision sidecar, `--gate-summary`, human-readable
-gate explanation, imported evidence adapters, sample outputs, execution
-authorization artifact, and `sandbox-run` approval/report surfaces are
-experimental in this version. `--fail-on-gate`, `gate-check`, and the static
-supply-chain shape detector are also experimental. Real-output-compatible
+gate explanation, imported evidence adapters, sample outputs, and execution
+authorization artifact are experimental in this version. `sandbox-run` is the
+v1 core execution runtime, while its JSON schema and wording remain draft
+contract surfaces in the v0.x series. `--fail-on-gate`, `gate-check`, and the
+static supply-chain shape detector are also experimental. Real-output-compatible
 fixture coverage and the Docker integration CI path are also experimental and
 limited to documented fixture, version, and CI scope.
 
@@ -294,7 +288,7 @@ repo-health-doctor list-allows . --fail-on expiring-soon
 repo-health-doctor diff-reports before.json after.json
 repo-health-doctor release-check .
 repo-health-doctor sandbox .
-repo-health-doctor sandbox-run . --approval approval.json --image python:3.12-slim --profile no-network-default --runner fake -- python3 -c "print('hello')"
+repo-health-doctor sandbox-run . --profile locked-down --dry-run -- python3 -c "print('hello')"
 ```
 
 Command details are intentionally kept in docs:
@@ -306,7 +300,7 @@ Command details are intentionally kept in docs:
 - [docs/maintainer-guide.md](docs/maintainer-guide.md): maintainer workflow
 - [docs/agent-development-guide.md](docs/agent-development-guide.md): agent workflow for this repo
 - [docs/integration-claude-code.md](docs/integration-claude-code.md): Claude Code pre-execution gate integration
-- [docs/sandbox-run.md](docs/sandbox-run.md): experimental Docker sandbox-run add-on
+- [docs/sandbox-run.md](docs/sandbox-run.md): Docker sandbox-run v1 core runtime
 
 ## Output And Redaction
 

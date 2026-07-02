@@ -81,7 +81,7 @@ class ReleaseDocsTests(unittest.TestCase):
             (ROOT / "docs" / "release-notes" / "v0.1.0.md").read_text(encoding="utf-8").split()
         )
 
-        self.assertIn("Experimental Docker `sandbox-run` add-on", content)
+        self.assertIn("Docker `sandbox-run` v1 core runtime", content)
         self.assertIn("local-image-only Docker mode", content)
         self.assertIn("does not pull images automatically", content)
         self.assertIn("not a safety", content)
