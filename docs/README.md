@@ -24,8 +24,14 @@ This directory contains the public documentation set for `repo-health-doctor`.
 
 ## Additional Reference
 
+- `demo.md`: legacy simple offline demo flow
+- `requirements.md`: public product requirements and scope
 - `threat-model.md`: threat assumptions and non-goals
 - `compatibility-regeneration.md`: safe regeneration workflow for compatibility fixtures
+- `external-scanner-adapter-design.md`: external scanner adapter design boundary
+- `docker-integration-ci.md`: Docker integration CI boundary
+- `real-gitleaks-compatibility.md`: real Gitleaks compatibility scope
+- `real-osv-compatibility.md`: real OSV-Scanner compatibility scope
 - `release-notes/v0.1.0.md`: initial public release notes
 - `security-review-needed.md`: third-party security review status
 - `sandbox-unknown-repo-workflow.md`: plan-only unknown-repo workflow
