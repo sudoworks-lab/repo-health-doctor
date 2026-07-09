@@ -1,0 +1,22 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "synthetic-trivy-fixture",
+  "ArtifactType": "filesystem",
+  "Results": [
+    {
+      "Target": "package-lock.json",
+      "Class": "lang-pkgs",
+      "Type": "npm",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2020-7598",
+          "PkgName": "minimist",
+          "InstalledVersion": "0.0.8",
+          "FixedVersion": "0.2.1",
+          "Severity": "CRITICAL",
+          "Title": "Prototype pollution in minimist"
+        }
+      ]
+    }
+  ]
+}

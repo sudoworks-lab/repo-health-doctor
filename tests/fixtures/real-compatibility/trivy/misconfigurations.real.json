@@ -1,0 +1,26 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "synthetic-trivy-fixture",
+  "ArtifactType": "filesystem",
+  "Results": [
+    {
+      "Target": "Dockerfile",
+      "Class": "config",
+      "Type": "dockerfile",
+      "Misconfigurations": [
+        {
+          "ID": "DS002",
+          "AVDID": "AVD-DS-0002",
+          "Type": "Dockerfile Security Check",
+          "Title": "Image user should not be root",
+          "Severity": "HIGH",
+          "Status": "FAIL",
+          "CauseMetadata": {
+            "StartLine": 3,
+            "EndLine": 3
+          }
+        }
+      ]
+    }
+  ]
+}

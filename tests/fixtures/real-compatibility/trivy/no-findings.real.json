@@ -1,0 +1,6 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "synthetic-trivy-fixture",
+  "ArtifactType": "filesystem",
+  "Results": []
+}
