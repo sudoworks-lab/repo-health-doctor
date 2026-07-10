@@ -161,6 +161,39 @@ def run_gitleaks_scan(
         return _run_result(False, False, ("scanner_unavailable",), (), normalized)
 
     scanner_version = _version_text(version_result.stdout, version_result.stderr)
+    try:
+        return _run_scan_pipeline(
+            active_runner,
+            target_repo,
+            scanner_version=scanner_version,
+            repo_commit=repo_commit,
+            dirty_state=dirty_state,
+            timeout_seconds=timeout_seconds,
+        )
+    except Exception:
+        # Fail-closed: any unexpected error (tempdir creation, report read I/O,
+        # normalization, or validation) is converted into a normalized
+        # quarantine result instead of letting a raw exception escape the
+        # adapter and rely on the caller to treat it as "block".
+        normalized = _unknown_result(
+            scanner_version=scanner_version,
+            repo_commit=repo_commit,
+            dirty_state=dirty_state,
+            unknown_reason="adapter_error",
+            scanner_completed=False,
+        )
+        return _run_result(False, True, ("adapter_internal_error",), (), normalized)
+
+
+def _run_scan_pipeline(
+    active_runner: RunnerCallable,
+    target_repo: Path,
+    *,
+    scanner_version: str,
+    repo_commit: str | None,
+    dirty_state: str,
+    timeout_seconds: int,
+) -> GitleaksRunResult:
     with tempfile.TemporaryDirectory(prefix="rhd-gitleaks-") as temp_dir:
         report_path = Path(temp_dir) / "gitleaks-report.json"
         argv = build_gitleaks_scan_argv(target_repo, report_path)
@@ -396,7 +429,7 @@ def _normalized_result(
     finding_count = len(findings)
     risk_effect = "T5_candidate" if finding_count else "none"
     gate_effects = ["blocks_live_execution"] if finding_count else ["evidence_only"]
-    rules_fired = ["RISK001"] if any(item["secondary_category"] == "verified_secret" for item in findings) else []
+    rules_fired = ["RISK001"] if any(item["secondary_category"] == "secret_like_value" for item in findings) else []
     return {
         "schema_version": EXTERNAL_SCANNER_RESULT_SCHEMA_VERSION,
         "report_kind": REPORT_KIND_EXTERNAL_SCANNER_RESULT,
@@ -541,10 +574,10 @@ def _normalized_finding(index: int, finding: Mapping[str, Any]) -> Mapping[str, 
         "finding_id": f"gitleaks-{index}",
         "scanner_rule_id": rule_id,
         "primary_category": "secret",
-        "secondary_category": "verified_secret",
+        "secondary_category": "secret_like_value",
         "scanner_severity": "secret",
         "normalized_severity": "block",
-        "confidence": "high",
+        "confidence": "medium",
         "title": f"Gitleaks finding {rule_id}",
         "redacted_description": "Gitleaks reported a secret candidate; raw secret, match, and rule metadata omitted.",
         "location": {"path": file_path, "line": start_line, "column": start_column},
@@ -558,7 +591,7 @@ def _normalized_node(index: int, finding: Mapping[str, Any]) -> Mapping[str, obj
     return {
         "node_id": f"gitleaks-node-{index}",
         "primary_category": "secret",
-        "secondary_category": "verified_secret",
+        "secondary_category": "secret_like_value",
         "title": f"Gitleaks finding {_string_field(finding, 'RuleID', str(index))}",
         "redacted_summary": "Gitleaks reported a secret candidate; raw secret, match, and rule metadata omitted.",
         "location": {
@@ -566,7 +599,7 @@ def _normalized_node(index: int, finding: Mapping[str, Any]) -> Mapping[str, obj
             "line": _positive_int(finding.get("StartLine")),
             "column": _positive_int(finding.get("StartColumn")),
         },
-        "confidence": "high",
+        "confidence": "medium",
     }
 
 

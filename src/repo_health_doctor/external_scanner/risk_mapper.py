@@ -199,8 +199,8 @@ def map_external_scanner_risk(
     tokens = facts["evidence_tokens"]
     relations = facts["edge_relations"]
 
-    if "verified_secret" in secondary:
-        fire("RISK001", ("secondary_category:verified_secret",))
+    if {"verified_secret", "secret_like_value"} & secondary:
+        fire("RISK001", ("secondary_category:secret_or_secret_like",))
     if _redaction_flag(data, "raw_secret_present") or "raw_secret_leak" in secondary:
         fire("RISK002", ("redaction_status.raw_secret_present", "secondary_category:raw_secret_leak"))
     if "credential_path_reference" in secondary:

@@ -246,6 +246,37 @@ class GitleaksRealAdapterTests(unittest.TestCase):
         self.assertEqual(result.normalized_result["summary"]["outcome"], "unknown")  # type: ignore[index]
         self.assertEqual(result.normalized_result["summary"]["unknown_reason"], "parse_failure")  # type: ignore[index]
 
+    def test_scan_timeout_fails_closed(self) -> None:
+        def runner(argv, timeout_seconds):
+            del timeout_seconds
+            if tuple(argv) == ("gitleaks", "version"):
+                return GitleaksCommandResult(returncode=0, stdout="8.27.2\n", stderr="")
+            return GitleaksCommandResult(returncode=124, stdout="", stderr="", timed_out=True)
+
+        result = run_gitleaks_scan(ROOT, runner=runner)
+
+        self.assertFalse(result.valid)
+        self.assertTrue(result.scanner_executed)
+        self.assertIn("scanner_timeout", result.blocking_errors)
+        self.assertEqual(result.normalized_result["summary"]["outcome"], "unknown")  # type: ignore[index]
+        self.assertEqual(result.normalized_result["summary"]["unknown_reason"], "timeout")  # type: ignore[index]
+        self.assertEqual(result.normalized_result["summary"]["gate_effects"], ["quarantine"])  # type: ignore[index]
+        self.assertTrue(result.normalized_result["execution_context"]["timeout_occurred"])  # type: ignore[index]
+        self.assertFalse(result.normalized_result["execution_context"]["scanner_completed"])  # type: ignore[index]
+
+    def test_unexpected_internal_error_fails_closed(self) -> None:
+        runner = _runner_with_report([], scan_returncode=0)
+        with mock.patch.object(gitleaks_adapter, "_repo_commit_and_dirty_state", return_value=("a" * 40, "clean")):
+            with mock.patch.object(gitleaks_adapter, "_parse_gitleaks_report", side_effect=RuntimeError("boom")):
+                result = run_gitleaks_scan(ROOT, runner=runner)
+
+        self.assertFalse(result.valid)
+        self.assertTrue(result.scanner_executed)
+        self.assertIn("adapter_internal_error", result.blocking_errors)
+        self.assertEqual(result.normalized_result["summary"]["outcome"], "unknown")  # type: ignore[index]
+        self.assertEqual(result.normalized_result["summary"]["unknown_reason"], "adapter_error")  # type: ignore[index]
+        self.assertEqual(result.normalized_result["summary"]["gate_effects"], ["quarantine"])  # type: ignore[index]
+
     def test_invalid_json_fails_closed(self) -> None:
         def runner(argv, timeout_seconds):
             del timeout_seconds
