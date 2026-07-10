@@ -35,6 +35,7 @@ examples that are not public contract.
 - Human-readable gate decision `explanation`
 - Contextual gate explanation wording
 - AI agent preflight demo script and wording
+- Field research safety protocol wording and publication checklist
 - Gitleaks imported evidence adapter
 - OSV-Scanner imported evidence adapter
 - Gitleaks real scanner adapter
@@ -54,7 +55,10 @@ The evidence schema, gate decision sidecar, `--gate-summary`, human-readable
 gate explanation, imported evidence adapters, real scanner adapters, and
 execution authorization artifact are experimental in this version. The AI agent
 preflight demo script and wording are also experimental; they do not change
-global hook configuration or default CLI behavior. The
+global hook configuration or default CLI behavior. The field research safety
+protocol is an experimental docs-only operating protocol; it does not add
+target collection, scanning automation, naming approval, or publication
+automation. The
 real-output-compatible fixture coverage and Docker integration CI path are also
 experimental; they are limited to the documented fixture, version, and CI
 scope.
@@ -105,7 +109,9 @@ only redacted feedback to stderr.
 
 Versioning rules are documented in [versioning.md](versioning.md). Compatibility
 regeneration procedures are documented in
-[compatibility-regeneration.md](compatibility-regeneration.md).
+[compatibility-regeneration.md](compatibility-regeneration.md). Future field
+research publication rules are documented in
+[field-research-safety-protocol.md](field-research-safety-protocol.md).
 
 ## Not Public Contract
 

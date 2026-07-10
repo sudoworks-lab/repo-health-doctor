@@ -58,8 +58,10 @@ bash scripts/regenerate-gitleaks-compat-fixtures.sh \
   --synthetic-repo examples/demo-synthetic-supply-chain
 ```
 
-Review the temporary raw output, redact any scanner-provided raw values, and
-update only the minimal fixture files under
+Inspect temporary raw output only inside the isolated temporary location long
+enough to normalize it. Do not copy raw output into notes, reports, docs, or
+committed files. Delete the temporary raw output after redaction and
+normalization, and update only the minimal fixture files under
 `tests/fixtures/real-compatibility/gitleaks/`.
 
 ## OSV-Scanner Regeneration

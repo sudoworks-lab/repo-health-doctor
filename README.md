@@ -113,6 +113,15 @@ See [docs/real-scanner-suite.md](docs/real-scanner-suite.md),
 [docs/real-osv-compatibility.md](docs/real-osv-compatibility.md), and
 [docs/real-trivy-compatibility.md](docs/real-trivy-compatibility.md).
 
+## Field Research Safety Protocol
+
+Before using repo-health-doctor evidence in any write-up about a real
+suspicious tool or repository, follow
+[docs/field-research-safety-protocol.md](docs/field-research-safety-protocol.md).
+The protocol keeps C-phase research non-executing, redacted, human-reviewed,
+and non-accusatory. It treats repo-health-doctor output as observed evidence,
+not proof of safety and not a maliciousness verdict.
+
 ## Install
 
 After the package is published, the intended user install path is:
@@ -479,6 +488,7 @@ it does not replace them.
 
 - [docs/README.md](docs/README.md): full documentation index
 - [docs/ai-agent-preflight.md](docs/ai-agent-preflight.md): plan-only AI agent preflight demo
+- [docs/field-research-safety-protocol.md](docs/field-research-safety-protocol.md): C-0 safety protocol for future field research and publication review
 - [docs/security-model.md](docs/security-model.md): redaction and safety boundary
 - [docs/evaluation-model.md](docs/evaluation-model.md): tests, fixtures, and golden outputs
 - [docs/public-contracts.md](docs/public-contracts.md): stable / experimental / non-contract surfaces
