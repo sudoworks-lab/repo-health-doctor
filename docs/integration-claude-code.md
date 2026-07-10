@@ -8,6 +8,14 @@ repo-health-doctor does not authorize execution by itself. A gate decision says
 what the current evidence supports. A separate execution authorization artifact
 is required before running repository-derived commands.
 
+Start with the plan-only AI agent demo in
+[ai-agent-preflight.md](ai-agent-preflight.md). It does not edit Claude Code,
+Codex, Cursor, MCP, hook, or global configuration, and it never executes the
+target command. The hook examples below are project-local integration sketches
+for a separate reviewed step, not something the demo installs.
+The plan-only demo never executes the target command.
+Do not change global Claude Code configuration as part of the plan-only demo.
+
 ## Claude Code Hook Contract
 
 Claude Code hook behavior is documented in Anthropic's
@@ -17,7 +25,11 @@ For `PreToolUse`, exit `2` blocks the tool call and stderr is fed back to
 Claude. Exit `1` is not a reliable block for most hook events; treat it as a
 foot-gun for policy enforcement.
 
-## Minimal PreToolUse Gate
+## Project-Local PreToolUse Sketch
+
+This section is a manual sketch for later project-local integration. Do not use
+it as part of the safe plan-only demo, and do not change global Claude Code
+configuration without a separate human review.
 
 Example `.claude/settings.json`:
 

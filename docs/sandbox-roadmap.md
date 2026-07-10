@@ -1,6 +1,6 @@
 # Sandbox-Run Roadmap
 
-`sandbox-run` is the core execution backend for AI-agent-safe unknown-repo
+`sandbox-run` is the core execution backend for AI-agent-oriented unknown-repo
 work. The roadmap below tracks hardening beyond v1. It is not an enterprise
 multi-tenant execution roadmap, not a Kubernetes plan, and not a claim that
 Docker proves safety for repository-derived code.

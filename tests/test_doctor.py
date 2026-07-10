@@ -2019,8 +2019,9 @@ class RepoHealthDoctorBehaviorTests(unittest.TestCase):
         ):
             self.assertIn(command, readme)
         for command in (
-            "PYTHONPATH=src python3 -m repo_health_doctor /tmp/repo-health-doctor-demo --public-safety",
-            "PYTHONPATH=src python3 -m repo_health_doctor validate-policy /tmp/repo-health-doctor-demo",
+            "env PYTHONPATH=src python3 -m repo_health_doctor examples/demo-no-finding-but-degraded --public-safety",
+            "env PYTHONPATH=src python3 -m repo_health_doctor validate-policy examples/demo-no-finding-but-degraded",
+            "env PYTHONPATH=src python3 scripts/demo_agent_preflight.py examples/demo-synthetic-supply-chain -- npm install",
         ):
             self.assertIn(command, demo_doc)
         for command in (

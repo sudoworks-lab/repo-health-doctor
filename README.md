@@ -18,6 +18,29 @@ repo-health-doctor collects bounded evidence, normalizes native and imported
 signals, surfaces limitations, and keeps gate decisions separate from execution
 authorization.
 
+## AI Agent Preflight
+
+repo-health-doctor is built for the moment before Claude Code, Codex, Cursor,
+or another AI coding agent runs a command from an unfamiliar repository. The
+agent can preflight the checkout, read the gate decision, and stop before the
+target command when the verdict is `BLOCK`, `QUARANTINE`, or `UNKNOWN`.
+
+The safe demo is plan-only: it runs repo-health-doctor, displays the intended
+target command, and never executes that target command.
+
+```bash
+env PYTHONPATH=src python3 scripts/demo_agent_preflight.py examples/demo-synthetic-supply-chain -- npm install
+```
+
+Expected result: the synthetic fixture reaches `QUARANTINE`, prints
+`Action: DO NOT EXECUTE target command.`, and keeps
+`Target command executed: false`. No global Claude Code, Codex, Cursor, MCP, or
+hook configuration is changed.
+
+See [docs/ai-agent-preflight.md](docs/ai-agent-preflight.md) for the full
+safe demo and [docs/integration-claude-code.md](docs/integration-claude-code.md)
+for future project-local hook integration notes.
+
 ## Why This Exists
 
 Unfamiliar repositories often reach execution too quickly: a scanner reports no
@@ -183,11 +206,11 @@ More detail is in [docs/quickstart.md](docs/quickstart.md) and
 
 ## Sandbox-Run V1 Core Runtime
 
-`sandbox-run` is repo-health-doctor's core execution backend for AI-agent-safe
-unknown-repository work. It runs one explicit argv in a locked-down Docker
-profile, using a disposable workspace copy, and emits bounded redacted
-execution evidence. It is not a complete malware sandbox, not a safety proof,
-and not unrestricted execution authorization.
+`sandbox-run` is repo-health-doctor's core execution backend for
+AI-agent-oriented unknown-repository work. It runs one explicit argv in a
+locked-down Docker profile, using a disposable workspace copy, and emits
+bounded redacted execution evidence. It is not a complete malware sandbox, not
+a safety proof, and not unrestricted execution authorization.
 
 ```bash
 env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synthetic-supply-chain \
@@ -455,6 +478,7 @@ it does not replace them.
 ## Detailed Docs
 
 - [docs/README.md](docs/README.md): full documentation index
+- [docs/ai-agent-preflight.md](docs/ai-agent-preflight.md): plan-only AI agent preflight demo
 - [docs/security-model.md](docs/security-model.md): redaction and safety boundary
 - [docs/evaluation-model.md](docs/evaluation-model.md): tests, fixtures, and golden outputs
 - [docs/public-contracts.md](docs/public-contracts.md): stable / experimental / non-contract surfaces

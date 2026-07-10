@@ -12,5 +12,9 @@ screenshots/
 snapshots/
 cache/
 .env
+.env.*
+node_modules/
+.vscode/
+.idea/
 .repo-health-doctor.local.yml
 .repo-health-doctor.local/

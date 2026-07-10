@@ -124,3 +124,31 @@ env PYTHONPATH=src python3 -m unittest tests.test_quickstart_sample_outputs -v
 
 These tests parse sample JSON, validate gate decision samples, and check for
 forbidden leak patterns in the new demo and sample output files.
+
+## Demo D: AI Agent Preflight
+
+Purpose:
+
+```text
+Show the moment before an AI agent runs an unknown-repository command, while
+keeping the target command display-only and unexecuted.
+```
+
+Plan-only preflight:
+
+```bash
+env PYTHONPATH=src python3 scripts/demo_agent_preflight.py examples/demo-synthetic-supply-chain -- npm install
+```
+
+Expected lesson:
+
+- the intended target command is printed as display-only.
+- the target command is not executed.
+- global Claude Code, Codex, Cursor, MCP, and hook configuration are not
+  changed.
+- `QUARANTINE`, `BLOCK`, or `UNKNOWN` means do not execute.
+- no findings is not proof of safety.
+- scanner unavailable or no evidence is not PASS.
+- a gate decision is not execution authorization.
+
+See [ai-agent-preflight.md](ai-agent-preflight.md) for the full guide.

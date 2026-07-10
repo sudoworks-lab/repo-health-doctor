@@ -5,6 +5,7 @@ This directory contains the public documentation set for `repo-health-doctor`.
 ## Core Guides
 
 - `quickstart.md`: first-run commands and demo flow
+- `ai-agent-preflight.md`: plan-only preflight demo for Claude Code / Codex / Cursor style agents via `scripts/demo_agent_preflight.py`
 - `demo-runbook.md`: safe synthetic demo walkthrough
 - `maintainer-guide.md`: maintainer workflow and review boundaries
 - `agent-development-guide.md`: coding-agent workflow and guardrails for this repo

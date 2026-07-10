@@ -21,6 +21,19 @@ Editable install is optional and depends on the local packaging environment.
 
 ## 5-Minute Demo
 
+For an AI-agent-shaped preflight, start with the plan-only wrapper. It runs
+repo-health-doctor, displays the intended target command, and never executes
+that target command:
+
+```bash
+env PYTHONPATH=src python3 scripts/demo_agent_preflight.py examples/demo-synthetic-supply-chain -- npm install
+```
+
+The expected action is `DO NOT EXECUTE` because the synthetic fixture reaches a
+quarantine gate decision. The demo does not change global Claude Code, Codex,
+Cursor, MCP, or hook configuration. Details are in
+[ai-agent-preflight.md](ai-agent-preflight.md).
+
 Run the no-finding-but-degraded demo. The v3 report can be `pass`, but that
 does not prove runtime safety. The opt-in `--gate-summary` terminal output is
 the human readout; it explains that no finding plus missing or degraded

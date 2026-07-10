@@ -27,6 +27,7 @@ The stable and experimental boundary is defined in
 - `gate-check`
 - Gate decision sidecar payloads
 - Human-readable gate decision explanations
+- AI agent preflight demo script and wording
 - Static supply-chain shape evidence
 - `schemas/execution-authorization.schema.json`
 - Execution authorization artifacts and validator behavior

@@ -1,8 +1,9 @@
 # Sandbox-Run V1 Core Runtime
 
-`sandbox-run` is repo-health-doctor's core execution backend for AI-agent-safe
-unknown-repository work. It exists for the point after review has decided that
-one bounded command should run, but should not run directly on the host.
+`sandbox-run` is repo-health-doctor's core execution backend for
+AI-agent-oriented unknown-repository work. It exists for the point after review
+has decided that one bounded command should run, but should not run directly on
+the host.
 
 It provides practical strong isolation, disposable execution, default-deny
 networking, redacted evidence capture, and gate / authorization binding. It is

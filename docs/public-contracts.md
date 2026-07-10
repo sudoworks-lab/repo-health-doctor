@@ -34,6 +34,7 @@ examples that are not public contract.
 - `gate-check`
 - Human-readable gate decision `explanation`
 - Contextual gate explanation wording
+- AI agent preflight demo script and wording
 - Gitleaks imported evidence adapter
 - OSV-Scanner imported evidence adapter
 - Gitleaks real scanner adapter
@@ -51,7 +52,9 @@ examples that are not public contract.
 The default v3 report remains the compatibility-stable output.
 The evidence schema, gate decision sidecar, `--gate-summary`, human-readable
 gate explanation, imported evidence adapters, real scanner adapters, and
-execution authorization artifact are experimental in this version. The
+execution authorization artifact are experimental in this version. The AI agent
+preflight demo script and wording are also experimental; they do not change
+global hook configuration or default CLI behavior. The
 real-output-compatible fixture coverage and Docker integration CI path are also
 experimental; they are limited to the documented fixture, version, and CI
 scope.
