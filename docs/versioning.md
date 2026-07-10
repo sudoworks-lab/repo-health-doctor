@@ -33,6 +33,7 @@ The stable and experimental boundary is defined in
 - `schemas/sandbox-run.schema.json`
 - Sandbox-run approval, profile, Docker argv, and report wording
 - Imported Gitleaks and OSV-Scanner evidence adapters
+- Real Gitleaks, OSV-Scanner, and Trivy scanner adapters
 - Real-output-compatible fixture coverage
 - Docker integration CI path
 - Compatibility regeneration helper scripts

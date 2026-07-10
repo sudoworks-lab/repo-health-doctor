@@ -136,12 +136,19 @@ Sample outputs live in [sample-outputs](sample-outputs/):
 
 ## External Tool Adapters
 
-The Gitleaks and OSV-Scanner adapters normalize imported synthetic and redacted
-real-output-compatible fixtures into repo-health-doctor evidence. They are
-imported evidence paths, not scanner replacements. They do not execute
-scanners, do not manage vulnerability databases, and do not authorize
-execution.
+The Gitleaks, OSV-Scanner, and Trivy real adapters normalize scanner JSON into
+repo-health-doctor external scanner evidence when explicitly invoked through
+the adapter/API surface. They are evidence paths, not scanner replacements, and
+they never authorize execution. The default quickstart commands still do not
+execute host scanners, manage vulnerability databases, or contact scanner APIs.
 
-Real-output-compatible redacted fixtures are documented in
-[real-gitleaks-compatibility.md](real-gitleaks-compatibility.md) and
-[real-osv-compatibility.md](real-osv-compatibility.md).
+Scanner unavailable is fail-closed, not PASS. No findings is not proof of
+safety. OSV-Scanner and Trivy live scans can use network, database, and cache
+state, so their privacy and freshness limitations are surfaced in evidence
+instead of hidden as local-only behavior.
+
+Real-output-compatible redacted fixtures and adapter limits are documented in
+[real-scanner-suite.md](real-scanner-suite.md),
+[real-gitleaks-compatibility.md](real-gitleaks-compatibility.md),
+[real-osv-compatibility.md](real-osv-compatibility.md), and
+[real-trivy-compatibility.md](real-trivy-compatibility.md).

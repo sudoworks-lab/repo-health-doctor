@@ -30,8 +30,10 @@ This directory contains the public documentation set for `repo-health-doctor`.
 - `compatibility-regeneration.md`: safe regeneration workflow for compatibility fixtures
 - `external-scanner-adapter-design.md`: external scanner adapter design boundary
 - `docker-integration-ci.md`: Docker integration CI boundary
+- `real-scanner-suite.md`: Gitleaks / OSV-Scanner / Trivy real adapter suite
 - `real-gitleaks-compatibility.md`: real Gitleaks compatibility scope
 - `real-osv-compatibility.md`: real OSV-Scanner compatibility scope
+- `real-trivy-compatibility.md`: real Trivy compatibility scope
 - `release-notes/v0.1.0.md`: initial public release notes
 - `security-review-needed.md`: third-party security review status
 - `sandbox-unknown-repo-workflow.md`: plan-only unknown-repo workflow

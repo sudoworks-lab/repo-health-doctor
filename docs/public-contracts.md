@@ -36,21 +36,25 @@ examples that are not public contract.
 - Contextual gate explanation wording
 - Gitleaks imported evidence adapter
 - OSV-Scanner imported evidence adapter
+- Gitleaks real scanner adapter
+- OSV-Scanner real scanner adapter
+- Trivy real scanner adapter
 - Sample outputs in `docs/sample-outputs/`
 - `schemas/execution-authorization.schema.json`
 - Execution authorization artifact and validator
 - `schemas/sandbox-run.schema.json`
 - Sandbox-run approval and report wording
-- Real-output-compatible fixture coverage for Gitleaks and OSV-Scanner
+- Real-output-compatible fixture coverage for Gitleaks, OSV-Scanner, and Trivy
 - Docker integration CI path
 - Compatibility regeneration helper scripts
 
 The default v3 report remains the compatibility-stable output.
 The evidence schema, gate decision sidecar, `--gate-summary`, human-readable
-gate explanation, imported evidence adapters, and execution authorization
-artifact are experimental in this version. The real-output-compatible fixture
-coverage and Docker integration CI path are also experimental; they are limited
-to the documented fixture, version, and CI scope.
+gate explanation, imported evidence adapters, real scanner adapters, and
+execution authorization artifact are experimental in this version. The
+real-output-compatible fixture coverage and Docker integration CI path are also
+experimental; they are limited to the documented fixture, version, and CI
+scope.
 The sandbox-run product path is a core v1 runtime. Its report schema, legacy
 approval compatibility surface, fake runner, profile wording, and contextual
 report wording remain draft contract surfaces. They do not change default CLI

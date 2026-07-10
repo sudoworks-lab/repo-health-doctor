@@ -89,6 +89,13 @@ from .adapters import (
     run_gitleaks_scan,
     run_trivy_scan,
 )
+from .real_scanner_suite import (
+    REAL_SCANNER_ADAPTER_NAMES,
+    REAL_SCANNER_SUITE_LIMITATIONS,
+    default_real_scanner_adapters,
+    real_scanner_capabilities,
+    real_scanner_inventory,
+)
 
 __all__ = [
     "EXTERNAL_SCANNER_RESULT_SCHEMA_VERSION",
@@ -113,6 +120,8 @@ __all__ = [
     "DEFAULT_ZIZMOR_DOCKER_IMAGE",
     "GITLEAKS_SCANNER_NAME",
     "OSV_SCANNER_NAME",
+    "REAL_SCANNER_ADAPTER_NAMES",
+    "REAL_SCANNER_SUITE_LIMITATIONS",
     "ZIZMOR_STYLE_OUTPUT_KIND",
     "ZIZMOR_STYLE_SCANNER_NAME",
     "GitleaksAdapter",
@@ -140,6 +149,7 @@ __all__ = [
     "build_zizmor_docker_execution_plan",
     "default_gitleaks_adapter",
     "default_osv_scanner_adapter",
+    "default_real_scanner_adapters",
     "default_trivy_adapter",
     "evaluate_scanner_execution_readiness",
     "interpret_gitleaks_exit_code",
@@ -152,6 +162,8 @@ __all__ = [
     "normalize_gitleaks_json_array",
     "normalize_osv_json_object",
     "normalize_trivy_json_object",
+    "real_scanner_capabilities",
+    "real_scanner_inventory",
     "validate_external_scanner_plan",
     "validate_external_scanner_result",
     "validate_imported_external_report",

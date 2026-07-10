@@ -46,14 +46,49 @@ repository you do not fully trust:
 
 - Runs local-first checks and emits redacted text, Markdown, or JSON reports.
 - Normalizes bounded evidence from native checks and imported scanner outputs.
+- Provides real scanner adapters for local Gitleaks, OSV-Scanner, and Trivy
+  binaries when explicitly invoked through the adapter layer.
 - Records limitations as gate inputs instead of burying them as notes.
 - Treats scanner failure, parse failure, unsupported versions, missing evidence,
   degraded observers, and commit mismatches as review-relevant conditions.
 - Keeps gate decisions and execution authorization as separate artifacts.
 
-Gitleaks, OSV-Scanner, zizmor-style, and similar integrations are imported
-evidence paths. repo-health-doctor does not replace those tools and does not
-claim their silence means a repository is safe.
+Gitleaks, OSV-Scanner, Trivy, zizmor-style, and similar integrations are
+external evidence paths. repo-health-doctor does not replace those tools and
+does not claim their silence means a repository is safe.
+
+## Real Scanner Suite
+
+repo-health-doctor now has real scanner adapters for Gitleaks, OSV-Scanner,
+and Trivy. The adapters do not reimplement mature scanners. They invoke a
+locally available scanner binary only when the adapter layer is explicitly
+called, parse its JSON report from a temporary file, normalize a minimal
+redacted evidence summary, and pass that evidence into the same fail-closed
+external scanner contract.
+
+Scanner unavailable is fail-closed, not PASS. Unsupported versions, timeouts,
+missing reports, invalid JSON, schema mismatches, and exit-code/report
+contradictions become unknown or quarantine-oriented evidence instead of risk
+lowering. No findings is not proof of safety; it means only that the scanner
+did not report findings in the scope, version, configuration, database, and
+coverage reached by that run.
+
+Raw scanner report JSON, raw stdout, raw stderr, raw secret matches, code
+snippets, advisory raw objects, and host absolute paths are not persisted in
+normalized evidence. Gitleaks runs as a local static no-network adapter.
+OSV-Scanner can query OSV.dev, and Trivy can download or update database/cache
+state, so their network, cache, and privacy limitations are surfaced instead
+of hidden as local-only behavior.
+
+The default `repo-health-doctor .` CLI path still does not install scanners,
+download scanners, run live scanners, contact scanner APIs, or authorize
+execution. Real scanner execution is an explicit adapter/API surface in this
+version; a dedicated CLI suite command is future product scope.
+
+See [docs/real-scanner-suite.md](docs/real-scanner-suite.md),
+[docs/real-gitleaks-compatibility.md](docs/real-gitleaks-compatibility.md),
+[docs/real-osv-compatibility.md](docs/real-osv-compatibility.md), and
+[docs/real-trivy-compatibility.md](docs/real-trivy-compatibility.md).
 
 ## Install
 
@@ -216,13 +251,13 @@ authorization separation, gate decision `execution_authorized=false`, and
 surfaced limitations are stable public contract.
 
 The evidence schema, gate decision sidecar, `--gate-summary`, human-readable
-gate explanation, imported evidence adapters, sample outputs, and execution
-authorization artifact are experimental in this version. `sandbox-run` is the
-v1 core execution runtime, while its JSON schema and wording remain draft
-contract surfaces in the v0.x series. `--fail-on-gate`, `gate-check`, and the
-static supply-chain shape detector are also experimental. Real-output-compatible
-fixture coverage and the Docker integration CI path are also experimental and
-limited to documented fixture, version, and CI scope.
+gate explanation, imported evidence adapters, real scanner adapters, sample
+outputs, and execution authorization artifact are experimental in this version.
+`sandbox-run` is the v1 core execution runtime, while its JSON schema and
+wording remain draft contract surfaces in the v0.x series. `--fail-on-gate`,
+`gate-check`, and the static supply-chain shape detector are also experimental.
+Real-output-compatible fixture coverage and the Docker integration CI path are
+also experimental and limited to documented fixture, version, and CI scope.
 
 See [docs/public-contracts.md](docs/public-contracts.md) and
 [docs/versioning.md](docs/versioning.md).
@@ -423,6 +458,10 @@ it does not replace them.
 - [docs/security-model.md](docs/security-model.md): redaction and safety boundary
 - [docs/evaluation-model.md](docs/evaluation-model.md): tests, fixtures, and golden outputs
 - [docs/public-contracts.md](docs/public-contracts.md): stable / experimental / non-contract surfaces
+- [docs/real-scanner-suite.md](docs/real-scanner-suite.md): real Gitleaks / OSV-Scanner / Trivy adapter suite
+- [docs/real-gitleaks-compatibility.md](docs/real-gitleaks-compatibility.md): real Gitleaks adapter boundary
+- [docs/real-osv-compatibility.md](docs/real-osv-compatibility.md): real OSV-Scanner adapter boundary
+- [docs/real-trivy-compatibility.md](docs/real-trivy-compatibility.md): real Trivy adapter boundary
 - [docs/integration-claude-code.md](docs/integration-claude-code.md): Claude Code hook integration
 - [docs/agent-development-guide.md](docs/agent-development-guide.md): agent workflow for this repo
 - [docs/security-review-needed.md](docs/security-review-needed.md): third-party review status
