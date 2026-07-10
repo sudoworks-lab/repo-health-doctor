@@ -9,6 +9,20 @@ repo-health-doctor is not a safety proof and not a maliciousness classifier. It
 reports observed evidence, missing evidence, scanner limitations, and gate
 recommendations that require human review.
 
+## C-Phase Artifacts
+
+Use these documents together:
+
+- C-1: [field-report-template.md](field-report-template.md) records observed
+  evidence, limitations, review status, and publication status.
+- C-2: [examples/synthetic-field-report.md](examples/synthetic-field-report.md)
+  shows an internal-only synthetic report with no real subject.
+- C-3:
+  [private-candidate-review-workflow.md](private-candidate-review-workflow.md)
+  defines private intake, hard stops, and review stages.
+- C-4: [publication-review-checklist.md](publication-review-checklist.md)
+  defines the public write-up gate and final wording sign-off.
+
 ## Purpose
 
 - Keep field research evidence-based, redacted, and reviewable.
@@ -52,8 +66,8 @@ Avoid accusatory conclusions:
 - do not write "criminal" or imply criminal intent.
 - do not describe a person, company, account, or repository as an attacker.
 
-No findings is not proof of safety. A clean report means only that no finding
-was reported in the reached scope, tool configuration, scanner version,
+No findings is not proof of safety. A report without findings means only that
+no finding was reported in the reached scope, tool configuration, scanner version,
 database freshness, and evidence boundary. Scanner unavailable is not PASS. No
 evidence is not PASS. A gate decision is not execution authorization.
 
@@ -104,7 +118,7 @@ subject_identifier: <redacted-or-synthetic>
 subject_type: repository | package | tool | agent-plugin | unknown
 review_scope: local checkout | supplied archive | supplied report | unknown
 target_commit: <commit-or-unbound>
-worktree_state: clean | dirty | unknown
+worktree_state: unchanged | modified | unknown
 collection_mode: non-executing | imported evidence | mocked fixture
 observed_evidence:
   - <redacted indicator summary>
@@ -175,11 +189,13 @@ Before a blog post, advisory, issue, or social post leaves private review:
   responsible disclosure was considered.
 - Confirm a human reviewer approved the wording and publication status.
 
-## Future C Phases
+## C-Phase Completion
 
-- C-1: synthetic field report template.
-- C-2: public known-incident pattern fixtures using redacted, non-identifying
-  data.
-- C-3: private candidate review workflow with human approval points.
-- C-4: carefully reviewed public write-up workflow after disclosure and
-  publication review.
+- C-1: synthetic field report template:
+  [field-report-template.md](field-report-template.md).
+- C-2: synthetic field report example:
+  [examples/synthetic-field-report.md](examples/synthetic-field-report.md).
+- C-3: private candidate review workflow:
+  [private-candidate-review-workflow.md](private-candidate-review-workflow.md).
+- C-4: publication gate and public write-up checklist:
+  [publication-review-checklist.md](publication-review-checklist.md).

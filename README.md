@@ -122,6 +122,14 @@ The protocol keeps C-phase research non-executing, redacted, human-reviewed,
 and non-accusatory. It treats repo-health-doctor output as observed evidence,
 not proof of safety and not a maliciousness verdict.
 
+The C-phase reporting workflow is docs-only in this release:
+[field report template](docs/field-report-template.md),
+[synthetic example report](docs/examples/synthetic-field-report.md),
+[private candidate workflow](docs/private-candidate-review-workflow.md), and
+[publication review checklist](docs/publication-review-checklist.md). These
+documents do not collect targets, name real subjects, publish findings, or run
+commands.
+
 ## Install
 
 After the package is published, the intended user install path is:
@@ -489,6 +497,10 @@ it does not replace them.
 - [docs/README.md](docs/README.md): full documentation index
 - [docs/ai-agent-preflight.md](docs/ai-agent-preflight.md): plan-only AI agent preflight demo
 - [docs/field-research-safety-protocol.md](docs/field-research-safety-protocol.md): C-0 safety protocol for future field research and publication review
+- [docs/field-report-template.md](docs/field-report-template.md): C-1 synthetic field report template
+- [docs/examples/synthetic-field-report.md](docs/examples/synthetic-field-report.md): C-2 internal-only synthetic field report example
+- [docs/private-candidate-review-workflow.md](docs/private-candidate-review-workflow.md): C-3 private candidate review workflow
+- [docs/publication-review-checklist.md](docs/publication-review-checklist.md): C-4 publication gate and public write-up checklist
 - [docs/security-model.md](docs/security-model.md): redaction and safety boundary
 - [docs/evaluation-model.md](docs/evaluation-model.md): tests, fixtures, and golden outputs
 - [docs/public-contracts.md](docs/public-contracts.md): stable / experimental / non-contract surfaces

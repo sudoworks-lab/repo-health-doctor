@@ -11,6 +11,10 @@ PUBLIC_CONTRACTS = ROOT / "docs" / "public-contracts.md"
 RELEASE_NOTES = ROOT / "docs" / "release-notes" / "v0.1.0.md"
 PROTOCOL = ROOT / "docs" / "field-research-safety-protocol.md"
 COMPATIBILITY_REGENERATION = ROOT / "docs" / "compatibility-regeneration.md"
+FIELD_REPORT_TEMPLATE = ROOT / "docs" / "field-report-template.md"
+SYNTHETIC_FIELD_REPORT = ROOT / "docs" / "examples" / "synthetic-field-report.md"
+PRIVATE_WORKFLOW = ROOT / "docs" / "private-candidate-review-workflow.md"
+PUBLICATION_CHECKLIST = ROOT / "docs" / "publication-review-checklist.md"
 
 
 class FieldResearchSafetyProtocolTests(unittest.TestCase):
@@ -21,6 +25,14 @@ class FieldResearchSafetyProtocolTests(unittest.TestCase):
             with self.subTest(path=path.relative_to(ROOT)):
                 content = path.read_text(encoding="utf-8")
                 self.assertIn("field-research-safety-protocol.md", content)
+
+    def test_protocol_routes_to_c_phase_artifacts(self) -> None:
+        content = PROTOCOL.read_text(encoding="utf-8")
+
+        for path in (FIELD_REPORT_TEMPLATE, SYNTHETIC_FIELD_REPORT, PRIVATE_WORKFLOW, PUBLICATION_CHECKLIST):
+            with self.subTest(path=path.relative_to(ROOT)):
+                self.assertTrue(path.is_file())
+                self.assertIn(str(path.relative_to(ROOT / "docs")), content)
 
     def test_protocol_preserves_evidence_and_language_boundaries(self) -> None:
         content = " ".join(PROTOCOL.read_text(encoding="utf-8").split())
@@ -63,7 +75,7 @@ class FieldResearchSafetyProtocolTests(unittest.TestCase):
             "## Report Template",
             "## Publication Gate",
             "## Public Write-Up Checklist",
-            "## Future C Phases",
+            "## C-Phase Completion",
         ):
             with self.subTest(heading=heading):
                 self.assertIn(heading, content)
@@ -77,13 +89,13 @@ class FieldResearchSafetyProtocolTests(unittest.TestCase):
         lowered = content.lower()
 
         forbidden_literals = (
-            "http://",
-            "https://",
-            "github.com/",
-            "npmjs.com/",
-            "pypi.org/",
-            "docker.io/",
-            "ghcr.io/",
+            "http" + "://",
+            "https" + "://",
+            "github" + ".com/",
+            "npmjs" + ".com/",
+            "pypi" + ".org/",
+            "docker" + ".io/",
+            "ghcr" + ".io/",
             "@" + "example",
             "/" + "home" + "/",
             "/" + "Users" + "/",

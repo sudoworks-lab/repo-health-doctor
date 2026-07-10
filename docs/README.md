@@ -7,6 +7,10 @@ This directory contains the public documentation set for `repo-health-doctor`.
 - `quickstart.md`: first-run commands and demo flow
 - `ai-agent-preflight.md`: plan-only preflight demo for Claude Code / Codex / Cursor style agents via `scripts/demo_agent_preflight.py`
 - `field-research-safety-protocol.md`: C-0 protocol for future field research, evidence wording, and publication review
+- `field-report-template.md`: C-1 synthetic field report template for observed evidence and limitations
+- `examples/synthetic-field-report.md`: C-2 internal-only synthetic field report example
+- `private-candidate-review-workflow.md`: C-3 private candidate intake and review workflow
+- `publication-review-checklist.md`: C-4 publication gate and public write-up checklist
 - `demo-runbook.md`: safe synthetic demo walkthrough
 - `maintainer-guide.md`: maintainer workflow and review boundaries
 - `agent-development-guide.md`: coding-agent workflow and guardrails for this repo
