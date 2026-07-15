@@ -6,6 +6,16 @@ This project aims for semantic versioning, with one important v0.x caveat:
 stable public contracts are protected, while experimental surfaces may still
 change. See [docs/versioning.md](docs/versioning.md).
 
+## Publication Status
+
+- The package metadata and documentation use version `0.1.0`.
+- The local audit baseline is commit
+  `e804997f94c4e2814ad4d4ca414e2ff45f553414` (`2026-07-10 13:08:22 +0900`).
+- No local tag refs are present in this checkout.
+- GitHub Release status was not verified because this audit is local-only. The
+  versioned entries below are not evidence that a GitHub Release or package
+  publication exists.
+
 ## Unreleased
 
 ### Added
@@ -71,7 +81,7 @@ change. See [docs/versioning.md](docs/versioning.md).
 - Real compatibility remains limited to documented fixture, version, and scope.
 - No scanner result proves a repository is safe.
 
-## v0.1.0 - Initial Public Release
+## v0.1.0 - Versioned Baseline (Publication Unverified)
 
 ### Added
 

@@ -3,7 +3,16 @@
 repo-health-doctor aims for semantic versioning, with explicit caution during
 the v0.x series.
 
-## Stable In v0.1.0
+## Release Status For This Checkout
+
+The package metadata and documentation use version `0.1.0`. The local audit
+baseline is commit `e804997f94c4e2814ad4d4ca414e2ff45f553414`
+(`2026-07-10 13:08:22 +0900`), and this checkout has no local tag refs. GitHub
+Release status was not verified because this audit is local-only. The
+`v0.1.0` sections below describe versioned contracts and limitations; they do
+not assert that a GitHub Release or package publication exists.
+
+## Stable Contracts For v0.1.0
 
 - Default v3 JSON output compatibility is stable.
 - Default CLI behavior is stable.

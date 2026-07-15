@@ -5,6 +5,15 @@
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Version](https://img.shields.io/badge/version-0.1.0-blue)
 
+## Baseline And Publication Status
+
+This checkout uses version `0.1.0` in its package metadata and documentation.
+The local audit baseline is commit `e804997f94c4e2814ad4d4ca414e2ff45f553414`
+(`2026-07-10 13:08:22 +0900`). No local tag refs are present in this checkout.
+GitHub Release status was not verified because this is a local-only audit; the
+version string and release notes do not assert that a GitHub Release or package
+publication exists.
+
 repo-health-doctor is a local-first pre-execution safety gate and evidence
 normalizer for AI agents and developers reviewing unfamiliar repositories.
 
@@ -122,7 +131,7 @@ The protocol keeps C-phase research non-executing, redacted, human-reviewed,
 and non-accusatory. It treats repo-health-doctor output as observed evidence,
 not proof of safety and not a maliciousness verdict.
 
-The C-phase reporting workflow is docs-only in this release:
+The C-phase reporting workflow is docs-only in the v0.1.0 documentation set:
 [field report template](docs/field-report-template.md),
 [synthetic example report](docs/examples/synthetic-field-report.md),
 [private candidate workflow](docs/private-candidate-review-workflow.md), and

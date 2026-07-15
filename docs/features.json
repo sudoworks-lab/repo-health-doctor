@@ -27,8 +27,8 @@
         "rg -n \"0\\\\.1\\\\.0|release|baseline|e804997\" README.md CHANGELOG.md pyproject.toml docs/release-notes docs/versioning.md を実行し、正式公開済みと誤認させる矛盾がないことを確認する",
         "PYTHONPATH=src python3 -m unittest tests.test_release_docs -v を実行する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T08:44:43+09:00",
       "blocked": false
     },
     {
