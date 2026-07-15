@@ -1,0 +1,32 @@
+{
+  "_rules": [
+    "エージェントが変更してよいのは passes / verified_at / blocked フィールドのみ。",
+    "項目の追加・削除、description や steps の編集は、機能の欠落やバグの見逃しにつながるため許容されない。",
+    "passes を true にできるのは、steps をすべて実行して検証に通った場合のみ。",
+    "verified_at にはJSTの日時を ISO 8601 形式で記録する。"
+  ],
+  "_format": {
+    "id": "F001 のような一意ID",
+    "category": "functional | quality | docs のいずれか",
+    "description": "検証可能な1文(「〜できる」「〜が存在する」)",
+    "steps": ["検証の具体手順(コマンドや確認内容)"],
+    "passes": false,
+    "verified_at": null,
+    "blocked": false
+  },
+  "features": [
+    {
+      "id": "F001",
+      "category": "functional",
+      "description": "(記入例)CLIが --topic 引数を受け取り、記事のmarkdownファイルを生成できる",
+      "steps": [
+        "./cli generate --topic sample を実行する",
+        "output/ 配下に .md ファイルが生成されることを確認する",
+        "生成ファイルが2000字以上であることを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    }
+  ]
+}

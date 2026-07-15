@@ -37,6 +37,38 @@ PYTHONPATH=src python3 -m repo_health_doctor . --public-safety --format json --o
 python3 -m json.tool /tmp/repo-health-doctor-result.json >/dev/null
 ```
 
+## Goal Loop 恒久規則
+
+### ドキュメントの権限
+
+- `docs/GOAL.md` は人間が管理するspecであり、エージェントは読み取り専用とする。
+- `docs/PLAN.md` は「判断メモ」セクションへの追記だけを許可する。
+- `docs/STATUS.md` は末尾への追記だけを許可し、過去エントリを書き換えない。
+- `docs/features.json` でエージェントが変更できるのは `passes`、`verified_at`、`blocked` だけとする。項目の追加・削除や説明・検証手順の変更は行わない。
+- 検証を完了していないfeatureを `passes: true` にしない。
+
+### 1 process / 1 feature
+
+- 外部runnerが指定したfeature 1件だけを、1 processかつ1 parent turnで扱う。エージェントはfeatureを選び直さず、完了後に別featureへ進まない。
+- 検証が失敗した場合は新しい作業へ進まず、指定featureの範囲で原因調査、最小修正、再検証を優先する（stop-and-fix）。
+- Goal Loopのwrite iterationはmain agentだけで実行し、subagent、agent delegation、`/goal`、`wait_agent`を使用しない。
+- 「完走」「止まらない」はrunnerが指定した1 featureだけに適用し、プロジェクト全体の完了まで同じprocessを継続する意味に拡張しない。
+
+### Gitとcommit境界
+
+- Goal Loopのwrite iterationでは、エージェントは `git add`、`git commit`、`git reset`、`git checkout`、`git stash`を実行しない。
+- host runnerだけがcommit requestに明示された相対pathをstageし、staged pathの完全一致と `git diff --cached --check`を確認してからcommitする。`git add .` と `git add -A`は使用しない。
+- 作業開始時のdirty一覧をpre-existing dirtyとして保護し、変更、stage、commit requestへの追加を行わない。
+- logs、cache、history、secret、個人情報、generated report、local artifactをcommitしない。
+
+### 言語
+
+- ドキュメント、`docs/STATUS.md`、commit messageは日本語で記述する。code、command、技術用語は英語のまま記述する。
+
+### schema versionの限定許可
+
+- `docs/GOAL.md` に明記されたExperimentalまたはdraft schemaのversion bumpだけは、今回のHumanによる明示許可として扱う。この許可はstable schema、stable public contract、既存の既定CLI behavior、既存の `rule_id` には適用せず、それらの無断変更禁止を維持する。
+
 ## Pointers
 
 - Agent workflow details: [docs/agent-development-guide.md](docs/agent-development-guide.md)
