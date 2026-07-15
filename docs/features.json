@@ -1,15 +1,18 @@
 {
   "_rules": [
-    "エージェントが変更してよいのは passes / verified_at / blocked フィールドのみ。",
-    "項目の追加・削除、description や steps の編集は、機能の欠落やバグの見逃しにつながるため許容されない。",
-    "passes を true にできるのは、steps をすべて実行して検証に通った場合のみ。",
-    "verified_at にはJSTの日時を ISO 8601 形式で記録する。"
+    "Human review完了後にエージェントが変更してよいのは、指定featureのpasses、verified_at、blockedフィールドだけである。",
+    "項目の追加・削除、category、description、stepsの編集は行わない。",
+    "passesをtrueにできるのは、stepsとPLANのfeature固有検証および基本検証に通った場合だけである。",
+    "verified_atにはJSTの日時をISO 8601形式で記録する。",
+    "Human evidenceが不在またはinvalidなF035/F036はpassesをfalseのままblockedをtrueにし、必要なHuman操作をSTATUSへ記録する。"
   ],
   "_format": {
     "id": "F001 のような一意ID",
     "category": "functional | quality | docs のいずれか",
-    "description": "検証可能な1文(「〜できる」「〜が存在する」)",
-    "steps": ["検証の具体手順(コマンドや確認内容)"],
+    "description": "検証可能な1文",
+    "steps": [
+      "実行するcommandと確認内容"
+    ],
     "passes": false,
     "verified_at": null,
     "blocked": false
@@ -17,12 +20,436 @@
   "features": [
     {
       "id": "F001",
-      "category": "functional",
-      "description": "(記入例)CLIが --topic 引数を受け取り、記事のmarkdownファイルを生成できる",
+      "category": "docs",
+      "description": "（G001）baseline、local tag refs、GitHub Releaseの確認状況、version表記が文書間で矛盾せず、未確認事項が明記されている",
       "steps": [
-        "./cli generate --topic sample を実行する",
-        "output/ 配下に .md ファイルが生成されることを確認する",
-        "生成ファイルが2000字以上であることを確認する"
+        "git show --no-patch --format=\"%H %ad\" e804997 と git for-each-ref --format=\"%(refname)\" refs/tags を実行し、baselineとlocal refsを確認する",
+        "rg -n \"0\\\\.1\\\\.0|release|baseline|e804997\" README.md CHANGELOG.md pyproject.toml docs/release-notes docs/versioning.md を実行し、正式公開済みと誤認させる矛盾がないことを確認する",
+        "PYTHONPATH=src python3 -m unittest tests.test_release_docs -v を実行する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F002",
+      "category": "functional",
+      "description": "（G002）RealScannerSuiteEntry、RealScannerSuiteReport、sequential suite runnerがfake runnerでunavailable、timeout、error後も全entryを処理できる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_real_scanner_suite -v を実行する",
+        "test出力で3 scannerの処理継続、suite degraded、execution_authorized=falseを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F003",
+      "category": "functional",
+      "description": "（G002）real scanner suite reportをschema-validかつredactedなtext、JSON、markdownへ整形し、golden sampleと一致させられる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_real_scanner_suite_contract -v を実行し、schema、3 formatter、redaction、goldenを確認する",
+        "python3 -m json.tool tests/fixtures/golden/real-scanner-suite.json >/dev/null を実行する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F004",
+      "category": "functional",
+      "description": "（G002）real-scan CLIがscanner選択、offline、timeout、format、outputを解釈し、定義済みexit codeでbounded reportを出力できる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_real_scan_cli -v を実行し、dispatch、parser、unknown scanner、offline、timeout、format/output、exit codeを確認する",
+        "PYTHONPATH=src python3 -m repo_health_doctor real-scan . --offline --format json --output /tmp/rhd-real-scan.json を実行し、python3 -m json.tool /tmp/rhd-real-scan.json >/dev/null でJSONを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F005",
+      "category": "quality",
+      "description": "（G002）real-scanがfinding/report budget超過をtruncationとomitted countへ記録し、degraded停止、offline CI smoke、live opt-in、利用制約を提供する",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_real_scan_budget tests.test_real_scan_cli -v を実行し、per-scanner/suite/byte budgetと--fail-on-degradedを確認する",
+        "rg -n \"offline|opt-in|truncated|omitted|fail-on-degraded|authorization\" .github/workflows/ci.yml README.md docs/real-scanner-suite.md CHANGELOG.md を実行し、取得なしのCIとdocsを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F006",
+      "category": "functional",
+      "description": "（G003）external suite evidenceのschema、fingerprint、subject、age、size、duplicate、truncationをboundedに検証できる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_external_suite_evidence -v を実行する",
+        "test出力でvalid、invalid、stale、subject mismatch、over-budget、duplicate、truncatedのmachine-readable reasonを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F007",
+      "category": "functional",
+      "description": "（G003）validated scanner findingが既存risk mapperへ接続され、success evidenceで改善せず、secret_like_valueを含むfindingがfail-closedになる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_external_suite_gate_mapping tests.test_external_scanner_risk_mapper -v を実行する",
+        "test出力でno finding/completedのverdict不変、問題signalの同値または悪化、secret_like_valueのfail-closedを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F008",
+      "category": "functional",
+      "description": "（G003）gate-checkが--external-evidenceを検証し、raw reportではなくbounded evidence_refsをgate schemaへ記録できる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_external_evidence_cli -v を実行し、CLI、schema、複数入力、未指定時互換を確認する",
+        "PYTHONPATH=src python3 -m repo_health_doctor gate-check . --external-evidence /tmp/rhd-real-scan.json -- python3 -c \"print('bounded')\" を実行し、evidence_refsだけが残ることを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F009",
+      "category": "quality",
+      "description": "（G004）GitleaksとOSV-Scannerのversion assessmentがtested、compatible_family_unverified、unsupported、denylisted、unparseableを区別できる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_real_gitleaks_compatibility tests.test_real_osv_compatibility tests.test_real_scanner_version_status -v を実行する",
+        "test出力でfixture exact versionだけがtestedとなり、compatible familyがdegradedになることを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F010",
+      "category": "quality",
+      "description": "（G004）Trivyのredacted fixture、expected evidence、version record、regeneration script、compatibility testが他scannerと同じ契約で存在する",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_real_trivy_compatibility tests.test_compatibility_regeneration_scripts -v を実行する",
+        "find tests/fixtures/real-scanners/trivy -maxdepth 2 -type f | sort を実行し、raw outputを含まないfixture、expected evidence、version recordを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F011",
+      "category": "docs",
+      "description": "（G004）3 scannerの追加compatibility fixture、Tested Versions表、Not Covered、regeneration手順、CHANGELOGが対称に記録されている",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_real_scanner_compatibility_matrix -v を実行する",
+        "rg -n \"Tested Versions|Not Covered|compatible_family_unverified|unsupported|denylisted|unparseable\" docs/real-*compatibility.md docs/compatibility-regeneration.md CHANGELOG.md を実行し、3 scannerの記載を確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F012",
+      "category": "functional",
+      "description": "（G005）authorization discovery moduleがgit top-level、tracked判定、lstat、symlink、size、O_NOFOLLOW/fstat、bounded readをfail-closedに処理できる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_authorization_discovery -v を実行する",
+        "test出力でuntracked成功とtracked、non-git、symlink、oversize、git error、file change拒否を確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F013",
+      "category": "functional",
+      "description": "（G005）gate-checkがtrailing argv存在時だけauthorizationをdiscoverし、--no-discoverとexplicit authorization優先を維持できる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_authorization_discovery_cli -v を実行する",
+        "test出力でargv非discover、single candidate、explicit優先、--no-discover、fallbackなしを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F014",
+      "category": "docs",
+      "description": "（G005）discovery refusal reason、.gitignore例、threat model、public contracts、残余riskがcode contractと同期している",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_authorization_discovery_contract -v を実行する",
+        "rg -n \"tracked_refused|not_a_git_repo|symlink_refused|not_found|parse_failed|too_large|git_error|file_changed|TOCTOU|fallback\" docs/authorization-discovery.md docs/threat-model.md docs/public-contracts.md .gitignore を実行して同期を確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F015",
+      "category": "functional",
+      "description": "（G006）rhd-moby-default-v1がprovenanceとlicenseを持つpackage dataとしてsource checkoutとinstalled wheelから同一hashで解決できる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_seccomp_package_resource -v を実行し、importlib.resources、provenance、license、hashを確認する",
+        "python3 -m build --wheel --no-isolation を実行し、built wheelのresource testを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F016",
+      "category": "functional",
+      "description": "（G006）--seccompがruntime-defaultとrhd-moby-default-v1だけを選択し、Docker argvとevidenceへ記録しながら既定挙動を維持できる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_seccomp_cli tests.test_sandbox_run_report -v を実行する",
+        "test出力でruntime-default既定、任意path/unconfined拒否、profile/hash/sourceのschema-valid evidenceを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F017",
+      "category": "quality",
+      "description": "（G006）Docker argv goldenがprofile選択と禁止optionを固定し、rootless detectionとimage compatibilityの制約が文書化されている",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_sandbox_run_docker_command -v を実行し、argv goldenと禁止optionを確認する",
+        "rg -n \"rootless|rhd-moby-default-v1|runtime-default|--pull=never|limitation\" docs/seccomp-profiles.md docs/image-compatibility.md を実行する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F018",
+      "category": "functional",
+      "description": "（G007）subject bindingのT0根拠とrefusal reason台帳が存在し、expiry CLIが相互排他、期限切れ、従来nullを検証できる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_execution_authorization_expiry -v を実行する",
+        "rg -n \"repo|commit|tree|dirty|binding_kind|expires-in-minutes|expires-at|refusal\" docs/authorization-contract.md を実行し、T0根拠とreason台帳を確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F019",
+      "category": "functional",
+      "description": "（G007）authorization 0.2-draftが0.1-draft後方互換を保ち、digest-pinned requested image referenceとlocal image IDを別値として束縛できる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_execution_authorization_image_binding tests.test_execution_authorization -v を実行する",
+        "python3 -m json.tool schemas/execution-authorization.schema.json >/dev/null を実行し、old/new goldenとversion別allowed/required fieldsを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F020",
+      "category": "functional",
+      "description": "（G007）single-use authorizationがcommand起動直前にatomic reservationされ、再利用とwrite failureを拒否し、dry-runでは消費されない",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_execution_authorization_single_use -v を実行する",
+        "test出力で初回reservation、再利用拒否、write failure、Docker起動失敗後の消費、gate-check/dry-run非消費を確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F021",
+      "category": "functional",
+      "description": "（G007）sandbox-runがworkspace copy前にrepo、HEAD commit、HEAD tree、dirty statusを直接取得してauthorization subjectと照合できる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_execution_authorization_worktree_binding tests.test_sandbox_run_approval -v を実行する",
+        "test出力でmatch、mismatch、unresolved、dirtyのcommand開始前判定と緩和flag不在を確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F022",
+      "category": "functional",
+      "description": "（G008）sandbox-run evidence normalizerがinformational noteとdecision signalを分離し、success、timeout、policy、cleanup、observer、binding、fakeを区別できる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_sandbox_evidence_normalizer -v を実行する",
+        "test出力でgolden一致、successful_execution_is_not_safetyのinformational扱い、raw preview/stdout/stderr/path不在を確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F023",
+      "category": "functional",
+      "description": "（G008）sandbox evidenceがgateへ合流し、successでverdictを改善せず、invalid、stale、mismatch、over-budgetを悪化方向へ処理できる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_sandbox_evidence_gate_mapping -v を実行する",
+        "test出力でsuccess不変、problem signalの同値または悪化、evidenceなしの既存出力不変を確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F024",
+      "category": "functional",
+      "description": "（G008）gate-checkが--sandbox-evidenceをboundedに受け取り、gateとsandbox reportをfingerprintとrun IDで相互参照できる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_sandbox_evidence_cli -v を実行し、CLI、schema、count/size/total bytes/age/duplicateを確認する",
+        "rg -n \"sandbox-evidence|evidence_refs|fingerprint|run_id|successful execution\" docs/public-contracts.md docs/sandbox-run.md CHANGELOG.md を実行してdocsを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F025",
+      "category": "quality",
+      "description": "（G009）opt-in real Docker testがnormal、network none、read-only rootfs、tmpfs、non-root、timeout、copy budgetのcases 1〜7を既存local imageで検証できる",
+      "steps": [
+        "RHD_REAL_DOCKER_TEST=1 PYTHONPATH=src python3 -m unittest tests.test_real_docker_verification.RealDockerBoundaryCasesOneToSeven -v を実行する",
+        "test出力で固定の無害なcommand、--pull=never、original repo不変、cleanup、schema-valid evidenceを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F026",
+      "category": "quality",
+      "description": "（G009）opt-in real Docker testがrhd-moby-default-v1、image binding、installed package resourceのcases 8〜10を検証できる",
+      "steps": [
+        "RHD_REAL_DOCKER_TEST=1 PYTHONPATH=src python3 -m unittest tests.test_real_docker_verification.RealDockerBoundaryCasesEightToTen -v を実行する",
+        "rg -n \"case 8|case 9|case 10|local image|--pull=never|installed\" docs/real-docker-verification.md を実行し、local実行前提を確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F027",
+      "category": "quality",
+      "description": "（G009）workflow_dispatch専用workflowがdigest-pinned acquisitionを独立stepにし、Docker/runtime summaryと固定testをstaticに検証できる",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_real_docker_workflow_contract -v を実行する",
+        "test出力でworkflow_dispatch以外のtrigger不在、digest pin、独立acquisition、sandbox --pull=never、Docker version/OS/architecture summaryを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F028",
+      "category": "docs",
+      "description": "（G010）Moby defaultとsandbox用途の比較、syscall削減候補、根拠、case影響、残riskがHuman review packetに記録されている",
+      "steps": [
+        "python3 -m json.tool docs/human-review/seccomp-review-packet.json >/dev/null を実行する",
+        "PYTHONPATH=src python3 -m unittest tests.test_seccomp_review_packet -v を実行し、候補ごとの根拠、影響case、未確認runtime、却下条件を確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F029",
+      "category": "quality",
+      "description": "（G010）rhd-locked-down-v1 candidateがHuman未承認artifactとしてhash付きで存在し、package、schema、CLI、Docker argvから到達不能である",
+      "steps": [
+        "python3 -m json.tool docs/human-review/rhd-locked-down-v1.candidate.json >/dev/null を実行する",
+        "PYTHONPATH=src python3 -m unittest tests.test_seccomp_candidate_contract -v を実行し、candidate hash、review packet対応、製品path非接続、verified表現不在を確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F030",
+      "category": "quality",
+      "description": "（G010）candidate専用test pathが既存local Docker imageでregressionを実行し、環境、profile hash、case別結果、全failureをreview packetへ記録できる",
+      "steps": [
+        "RHD_REAL_DOCKER_TEST=1 PYTHONPATH=src python3 -m unittest tests.test_candidate_seccomp_real_docker -v を実行する",
+        "python3 -m json.tool docs/human-review/seccomp-review-packet.json >/dev/null を実行し、local実測結果またはfailureが省略なく記録され、production/default選択肢へ接続されていないことを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F031",
+      "category": "docs",
+      "description": "（G011）canonical docs/agent-contract.mdがexit 0 onlyとreal-scan、gate、Human authorization、sandbox、evidence還流の正準契約を定義する",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_agent_contract_docs -v を実行する",
+        "rg -n \"exit 0|exit 1|exit 2|unknown|real-scan|external-evidence|authorization|sandbox-run|sandbox-evidence\" docs/agent-contract.md を実行して正準flowを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F032",
+      "category": "docs",
+      "description": "（G011）Codex、Claude Code、Cursorのbinding docsがHuman提供の公式source packetをofflineで参照し、verified-as-of、確認済み事項、未確認事項、instruction-based limitationを記録する",
+      "steps": [
+        "test -f docs/human-review/agent-binding-official-sources.md を実行し、Human提供packetが存在することを確認する",
+        "packetをread-onlyで参照し、network accessを行わず、確認済み事項だけを3つのbinding docsへ反映する",
+        "PYTHONPATH=src python3 -m unittest tests.test_agent_binding_docs -v を実行し、verified-as-of、公式source、未確認事項、強制機構不在時のlimitationを確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F033",
+      "category": "docs",
+      "description": "（G011）agent contractのsmoke test、cross-link、exit code/public contract、README、docs index、CHANGELOGが同期している",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest tests.test_ai_agent_integration_docs tests.test_agent_contract_docs -v を実行し、target command非実行とcross-linkを確認する",
+        "rg -n \"agent-contract|integration-codex|integration-claude-code|integration-cursor|exit 0\" README.md docs/README.md docs/public-contracts.md CHANGELOG.md を実行して同期を確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F034",
+      "category": "quality",
+      "description": "F001〜F033のfull unittest、schema、CLI、public-safety、redaction、docs、diff整合がlocalでgreenになり、Hosted実測とHuman seccomp承認は未完了と記録される",
+      "steps": [
+        "PYTHONPATH=src python3 -m unittest discover -s tests -v を実行し、全testのpass/fail/skip件数を記録する",
+        "PYTHONPATH=src python3 -m unittest tests.test_schema_contracts tests.test_public_contracts -v とPLANの基本検証を実行する",
+        "git diff --check を実行し、Hosted real DockerとHuman seccomp approvalを未完了のまま確認する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F035",
+      "category": "quality",
+      "description": "Human GateとしてHosted workflow_dispatch green run、対象commit、Docker version、OS、architecture、seccomp Human approval、approved profile hashをmachine-readable evidenceから検証できる",
+      "steps": [
+        "python3 scripts/validate_final_security_gates.py docs/human-review/final-security-gates.json を実行し、全required Human evidenceを検証する",
+        "PYTHONPATH=src python3 -m unittest tests.test_final_security_gates -v を実行する",
+        "evidenceが不在またはinvalidならpasses=falseを維持してF035をblocked=trueにし、必要なHuman操作をdocs/STATUS.mdへ追記する"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "blocked": false
+    },
+    {
+      "id": "F036",
+      "category": "functional",
+      "description": "F035のHuman Gateがvalidな場合だけapproved hashのrhd-locked-down-v1を正式な明示選択肢へ接続し、public contractsとfull verificationを完了できる",
+      "steps": [
+        "python3 scripts/validate_final_security_gates.py docs/human-review/final-security-gates.json を実行し、F035 passes=true、blocked=false、approved profile hash一致を確認する",
+        "前提未達ならpasses=falseを維持してF036をblocked=trueにし、必要なHuman操作をdocs/STATUS.mdへ追記する",
+        "前提達成時だけPYTHONPATH=src python3 -m unittest tests.test_seccomp_cli tests.test_sandbox_run_docker_command -v とPLANの基本検証を実行し、image compatibility、public contracts、CHANGELOGの同期を確認する"
       ],
       "passes": false,
       "verified_at": null,
