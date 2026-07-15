@@ -92,9 +92,15 @@ from .adapters import (
 from .real_scanner_suite import (
     REAL_SCANNER_ADAPTER_NAMES,
     REAL_SCANNER_SUITE_LIMITATIONS,
+    SUITE_REPORT_KIND,
+    SUITE_SCHEMA_VERSION,
+    RealScannerSuiteEntry,
+    RealScannerSuiteReport,
     default_real_scanner_adapters,
     real_scanner_capabilities,
     real_scanner_inventory,
+    run_real_scanner_suite,
+    run_real_scanner_suite_sequential,
 )
 
 __all__ = [
@@ -122,6 +128,10 @@ __all__ = [
     "OSV_SCANNER_NAME",
     "REAL_SCANNER_ADAPTER_NAMES",
     "REAL_SCANNER_SUITE_LIMITATIONS",
+    "SUITE_REPORT_KIND",
+    "SUITE_SCHEMA_VERSION",
+    "RealScannerSuiteEntry",
+    "RealScannerSuiteReport",
     "ZIZMOR_STYLE_OUTPUT_KIND",
     "ZIZMOR_STYLE_SCANNER_NAME",
     "GitleaksAdapter",
@@ -164,6 +174,8 @@ __all__ = [
     "normalize_trivy_json_object",
     "real_scanner_capabilities",
     "real_scanner_inventory",
+    "run_real_scanner_suite",
+    "run_real_scanner_suite_sequential",
     "validate_external_scanner_plan",
     "validate_external_scanner_result",
     "validate_imported_external_report",

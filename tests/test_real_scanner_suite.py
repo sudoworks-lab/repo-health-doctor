@@ -8,14 +8,22 @@ from unittest import mock
 from repo_health_doctor.external_scanner import (
     REAL_SCANNER_ADAPTER_NAMES,
     REAL_SCANNER_SUITE_LIMITATIONS,
+    RealScannerSuiteEntry,
+    RealScannerSuiteReport,
     default_real_scanner_adapters,
     real_scanner_capabilities,
     real_scanner_inventory,
+    run_real_scanner_suite,
     run_gitleaks_scan,
     run_osv_scan,
     run_trivy_scan,
 )
-from repo_health_doctor.external_scanner.adapters import gitleaks_adapter, osv_scanner_adapter, trivy_adapter
+from repo_health_doctor.external_scanner.adapters import (
+    GitleaksCommandResult,
+    gitleaks_adapter,
+    osv_scanner_adapter,
+    trivy_adapter,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -78,6 +86,81 @@ class RealScannerSuiteTests(unittest.TestCase):
                 self.assertFalse(normalized["execution_authorized"])
                 self.assertFalse(normalized["mapping_result"]["risk_lowering_allowed"])  # type: ignore[index]
                 self.assertIn("quarantine", normalized["mapping_result"]["gate_effects"])  # type: ignore[index]
+
+    def test_sequential_suite_continues_after_unavailable_runner(self) -> None:
+        calls: list[str] = []
+
+        def unavailable_runner(argv, timeout_seconds):
+            del timeout_seconds
+            calls.append(argv[0])
+            raise FileNotFoundError(argv[0])
+
+        report = run_real_scanner_suite(ROOT, runner=unavailable_runner)
+
+        self.assertIsInstance(report, RealScannerSuiteReport)
+        self.assertEqual(tuple(entry.scanner_name for entry in report.entries), REAL_SCANNER_ADAPTER_NAMES)
+        self.assertEqual(tuple(calls), REAL_SCANNER_ADAPTER_NAMES)
+        self.assertEqual(report.suite_status, "degraded")
+        self.assertFalse(report.execution_authorized)
+        for entry in report.entries:
+            with self.subTest(scanner=entry.scanner_name):
+                self.assertIsInstance(entry, RealScannerSuiteEntry)
+                self.assertEqual(entry.status, "unknown")
+                self.assertFalse(entry.valid)
+                self.assertFalse(entry.normalized_result["execution_authorized"])
+
+    def test_sequential_suite_continues_after_timeout_runner(self) -> None:
+        calls: list[str] = []
+
+        def timeout_runner(argv, timeout_seconds):
+            del timeout_seconds
+            calls.append(argv[0])
+            return GitleaksCommandResult(returncode=124, stdout="", stderr="", timed_out=True)
+
+        report = run_real_scanner_suite(ROOT, runner=timeout_runner)
+
+        self.assertEqual(tuple(calls), REAL_SCANNER_ADAPTER_NAMES)
+        self.assertEqual(tuple(entry.scanner_name for entry in report.entries), REAL_SCANNER_ADAPTER_NAMES)
+        self.assertEqual(report.suite_status, "degraded")
+        self.assertFalse(report.execution_authorized)
+        self.assertTrue(all(entry.status == "unknown" for entry in report.entries))
+
+    def test_sequential_suite_continues_after_runner_error(self) -> None:
+        calls: list[str] = []
+
+        def error_runner(argv, timeout_seconds):
+            del timeout_seconds
+            calls.append(argv[0])
+            raise RuntimeError("synthetic runner failure")
+
+        report = run_real_scanner_suite(ROOT, runner=error_runner)
+
+        self.assertEqual(tuple(calls), REAL_SCANNER_ADAPTER_NAMES)
+        self.assertEqual(tuple(entry.scanner_name for entry in report.entries), REAL_SCANNER_ADAPTER_NAMES)
+        self.assertEqual(report.suite_status, "degraded")
+        self.assertFalse(report.execution_authorized)
+        for entry in report.entries:
+            with self.subTest(scanner=entry.scanner_name):
+                self.assertEqual(entry.blocking_errors, ("suite_runner_error",))
+                self.assertNotIn("synthetic runner failure", json.dumps(entry.to_dict()))
+
+    def test_offline_suite_skips_network_scanners_without_calling_runner(self) -> None:
+        calls: list[str] = []
+
+        def runner(argv, timeout_seconds):
+            del timeout_seconds
+            calls.append(argv[0])
+            raise AssertionError("only the local scanner should run offline")
+
+        report = run_real_scanner_suite(ROOT, runner=runner, offline=True)
+
+        self.assertEqual(tuple(calls), ("gitleaks",))
+        self.assertEqual(
+            tuple(entry.status for entry in report.entries),
+            ("unknown", "skipped_offline", "skipped_offline"),
+        )
+        self.assertEqual(report.suite_status, "degraded")
+        self.assertFalse(report.execution_authorized)
 
     def test_public_docs_present_real_scanner_suite_and_limits(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
