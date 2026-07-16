@@ -51,6 +51,16 @@ authorization artifactは`0.1-draft`と`0.2-draft`を受理する。0.1-draftの
 - `RepoDigests`の値をlocal image IDの代わりには使わない。runtime image IDが未解決、referenceが不一致、またはIDが不一致ならfail-closedである。
 - `approved_image`のない旧artifactは後方互換として受理するが、validation resultに`authorization_not_image_bound` limitationを付ける。これはimage identityを検証済みという意味ではない。
 
+## Single-use reservation
+
+`sandbox-run --authorization`で実行認可が有効な場合、workspace copy、Docker argv生成、dry-run判定を終えた後、runnerの`run`呼び出し直前にだけsingle-use reservationを作る。reservation markerは認可artifactの隣に`<authorization filename>.reserved`として作成し、`O_CREAT|O_EXCL`（利用可能な場合は`O_NOFOLLOW`も併用）、mode `0600`でatomicに確保する。markerの内容は固定のkindとschema versionだけで、認可artifactの値、command、pathは保存しない。
+
+- markerが既に存在する場合は`authorization_single_use_reservation_exists`で拒否する。markerを削除して再利用可能にする処理はない。
+- markerの作成または固定内容の書込み・同期に失敗した場合は`authorization_single_use_reservation_write_failed`で拒否する。部分的に作成されたmarkerも安全側の消費済み状態として残す。
+- reservation後のDocker未起動、起動失敗、timeout、command failureでもmarkerは残るため、同じauthorizationは再利用できない。
+- `gate-check`は認可validatorだけを実行し、reservationを作らない。`sandbox-run --dry-run`もmarkerを作らず、`consumed: false`を維持する。
+- reservationはlocal filesystem内の非分散制御であり、central revocationやdistributed lockではない。
+
 Image bindingのrefusal reasonは次のとおりである。
 
 | refusal reason | 拒否条件 |

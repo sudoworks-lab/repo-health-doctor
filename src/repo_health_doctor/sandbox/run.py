@@ -7,6 +7,7 @@ from typing import Any, Mapping
 from uuid import uuid4
 
 from ..doctor import TOOL_VERSION
+from ..gate.authorization import reserve_execution_authorization
 from .approval import load_sandbox_run_approval, validate_sandbox_run_approval
 from .docker import is_digest_pinned
 from .docker_runner import (
@@ -261,6 +262,12 @@ def run_sandbox_run(
         )
         if dry_run:
             report = dict(base_report)
+            report["authorization"]["single_use_reservation"] = {
+                "status": "not_consumed",
+                "consumed": False,
+                "marker_path_redacted": "<authorization-reservation>" if authorization_path is not None else None,
+                "refusal_reason": "dry_run",
+            }
             report["result"] = {
                 "status": STATUS_DRY_RUN,
                 "exit_code": 0,
@@ -279,6 +286,22 @@ def run_sandbox_run(
             ]
             report["sandbox_exit_code"] = 0
             return _finalize_report(report, workspace=workspace, preserve_workspace=preserve_workspace)
+        if authorization_path is not None:
+            reservation = reserve_execution_authorization(authorization_path)
+            base_report["authorization"]["single_use_reservation"] = reservation.to_dict()
+            if not reservation.reserved:
+                return _policy_blocked_report(
+                    base_report,
+                    approval_path=approval_path,
+                    refusal_reasons=[reservation.refusal_reason or "authorization_single_use_reservation_rejected"],
+                    approval_validation=approval_validation,
+                    next_actions=[
+                        "Do not retry the authorization after a reservation refusal; obtain a new authorization artifact.",
+                        "Do not run the repository-derived command on the host as a fallback.",
+                    ],
+                    workspace=workspace,
+                    preserve_workspace=preserve_workspace,
+                )
         run_result = runner.run(docker_argv, timeout_seconds)
         after_snapshot = snapshot_workspace(workspace.workspace)
         output_summary = _build_output_summary(
@@ -648,6 +671,12 @@ def _authorization_report(
         "execution_authorized": _authorization_execution_authorized(authorization_validation),
         "blocking_errors": _authorization_blocking_reasons(authorization_validation),
         "warnings": _string_items(payload.get("warnings") if isinstance(payload, Mapping) else None),
+        "single_use_reservation": {
+            "status": "not_attempted",
+            "consumed": False,
+            "marker_path_redacted": "<authorization-reservation>" if authorization_path is not None else None,
+            "refusal_reason": None,
+        },
     }
 
 

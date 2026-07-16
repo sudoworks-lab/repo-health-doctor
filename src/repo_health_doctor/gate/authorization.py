@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
+from pathlib import Path
 import re
 from typing import Any, Mapping, Sequence
 
@@ -107,6 +109,104 @@ FORBIDDEN_PATTERNS = (
     "token=",
 )
 RAW_HOST_PATH = re.compile(r"(?:^|[\s\"'=])(?:/(?:home|Users)/|/mnt/[A-Za-z]/Users/|[A-Za-z]:\\Users\\)")
+AUTHORIZATION_RESERVATION_SUFFIX = ".reserved"
+AUTHORIZATION_RESERVATION_KIND = "single_use_execution_authorization_reservation"
+AUTHORIZATION_RESERVATION_EXISTS_REASON = "authorization_single_use_reservation_exists"
+AUTHORIZATION_RESERVATION_WRITE_FAILURE_REASON = "authorization_single_use_reservation_write_failed"
+
+
+@dataclass(frozen=True)
+class ExecutionAuthorizationReservation:
+    reserved: bool
+    reservation_path: Path
+    refusal_reason: str | None = None
+
+    @property
+    def consumed(self) -> bool:
+        return self.reserved or self.refusal_reason in {
+            AUTHORIZATION_RESERVATION_EXISTS_REASON,
+            AUTHORIZATION_RESERVATION_WRITE_FAILURE_REASON,
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        if self.reserved:
+            status = "reserved"
+        elif self.refusal_reason == AUTHORIZATION_RESERVATION_EXISTS_REASON:
+            status = "already_reserved"
+        elif self.refusal_reason == AUTHORIZATION_RESERVATION_WRITE_FAILURE_REASON:
+            status = "write_failed"
+        else:
+            status = "rejected"
+        return {
+            "status": status,
+            "consumed": self.consumed,
+            "marker_path_redacted": "<authorization-reservation>",
+            "refusal_reason": self.refusal_reason,
+        }
+
+
+def authorization_reservation_path(authorization_path: Path) -> Path:
+    """Return the persistent local marker path for one authorization artifact."""
+    return authorization_path.with_name(
+        authorization_path.name + AUTHORIZATION_RESERVATION_SUFFIX
+    )
+
+
+def reserve_execution_authorization(
+    authorization_path: Path,
+) -> ExecutionAuthorizationReservation:
+    """Atomically consume an approved authorization immediately before execution.
+
+    The marker is intentionally persistent. A partial marker or a failed marker
+    write is still a fail-closed reservation and must not be removed to permit
+    reuse.
+    """
+    reservation_path = authorization_reservation_path(authorization_path)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    payload = (
+        json.dumps(
+            {
+                "reservation_kind": AUTHORIZATION_RESERVATION_KIND,
+                "schema_version": AUTHORIZATION_SCHEMA_VERSION,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("ascii")
+    file_descriptor: int | None = None
+    try:
+        file_descriptor = os.open(reservation_path, flags, 0o600)
+        view = memoryview(payload)
+        while view:
+            written = os.write(file_descriptor, view)
+            if written <= 0:
+                raise OSError("reservation marker write made no progress")
+            view = view[written:]
+        os.fsync(file_descriptor)
+    except FileExistsError:
+        return ExecutionAuthorizationReservation(
+            reserved=False,
+            reservation_path=reservation_path,
+            refusal_reason=AUTHORIZATION_RESERVATION_EXISTS_REASON,
+        )
+    except OSError:
+        return ExecutionAuthorizationReservation(
+            reserved=False,
+            reservation_path=reservation_path,
+            refusal_reason=AUTHORIZATION_RESERVATION_WRITE_FAILURE_REASON,
+        )
+    finally:
+        if file_descriptor is not None:
+            try:
+                os.close(file_descriptor)
+            except OSError:
+                pass
+    return ExecutionAuthorizationReservation(
+        reserved=True,
+        reservation_path=reservation_path,
+    )
 
 
 @dataclass(frozen=True)

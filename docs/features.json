@@ -255,8 +255,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_execution_authorization_single_use -v を実行する",
         "test出力で初回reservation、再利用拒否、write failure、Docker起動失敗後の消費、gate-check/dry-run非消費を確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T19:26:45+09:00",
       "blocked": false
     },
     {
