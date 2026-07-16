@@ -335,3 +335,11 @@
 ## 2026-07-17 JST — F035検証件数の訂正
 
 - 訂正: 直前のF035記録にある「full suiteは846件pass・14件skip・0件fail」は件数表現が誤っていた。正しくは846件実行・832件pass・14件skip・0件failである。検証のgreen判定、F035のblocked判断、既知の問題、必要なHuman操作に変更はない。
+
+## 2026-07-17 JST — F036 Human Gate前提未達によるblocked終了
+
+- 今回やったこと: F036の実装前提としてF035の状態と`docs/human-review/final-security-gates.json`を再確認した。F035は`passes:false`、`blocked:true`で、Human evidenceも不在だったため、`rhd-locked-down-v1`のpackage、schema、CLI、Docker argv、image compatibility、public contracts、CHANGELOGへの接続は行わず、F036を`passes:false`、`verified_at:null`のまま`blocked:true`へ変更した。
+- 検証結果: `python3 scripts/validate_final_security_gates.py docs/human-review/final-security-gates.json`は`valid:false`、reason code `evidence_missing`を返してexit 1だった。開始時の`bash scripts/init.sh`と独立したPLAN基本検証ではfull suiteが846件実行・832件pass・14件skip・0件failとなり、CLI help/version、public-safety 12件pass・0件warn・0件block、policy validation、JSON report生成・parse、docs/fixture一覧、AGENTS.md 77行、`git diff --check`が成功した。出力抑制付きJSON parseだけは実行ポリシーで拒否されたため、同じfileを出力抑制なしでparseしてexit 0を確認した。F036専用testと終了時full verificationは、PLANがHuman Gate達成時だけ実行すると定めているため実行していない。
+- 判断と理由: approved profile hashを検証できず、F035も完了していないため、Human未承認candidateを正式な明示選択肢へ接続することは禁止される。開始時smokeの成功をHuman Gate成功またはF036完了へ読み替えていない。
+- 既知の問題: Hosted `workflow_dispatch`のgreen run metadata、対象commit、Docker server version、runner OS、architecture、Human seccomp approval、承認者、timezone付き承認日時、candidate bytesと一致するapproved profile SHA-256が未提供である。F036のimage compatibility、public contracts、CHANGELOG同期とfull verificationは未実施である。
+- follow-up候補: Humanが`.github/workflows/real-docker-verification.yml`のgreen `workflow_dispatch`結果とseccomp削減承認を`docs/human-review/final-security-gates.json`として提供し、内容をreviewしたうえでF035とF036のblocked解除およびrunner再実行を明示判断する。runnerはF035を先に再検証して`passes:true`、`blocked:false`にした後、別processでF036を再実行する。
