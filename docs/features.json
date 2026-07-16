@@ -291,8 +291,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_sandbox_evidence_gate_mapping -v を実行する",
         "test出力でsuccess不変、problem signalの同値または悪化、evidenceなしの既存出力不変を確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T21:56:41+09:00",
       "blocked": false
     },
     {

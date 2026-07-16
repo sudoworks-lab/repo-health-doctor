@@ -10,6 +10,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
+from repo_health_doctor.evidence.sandbox_run import (
+    DECISION_BINDING_MISMATCH,
+    DECISION_CLEANUP_FAILED,
+    DECISION_INVALID,
+    DECISION_NOT_REAL,
+    DECISION_OBSERVER_DEGRADED,
+    DECISION_OVER_BUDGET,
+    DECISION_POLICY_BLOCKED,
+    DECISION_STALE,
+    DECISION_TIMEOUT,
+    DECISION_TRUNCATED,
+    SANDBOX_RUN_EVIDENCE_REPORT_KIND,
+    SANDBOX_RUN_EVIDENCE_SCHEMA_VERSION,
+)
 from repo_health_doctor.evidence.validation import validate_evidence
 from repo_health_doctor.external_scanner.risk_mapper import (
     ExternalScannerRiskMappingResult,
@@ -93,12 +107,35 @@ class _ExternalSuiteGateSignals:
     findings_count: int
 
 
+@dataclass(frozen=True)
+class _SandboxGateSignals:
+    verdict_candidates: tuple[str, ...]
+    verdict_reasons: tuple[str, ...]
+    blocking_evidence: tuple[str, ...]
+    warning_evidence: tuple[str, ...]
+
+
+_SANDBOX_SIGNAL_VERDICTS = {
+    DECISION_POLICY_BLOCKED: "block",
+    DECISION_BINDING_MISMATCH: "block",
+    DECISION_CLEANUP_FAILED: "quarantine",
+    DECISION_TIMEOUT: "unknown",
+    DECISION_OBSERVER_DEGRADED: "unknown",
+    DECISION_NOT_REAL: "unknown",
+    DECISION_INVALID: "unknown",
+    DECISION_STALE: "unknown",
+    DECISION_TRUNCATED: "unknown",
+    DECISION_OVER_BUDGET: "unknown",
+}
+
+
 def evaluate_gate_decision(
     evidence: Sequence[Mapping[str, Any]],
     *,
     subject: Mapping[str, Any] | None = None,
     policy: Mapping[str, Any] | None = None,
     external_suite_evidence: Sequence[ExternalSuiteGateEvidence] = (),
+    sandbox_evidence: Sequence[Mapping[str, Any]] = (),
 ) -> GateEvaluationResult:
     active_policy = policy or load_pre_execution_gate_policy()
     evidence_items = list(evidence)
@@ -231,6 +268,15 @@ def evaluate_gate_decision(
         limitations.append("external_scanner_suite_is_not_safety_proof")
         residual_risks.append("external_scanner_scope_and_binary_trust_remain_bounded")
 
+    sandbox_signals = _sandbox_gate_signals(sandbox_evidence)
+    verdict_candidates.extend(sandbox_signals.verdict_candidates)
+    verdict_reasons.extend(sandbox_signals.verdict_reasons)
+    blocking_evidence.extend(sandbox_signals.blocking_evidence)
+    warning_evidence.extend(sandbox_signals.warning_evidence)
+    if sandbox_evidence:
+        limitations.append("sandbox_execution_evidence_is_not_safety_proof")
+        residual_risks.append("sandbox_execution_scope_and_isolation_remain_bounded")
+
     if all_low_trust and evidence_items and not any_runtime_observation and not verdict_candidates:
         verdict_candidates.append("unknown")
         verdict_reasons.append("all_evidence_low_trust_without_runtime_observation")
@@ -327,6 +373,54 @@ def evaluate_gate_decision(
         blocking_errors=tuple(_dedupe(blocking_errors)),
         warnings=tuple(_dedupe(list(gate_validation.warnings))),
         verdict_reasons=tuple(_dedupe(verdict_reasons)),
+    )
+
+
+def _sandbox_gate_signals(
+    evidence_items: Sequence[Mapping[str, Any]],
+) -> _SandboxGateSignals:
+    candidates: list[str] = []
+    reasons: list[str] = []
+    blocking: list[str] = []
+    warning: list[str] = []
+
+    for evidence_index, item in enumerate(evidence_items, start=1):
+        evidence_id = f"sandbox_evidence:{evidence_index}"
+        signals: list[str]
+        if (
+            not isinstance(item, Mapping)
+            or item.get("schema_version") != SANDBOX_RUN_EVIDENCE_SCHEMA_VERSION
+            or item.get("report_kind") != SANDBOX_RUN_EVIDENCE_REPORT_KIND
+        ):
+            signals = [DECISION_INVALID]
+        else:
+            raw_signals = item.get("decision_signals")
+            if (
+                not isinstance(raw_signals, list)
+                or any(
+                    not isinstance(signal, str)
+                    or signal not in _SANDBOX_SIGNAL_VERDICTS
+                    for signal in raw_signals
+                )
+            ):
+                signals = [DECISION_INVALID]
+            else:
+                signals = list(_dedupe(raw_signals))
+
+        for signal in signals:
+            candidate = _SANDBOX_SIGNAL_VERDICTS[signal]
+            candidates.append(candidate)
+            reasons.append(f"sandbox_signal:{signal}:{evidence_id}")
+            if candidate == "block":
+                blocking.append(evidence_id)
+            else:
+                warning.append(evidence_id)
+
+    return _SandboxGateSignals(
+        verdict_candidates=tuple(candidates),
+        verdict_reasons=tuple(reasons),
+        blocking_evidence=tuple(blocking),
+        warning_evidence=tuple(warning),
     )
 
 

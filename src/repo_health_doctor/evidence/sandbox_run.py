@@ -28,6 +28,7 @@ DECISION_NOT_REAL = "not_real_execution_evidence"
 DECISION_INVALID = "sandbox_evidence_invalid"
 DECISION_STALE = "sandbox_evidence_stale"
 DECISION_TRUNCATED = "sandbox_evidence_truncated"
+DECISION_OVER_BUDGET = "sandbox_evidence_over_budget"
 
 _FINGERPRINT = re.compile(r"^sha256:[0-9a-f]{64}$")
 _OBJECT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")

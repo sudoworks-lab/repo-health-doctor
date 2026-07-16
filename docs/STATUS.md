@@ -224,3 +224,12 @@
 - 判断と理由: source reportの構造不備は成功扱いにせず`sandbox_evidence_invalid`へ分類し、fake runnerとdry-runも`not_real_execution_evidence`として実行証拠から分離した。normalizerはgate verdictを変更せず、後続featureがdecision signalだけを利用できる形に限定した。出力の安定性を保つため、入力limitationsの自由文は保持せず固定limitationだけを記録した。
 - 既知の問題: 指定された先頭`PYTHONPATH=src`形式の専用commandは実行環境のprocess生成ポリシーにより開始前に拒否されたため、同値の`env PYTHONPATH=src`で検証した。実Dockerでのlive executionやgateへのevidence接続はF022の対象外で未実施である。
 - follow-up候補: F023でこのnormalized evidenceをgateへ合流し、successではverdictを改善せず、invalid/stale/mismatch/over-budgetを悪化方向へ扱う。F022以外のfeatureは今回扱っていない。
+
+## 2026-07-16 JST — F023 sandbox evidence gate mapping
+
+- 今回やったこと: `evaluate_gate_decision()`へoptionalなnormalized sandbox evidence入力を追加し、`decision_signals`だけを既存の`strongest_verdict`候補へ合流させた。成功evidenceはverdict候補を追加せず、policy blockとsubject binding mismatchはblock、cleanup failureはquarantine、timeout、observer degraded、fake/dry-run、invalid、stale、truncated、over-budgetはunknown方向へだけ作用する。normalized evidenceのkind、version、signal shapeが不正な場合は`sandbox_evidence_invalid`として扱い、黙ってskipしない。sandbox evidence未指定時は既存の結果オブジェクト全体を維持する。
+- 検証結果: 指定された`PYTHONPATH=src python3 -m unittest tests.test_sandbox_evidence_gate_mapping -v`は実行環境のprocess生成ポリシーにより開始前に拒否されたため、同値の`env PYTHONPATH=src python3 -m unittest tests.test_sandbox_evidence_gate_mapping -v`を実行し3件pass・0件failを確認した。test出力でsuccessがallow_limited、warn、unknown、quarantine、blockの全段階で不変、invalid、stale、mismatch、over-budgetが各段階で同値または悪化、evidence未指定と明示的な空入力で既存出力が一致することを確認した。normalizerとgate evaluatorの関連回帰25件、`py_compile`、`git diff --check`は成功した。`scripts/init.sh`はPython 3.12.3で全unit 790件pass・3件skip・0件fail、CLI help/version、public-safety scan、policy validation、JSON report生成・parseまで成功した。
+- 判断と理由: sandboxの成功をverdict reasonにも候補にも加えず、問題signalだけを既存verdictへ追加する構造にしたため、成功による改善と問題signalによる左方向への移動を防げる。gate decisionへ入力evidenceのraw fieldを埋め込まず、固定の`sandbox_evidence:<index>`だけをblocking/warning evidenceへ記録する。CLI、schema、既存`rule_id`、default scan contractは変更していない。
+- 既知の問題: `--sandbox-evidence` CLI、file count、file size、total bytes、age、duplicate fingerprint、subject/policy/gate fingerprint検証、evidence reference出力はF024の範囲であり、今回未実装である。実Docker executionは実施していない。
+- follow-up候補: F024でboundedなCLI入力検証とgate/sandbox fingerprint・run IDの相互参照を接続する。F024以降のfeatureは今回扱っていない。
+- 検証件数の訂正: 上記の「全unit 790件pass・3件skip」は「全unit 790件実行・787件pass・3件skip・0件fail」が正しい。unittestの`Ran 790 tests`はskipを含む総実行件数である。
