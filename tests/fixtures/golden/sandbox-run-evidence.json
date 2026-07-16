@@ -1,0 +1,57 @@
+{
+  "binding": {
+    "mismatch": false,
+    "status": "matched"
+  },
+  "cleanup": {
+    "status": "ok"
+  },
+  "decision_signals": [],
+  "execution": {
+    "command_started": true,
+    "exit_category": "success",
+    "exit_code": 0,
+    "timed_out": false
+  },
+  "gate": {
+    "decision_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "generated_at": "2026-07-16T00:00:01Z",
+  "informational_notes": [
+    "successful_execution_is_not_safety"
+  ],
+  "limitations": [
+    "sandbox_run_report_is_bounded_evidence",
+    "execution_result_is_not_safety_proof"
+  ],
+  "observer": {
+    "status": "not_recorded"
+  },
+  "policy": {
+    "blocked": false,
+    "version": "0.1"
+  },
+  "report_fingerprint": "sha256:9818dff001e200fd1f9c30b37c61cfdfbb3fc1503369078ccc5dc806fc47b414",
+  "report_kind": "sandbox_normalized_evidence",
+  "run_id": "rhd-sandbox-run-fixed",
+  "runner": {
+    "kind": "docker",
+    "real_execution": true
+  },
+  "sandbox": {
+    "image": "python:3.12-slim",
+    "seccomp_profile": "runtime-default"
+  },
+  "schema_version": "0.1-draft",
+  "subject": {
+    "binding_kind": "unbound",
+    "commit": null,
+    "repo": "path:repo",
+    "tree_hash": null
+  },
+  "workspace_diff": {
+    "created_count": 1,
+    "deleted_count": 0,
+    "modified_count": 2
+  }
+}

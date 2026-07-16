@@ -279,8 +279,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_sandbox_evidence_normalizer -v を実行する",
         "test出力でgolden一致、successful_execution_is_not_safetyのinformational扱い、raw preview/stdout/stderr/path不在を確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T19:58:42+09:00",
       "blocked": false
     },
     {

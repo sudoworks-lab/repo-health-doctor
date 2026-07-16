@@ -216,3 +216,11 @@
 - 判断と理由: direct Git値はfile-inventory fingerprint、gate subject、workspace copy後のsnapshotで代用せず、`runner.run()`より前に取得する。既存のredactedな`<repo>` subjectは対象pathがGit top-levelであることと照合し、commit/treeは直接取得したobject IDとexact比較する。dirtyは常に拒否し、dry-runはcommandを開始しないためreservationとworktree bindingを消費しない既存契約を維持した。schema version、既存rule_id、CLI既定挙動は変更していない。
 - 既知の問題: 実Docker daemon/imageでのlive commandは実施していない。指定された先頭`PYTHONPATH=src`形式のcommandは環境のprocess生成ポリシーにより開始前に拒否されたため、同値の`env PYTHONPATH=src`で専用testとfull suiteを実行した。これはtest失敗ではなく環境差分である。
 - follow-up候補: F022でsandbox-run reportのevidence normalizerとbinding signalのgate連携を扱う。F021以外のfeatureは今回扱っていない。
+
+## 2026-07-16 JST — F022 sandbox-run evidence normalizer
+
+- 今回やったこと: `normalize_sandbox_run_evidence(report)`と公開exportを追加し、run ID、report fingerprint、subject、policy、gate fingerprint、生成時刻、runner種別、実行状態、timeout、cleanup、observer、worktree binding、seccomp/image、workspace diff件数だけをbounded evidenceへ正規化した。`successful_execution_is_not_safety`は`informational_notes`へ固定し、policy block、binding mismatch、timeout、cleanup failure、observer degraded、fake/dry-run、invalid、stale、truncatedを`decision_signals`へ分離した。raw preview/stdout/stderr、host path、command内容は出力へコピーしない。専用testとgolden fixtureを追加し、gate verdictとCLI接続はF023/F024の範囲として変更していない。
+- 検証結果: `env PYTHONPATH=src python3 -m unittest tests.test_sandbox_evidence_normalizer -v`は3件pass・0件failで、golden一致、成功noteのinformational扱い、raw preview/stdout/stderr/path非保持、timeout/policy/cleanup/observer/binding/fakeのsignal分類を確認した。`bash scripts/init.sh`はPython 3.12.3で全unit 787件pass・3件skip・0件fail、CLI help/version、public-safety scan、policy validation、JSON report生成・parseまで成功した。`python3 -m py_compile`、`git diff --check`も成功した。
+- 判断と理由: source reportの構造不備は成功扱いにせず`sandbox_evidence_invalid`へ分類し、fake runnerとdry-runも`not_real_execution_evidence`として実行証拠から分離した。normalizerはgate verdictを変更せず、後続featureがdecision signalだけを利用できる形に限定した。出力の安定性を保つため、入力limitationsの自由文は保持せず固定limitationだけを記録した。
+- 既知の問題: 指定された先頭`PYTHONPATH=src`形式の専用commandは実行環境のprocess生成ポリシーにより開始前に拒否されたため、同値の`env PYTHONPATH=src`で検証した。実Dockerでのlive executionやgateへのevidence接続はF022の対象外で未実施である。
+- follow-up候補: F023でこのnormalized evidenceをgateへ合流し、successではverdictを改善せず、invalid/stale/mismatch/over-budgetを悪化方向へ扱う。F022以外のfeatureは今回扱っていない。
