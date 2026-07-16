@@ -311,6 +311,10 @@ def evaluate_gate_decision(
         },
         "residual_risks": list(_dedupe(residual_risks)),
     }
+    if external_suite_evidence:
+        decision["evidence_refs"] = [
+            dict(suite.validation.evidence_ref) for suite in external_suite_evidence
+        ]
     gate_validation = validate_gate_decision(decision)
     blocking_errors = list(gate_validation.blocking_errors)
     if not gate_validation.valid:

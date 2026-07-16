@@ -20,6 +20,9 @@ change. See [docs/versioning.md](docs/versioning.md).
 
 ### Added
 
+- Experimental `gate-check --external-evidence`の複数入力、subject・age・size・
+  fingerprint・duplicate・truncation検証、raw reportを含まないboundedな
+  `evidence_refs` gate schema記録を追加した。
 - Experimental `real-scan` finding and report budgets with explicit offline
   CI smoke, local live opt-in, truncation and omitted-count reporting, and
   `--fail-on-degraded`.

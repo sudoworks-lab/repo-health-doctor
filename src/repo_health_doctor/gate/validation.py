@@ -6,6 +6,7 @@ gate evaluator and it never authorizes execution.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Mapping
 
 from .decision import GateDecisionValidationResult
@@ -14,7 +15,7 @@ from .decision import GateDecisionValidationResult
 GATE_DECISION_SCHEMA_VERSION = "0.1-draft"
 DECISION_KIND = "repo_health_gate_decision"
 
-TOP_LEVEL_FIELDS = {
+REQUIRED_TOP_LEVEL_FIELDS = {
     "decision_kind",
     "schema_version",
     "subject",
@@ -29,6 +30,7 @@ TOP_LEVEL_FIELDS = {
     "policy",
     "residual_risks",
 }
+TOP_LEVEL_FIELDS = REQUIRED_TOP_LEVEL_FIELDS | {"evidence_refs"}
 SUBJECT_FIELDS = {"repo", "commit", "tree_hash", "binding_kind"}
 EXPLANATION_FIELDS = {"summary", "key_reasons", "next_actions"}
 EVIDENCE_SUMMARY_FIELDS = {
@@ -39,6 +41,26 @@ EVIDENCE_SUMMARY_FIELDS = {
     "degraded_observers",
 }
 POLICY_FIELDS = {"policy_version", "fail_closed"}
+EVIDENCE_REF_FIELDS = {
+    "report_kind",
+    "report_fingerprint",
+    "generated_at",
+    "subject",
+    "size_bytes",
+    "truncated",
+    "validation_status",
+    "reasons",
+}
+EVIDENCE_REF_SUBJECT_FIELDS = {"repo_commit", "dirty_state"}
+EVIDENCE_REF_REASONS = {
+    "external_evidence_invalid",
+    "external_evidence_fingerprint_mismatch",
+    "external_evidence_stale",
+    "external_evidence_subject_mismatch",
+    "external_evidence_over_budget",
+    "external_evidence_duplicate",
+    "external_evidence_truncated",
+}
 
 VERDICTS = {"allow_limited", "warn", "quarantine", "block", "unknown"}
 CONFIDENCES = {"low", "medium", "high", "unknown"}
@@ -58,7 +80,7 @@ def validate_gate_decision(data: Mapping[str, Any]) -> GateDecisionValidationRes
             residual_risks=("invalid_gate_decision_input",),
         )
 
-    if set(data) != TOP_LEVEL_FIELDS:
+    if not REQUIRED_TOP_LEVEL_FIELDS.issubset(data) or set(data) - TOP_LEVEL_FIELDS:
         errors.append("gate_decision_top_level_required_or_unknown_field")
     if data.get("schema_version") != GATE_DECISION_SCHEMA_VERSION:
         errors.append("gate_decision_schema_version_unsupported")
@@ -100,6 +122,9 @@ def validate_gate_decision(data: Mapping[str, Any]) -> GateDecisionValidationRes
     if policy is not None and not isinstance(policy.get("fail_closed"), bool):
         errors.append("policy_fail_closed_must_be_boolean")
 
+    if "evidence_refs" in data:
+        _validate_evidence_refs(data.get("evidence_refs"), errors)
+
     if not isinstance(data.get("required_actions"), list):
         errors.append("required_actions_must_be_array")
     limitations = tuple(_string_items(data.get("limitations")))
@@ -123,6 +148,77 @@ def validate_gate_decision(data: Mapping[str, Any]) -> GateDecisionValidationRes
         limitations=limitations,
         residual_risks=residual_risks,
     )
+
+
+def _validate_evidence_refs(value: object, errors: list[str]) -> None:
+    if not isinstance(value, list) or not value or len(value) > 16:
+        errors.append("evidence_refs_invalid")
+        return
+    for item in value:
+        evidence_ref = _mapping(item, EVIDENCE_REF_FIELDS, "evidence_ref", errors)
+        if evidence_ref is None:
+            continue
+        if evidence_ref.get("report_kind") not in {"real_scanner_suite", None}:
+            errors.append("evidence_ref_report_kind_invalid")
+        fingerprint = evidence_ref.get("report_fingerprint")
+        if fingerprint is not None and (
+            not isinstance(fingerprint, str)
+            or not fingerprint.startswith("sha256:")
+            or len(fingerprint) != 71
+            or any(character not in "0123456789abcdef" for character in fingerprint[7:])
+        ):
+            errors.append("evidence_ref_fingerprint_invalid")
+        generated_at = evidence_ref.get("generated_at")
+        if generated_at is not None and not _is_timestamp(generated_at):
+            errors.append("evidence_ref_generated_at_invalid")
+        ref_subject = evidence_ref.get("subject")
+        if not isinstance(ref_subject, Mapping) or set(ref_subject) - EVIDENCE_REF_SUBJECT_FIELDS:
+            errors.append("evidence_ref_subject_invalid")
+        elif ref_subject:
+            repo_commit = ref_subject.get("repo_commit")
+            if repo_commit is not None and (
+                not isinstance(repo_commit, str)
+                or len(repo_commit) not in {40, 64}
+                or any(character not in "0123456789abcdef" for character in repo_commit)
+            ):
+                errors.append("evidence_ref_subject_repo_commit_invalid")
+            if ref_subject.get("dirty_state") not in {
+                "clean",
+                "dirty",
+                "unknown",
+                "not_applicable",
+            }:
+                errors.append("evidence_ref_subject_dirty_state_invalid")
+        size_bytes = evidence_ref.get("size_bytes")
+        if size_bytes is not None and (
+            not isinstance(size_bytes, int)
+            or isinstance(size_bytes, bool)
+            or size_bytes < 0
+        ):
+            errors.append("evidence_ref_size_bytes_invalid")
+        if not isinstance(evidence_ref.get("truncated"), bool):
+            errors.append("evidence_ref_truncated_invalid")
+        if evidence_ref.get("validation_status") not in {"valid", "invalid"}:
+            errors.append("evidence_ref_validation_status_invalid")
+        reasons = evidence_ref.get("reasons")
+        if (
+            not isinstance(reasons, list)
+            or len(reasons) > len(EVIDENCE_REF_REASONS)
+            or any(not isinstance(reason, str) for reason in reasons)
+            or len(reasons) != len(set(reasons))
+            or any(reason not in EVIDENCE_REF_REASONS for reason in reasons)
+        ):
+            errors.append("evidence_ref_reasons_invalid")
+
+
+def _is_timestamp(value: object) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None
 
 
 def _mapping(value: Any, fields: set[str], name: str, errors: list[str]) -> Mapping[str, Any] | None:

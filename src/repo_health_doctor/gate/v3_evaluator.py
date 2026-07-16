@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from repo_health_doctor.evidence.v3_adapter import (
     build_gate_decision_candidate_from_v3_report,
@@ -13,7 +13,7 @@ from repo_health_doctor.evidence.v3_adapter import (
 )
 from repo_health_doctor.evidence.validation import EVIDENCE_KIND, EVIDENCE_SCHEMA_VERSION
 
-from .evaluator import evaluate_gate_decision
+from .evaluator import ExternalSuiteGateEvidence, evaluate_gate_decision
 
 
 SHAPE_SCAN_SUFFIXES = {
@@ -98,6 +98,7 @@ def evaluate_gate_decision_from_v3_report(
     *,
     policy: Mapping[str, Any] | None = None,
     repo_root: str | Path | None = None,
+    external_suite_evidence: Sequence[ExternalSuiteGateEvidence] = (),
 ) -> Mapping[str, Any]:
     candidate = build_gate_decision_candidate_from_v3_report(report)
     demo_evidence, demo_missing_evidence = _demo_context_from_v3_report(report, repo_root=repo_root)
@@ -127,6 +128,7 @@ def evaluate_gate_decision_from_v3_report(
         evidence_candidates,
         subject=candidate["subject"],
         policy=effective_policy,
+        external_suite_evidence=external_suite_evidence,
     )
     return evaluation.decision
 

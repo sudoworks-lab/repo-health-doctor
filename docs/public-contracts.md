@@ -96,9 +96,25 @@ private host paths, local IPs, raw environment values, or raw policy values.
 `gate-check` is an experimental one-command agent surface. It generates a gate
 decision, validates a specified execution authorization artifact against an
 exact argv when provided, and exits `2` unless a valid authorization exists and
-the selected `--fail-on-gate` threshold allows the gate verdict. It does not
-auto-discover authorization artifacts in this version; callers must pass
-`--authorization` and `--argv-json`.
+the selected `--fail-on-gate` threshold allows the gate verdict.
+
+`--external-evidence PATH`は明示されたreal scanner suite reportをgateへ入力する
+experimental optionで、最大16件まで繰り返し指定できる。各fileは256 KiBまで、
+生成から24時間以内であることに加え、schema、fingerprint、現在のrepo commitと
+dirty state、duplicate、truncationを検証する。invalid、stale、subject mismatch、
+over-budget、duplicate、truncatedは黙って無視せず、verdictを改善しない
+fail-closed signalとして扱う。
+
+gate decisionへ追加するのは`evidence_refs`だけである。各referenceはreport kind、
+fingerprint、生成日時、bounded subject、byte数、truncation、validation status、
+machine-readable reasonに限定し、raw report、entry、normalized result、入力pathは
+埋め込まない。option未指定時は`evidence_refs` field自体を追加せず、従来のgate
+decision shapeを維持する。
+
+trailing argvは`-- <command>`で渡せるが、`gate-check`自身は実行せず、このversionは
+authorization artifactをauto-discoverしない。trailing argvだけを指定した場合も
+authorization missingとしてexit `2`になる。明示的なauthorization validationは
+従来どおり`--authorization`と`--argv-json`を組み合わせ、trailing argvとは併用しない。
 
 Claude Code hook behavior is documented by Anthropic in the
 [hooks reference](https://docs.anthropic.com/en/docs/claude-code/hooks) and

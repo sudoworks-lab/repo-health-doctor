@@ -111,8 +111,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_external_evidence_cli -v を実行し、CLI、schema、複数入力、未指定時互換を確認する",
         "PYTHONPATH=src python3 -m repo_health_doctor gate-check . --external-evidence /tmp/rhd-real-scan.json -- python3 -c \"print('bounded')\" を実行し、evidence_refsだけが残ることを確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T13:16:29+09:00",
       "blocked": false
     },
     {

@@ -39,6 +39,27 @@ limitation, and changes the suite to `degraded`. `--fail-on-degraded` returns
 exit code 1 after emitting the report. Truncation is never permission to
 continue or evidence that the repository is safe.
 
+## Gateへの明示入力
+
+`real-scan`のJSON reportは、明示的に`gate-check --external-evidence`へ渡せる。
+
+```bash
+env PYTHONPATH=src python3 -m repo_health_doctor gate-check . \
+  --external-evidence /tmp/rhd-real-scan.json \
+  -- python3 -c "print('bounded')"
+```
+
+`--external-evidence`は最大16件まで繰り返し指定でき、各fileを256 KiB、24時間の
+age、schema、fingerprint、現在のrepo commitとdirty state、duplicate、truncationの
+境界で検証する。invalidまたは不一致のreportも黙ってskipせず、machine-readableな
+reasonを持つinvalid referenceとしてgateへ渡し、verdictを改善させない。
+
+gate decisionに残るのはboundedな`evidence_refs`だけであり、raw suite report、
+`entries`、`normalized_result`、入力pathは保存しない。report未指定時には
+`evidence_refs`を追加しない。trailing commandは将来の実行候補を表すだけで、
+`gate-check`が実行することもauthorizationを自動探索することもない。このversionの
+明示的なauthorization validationは`--authorization`と`--argv-json`を使用する。
+
 ## Inventory
 
 | Scanner | Scope | Default command shape | Network/cache/privacy notes |

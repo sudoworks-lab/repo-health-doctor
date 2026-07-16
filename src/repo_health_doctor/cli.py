@@ -3,8 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import subprocess
 import sys
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from .doctor import (
     DEFAULT_LARGE_FILE_THRESHOLD_MB,
@@ -46,6 +47,12 @@ from .gate import (
     evaluate_gate_decision_from_v3_report,
     format_gate_summary,
     validate_execution_authorization,
+)
+from .gate.evaluator import ExternalSuiteGateEvidence
+from .gate.external_evidence import (
+    EXTERNAL_SUITE_EVIDENCE_MAX_BYTES,
+    EXTERNAL_SUITE_EVIDENCE_MAX_COUNT,
+    validate_external_suite_evidence,
 )
 from .external_scanner import (
     REAL_SCANNER_ADAPTER_NAMES,
@@ -262,6 +269,12 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
     if gate_check_mode:
         parser.add_argument("--authorization", help="Execution authorization artifact JSON to validate.")
         parser.add_argument("--argv-json", help="JSON array containing the exact argv to validate.")
+        parser.add_argument(
+            "--external-evidence",
+            action="append",
+            default=[],
+            help="Real scanner suite report to validate. Repeat for multiple reports; raw reports are not embedded.",
+        )
     if real_scan_mode:
         parser.add_argument(
             "--scanner",
@@ -459,6 +472,7 @@ def main(argv: list[str] | None = None) -> int:
     raw_args = list(sys.argv[1:] if argv is None else argv)
     command = "scan"
     sandbox_run_argv: list[str] = []
+    gate_check_argv: list[str] = []
     if raw_args and raw_args[0] == "validate-policy":
         command = "validate-policy"
         raw_args = raw_args[1:]
@@ -497,9 +511,13 @@ def main(argv: list[str] | None = None) -> int:
         command = "real-scan"
         raw_args = raw_args[1:]
 
-    if command == "sandbox-run" and "--" in raw_args:
+    if command in {"sandbox-run", "gate-check"} and "--" in raw_args:
         separator_index = raw_args.index("--")
-        sandbox_run_argv = raw_args[separator_index + 1:]
+        trailing_argv = raw_args[separator_index + 1:]
+        if command == "sandbox-run":
+            sandbox_run_argv = trailing_argv
+        else:
+            gate_check_argv = trailing_argv
         raw_args = raw_args[:separator_index]
 
     parser = build_parser(command)
@@ -651,6 +669,12 @@ def main(argv: list[str] | None = None) -> int:
         elif command == "gate-check":
             if args.large_file_threshold_mb <= 0:
                 parser.error("--large-file-threshold-mb must be greater than 0")
+            if len(args.external_evidence) > EXTERNAL_SUITE_EVIDENCE_MAX_COUNT:
+                parser.error(
+                    f"--external-evidence accepts at most {EXTERNAL_SUITE_EVIDENCE_MAX_COUNT} reports"
+                )
+            if gate_check_argv and (args.authorization or args.argv_json):
+                parser.error("trailing argv cannot be combined with explicit authorization in this version")
             if args.authorization and not args.argv_json:
                 parser.error("--argv-json is required when --authorization is provided")
             if args.argv_json and not args.authorization:
@@ -664,7 +688,18 @@ def main(argv: list[str] | None = None) -> int:
                 local_config_path=args.local_config,
                 load_local_config=not args.no_local_config,
             )
-            gate_decision = evaluate_gate_decision_from_v3_report(scan_report, repo_root=target)
+            try:
+                external_suite_evidence = _load_external_suite_evidence(
+                    args.external_evidence,
+                    target=target,
+                )
+            except ValueError as exc:
+                parser.error(str(exc))
+            gate_decision = evaluate_gate_decision_from_v3_report(
+                scan_report,
+                repo_root=target,
+                external_suite_evidence=external_suite_evidence,
+            )
             authorization_validation = None
             if args.authorization:
                 try:
@@ -850,6 +885,75 @@ def _load_argv_json(path: Path) -> list[str]:
     return payload
 
 
+def _load_external_suite_evidence(
+    paths: Sequence[str],
+    *,
+    target: Path,
+) -> tuple[ExternalSuiteGateEvidence, ...]:
+    expected_subject = _external_evidence_subject(target)
+    seen_fingerprints: set[str] = set()
+    evidence: list[ExternalSuiteGateEvidence] = []
+    for path_value in paths:
+        path = Path(path_value)
+        try:
+            if not path.is_file():
+                raise ValueError("external evidence path is not a regular file: <path>")
+            source_size_bytes = path.stat().st_size
+            with path.open("rb") as handle:
+                raw = handle.read(EXTERNAL_SUITE_EVIDENCE_MAX_BYTES + 1)
+        except OSError as exc:
+            raise ValueError("external evidence could not be read: <path>") from exc
+
+        measured_size = max(source_size_bytes, len(raw))
+        payload: object = None
+        if measured_size <= EXTERNAL_SUITE_EVIDENCE_MAX_BYTES:
+            try:
+                payload = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                payload = None
+
+        validation = validate_external_suite_evidence(
+            payload,
+            expected_subject=expected_subject,
+            source_size_bytes=measured_size,
+            seen_fingerprints=seen_fingerprints,
+        )
+        report = payload if isinstance(payload, Mapping) else {}
+        evidence.append(ExternalSuiteGateEvidence(report=report, validation=validation))
+        fingerprint = validation.evidence_ref.get("report_fingerprint")
+        if isinstance(fingerprint, str):
+            seen_fingerprints.add(fingerprint)
+    return tuple(evidence)
+
+
+def _external_evidence_subject(target: Path) -> Mapping[str, object]:
+    commit = _git_output(target, ("rev-parse", "HEAD"))
+    if commit is not None and (
+        len(commit) not in {40, 64}
+        or any(character not in "0123456789abcdef" for character in commit)
+    ):
+        commit = None
+    status = _git_output(target, ("status", "--short"))
+    dirty_state = "unknown" if status is None else ("dirty" if status else "clean")
+    return {"repo_commit": commit, "dirty_state": dirty_state}
+
+
+def _git_output(target: Path, argv: Sequence[str]) -> str | None:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(target), *argv],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.strip()
+
+
 def _build_gate_check_report(
     gate_decision: Mapping[str, Any],
     *,
@@ -929,6 +1033,10 @@ def _format_gate_check_text(report: Mapping[str, Any]) -> str:
         f"Execution authorized: {'true' if report.get('execution_authorized') is True else 'false'}",
         f"Fail-on-gate: {report.get('fail_on_gate', 'unknown')}",
     ]
+    evidence_refs = gate_decision.get("evidence_refs")
+    if isinstance(evidence_refs, list):
+        lines.extend(["", f"Evidence refs: {len(evidence_refs)}"])
+        lines.extend(f"- {_format_evidence_ref(item)}" for item in evidence_refs)
     blocking_reasons = _string_items(report.get("blocking_reasons"))
     if blocking_reasons:
         lines.extend(["", "Blocking reasons:"])
@@ -946,11 +1054,24 @@ def _format_gate_check_markdown(report: Mapping[str, Any]) -> str:
         f"- Execution authorized: `{'true' if report.get('execution_authorized') is True else 'false'}`",
         f"- Fail-on-gate: `{report.get('fail_on_gate', 'unknown')}`",
     ]
+    evidence_refs = gate_decision.get("evidence_refs")
+    if isinstance(evidence_refs, list):
+        lines.extend(["", "## Evidence References"])
+        lines.extend(f"- `{_format_evidence_ref(item)}`" for item in evidence_refs)
     blocking_reasons = _string_items(report.get("blocking_reasons"))
     if blocking_reasons:
         lines.extend(["", "## Blocking Reasons"])
         lines.extend(f"- `{item}`" for item in blocking_reasons)
     return "\n".join(lines) + "\n"
+
+
+def _format_evidence_ref(value: object) -> str:
+    evidence_ref = _mapping(value)
+    fingerprint = evidence_ref.get("report_fingerprint")
+    status = str(evidence_ref.get("validation_status", "invalid"))
+    reasons = _string_items(evidence_ref.get("reasons"))
+    reason_text = ",".join(reasons) if reasons else "none"
+    return f"{fingerprint if isinstance(fingerprint, str) else 'fingerprint-unavailable'} status={status} reasons={reason_text}"
 
 
 def _sandbox_run_exit_code(report: Mapping[str, Any]) -> int:
