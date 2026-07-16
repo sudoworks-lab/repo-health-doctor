@@ -175,3 +175,12 @@
 - 判断と理由: `runtime-default`ではseccomp用Docker optionを追加せず、従来のruntime既定挙動を維持する。同梱profileだけはhash検証済みのpackage dataと同じbytesをDockerへ渡し、evidenceではruntime管理とpackage dataを区別する。任意入力をargparseの既定errorへ渡すと入力pathを表示し得るため、未許可値を含めない固定errorへ変換した。
 - 既知の問題: 実Dockerでのprofile有効性はG009の対象であり、今回のfake runnerとdry-runでは確認していない。全profile組合せのargv goldenとrootless制約はF017の対象であり、今回変更していない。
 - follow-up候補: F017でDocker argv golden、禁止option、rootless検出と制約を指定範囲内で検証する。F016以外のfeatureには着手していない。
+
+## 2026-07-16 JST — F017 Docker argv contractとrootless制約
+
+- 今回やったこと: 実装済み4 sandbox profileと`runtime-default` / `rhd-moby-default-v1`の8組合せを`tests/fixtures/golden/sandbox-run-docker-argv.json`で固定した。Docker argv guardは`--pull=never`と`--network none`を各1回必須とし、非`never` pull、`seccomp=unconfined`、`apparmor=unconfined`、privileged、cap-add、host namespace、docker.sock mountを拒否する。rootless / userns-remapは`docker info`の`SecurityOptions` string arrayだけから判定し、取得失敗やunexpected shapeを`unknown`に保つ。`docs/seccomp-profiles.md`を現行CLI契約へ同期し、`docs/image-compatibility.md`へ実Docker未検証の前提とplatform制約を記録した。
+- 検証結果: 指定された先頭`PYTHONPATH=src`形式は実行環境のprocess生成ポリシーにより開始前に拒否されたため、同値の`env PYTHONPATH=src python3 -m unittest tests.test_sandbox_run_docker_command -v`を実行し12件pass・0件failだった。指定の`rg -n "rootless|rhd-moby-default-v1|runtime-default|--pull=never|limitation" docs/seccomp-profiles.md docs/image-compatibility.md`、golden JSON parse、対象fileの`py_compile`、`git diff --check`は成功した。全unit suiteは760件pass・3件skip・0件failで、CLI help/version、public-safety scan、policy validation、JSON report生成とparseも成功した。
+- 判断と理由: golden対象はrunnerへ到達できる`implemented=true`のprofileだけとし、未実装の`dev-permissive`と`network-explicit`を実行可能なargvとして固定しなかった。testは実装済みprofile集合とgolden key集合を一致させるため、将来profileを有効化した際は明示的なgolden更新が必要になる。rootless markerの不在を`false`にするのはvalidなstring arrayの場合だけとし、観測不能を誤ってrootfulと断定しない。
+- 既知の問題: 実Docker daemonやimageでは実行しておらず、seccomp、rootless、user namespace、mount、resource limitの実効性とimage互換性は未確認である。rootless検出は`SecurityOptions` markerの観測であり、環境適合や完全な隔離を示さない。先頭環境代入形式と`/dev/null` redirect付きcommandはこの実行環境でprocess生成前に拒否された。
+- follow-up候補: G009のHuman-triggered real Docker検証で、exact image identity、Docker version、OS/architecture、profile別結果、残ったlimitationを`docs/image-compatibility.md`へ追記する。F018以降は今回のprocessでは扱っていない。
+- commit request: 指定された`python3 -m json.tool "$GOAL_LOOP_COMMIT_REQUEST"`は環境変数展開を含むprocess生成がポリシーで拒否されたため、同じファイルを明示pathで検証しJSON parseに成功した。requestには今回変更した7ファイルだけを列挙し、`logs/`自体は対象外にした。

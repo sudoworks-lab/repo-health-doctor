@@ -20,8 +20,9 @@ from .profiles import (
 PULL_POLICY = "never"
 _ALLOWED_NETWORK_MODES = {"none"}
 _NETWORK_OPTIONS = ("--network", "--net")
-_NAMESPACE_OPTIONS = ("--pid", "--ipc", "--uts")
+_NAMESPACE_OPTIONS = ("--pid", "--ipc", "--uts", "--cgroupns", "--userns")
 _NAMESPACE_OPTION_PREFIXES = tuple(f"{option}=" for option in _NAMESPACE_OPTIONS)
+_PROHIBITED_SECURITY_OPTIONS = ("seccomp=unconfined", "apparmor=unconfined")
 
 
 @dataclass(frozen=True)
@@ -230,9 +231,15 @@ class DockerRunner:
             options = json.loads(completed.stdout)
         except json.JSONDecodeError:
             return result
-        rendered = " ".join(str(item).lower() for item in options if isinstance(item, str))
-        result["rootless_docker_detected"] = "true" if "rootless" in rendered else "false"
-        result["userns_remap_detected"] = "true" if "userns" in rendered else "false"
+        if not isinstance(options, list) or any(not isinstance(item, str) for item in options):
+            return result
+        normalized_options = tuple(item.strip().lower() for item in options)
+        result["rootless_docker_detected"] = (
+            "true" if _security_option_detected(normalized_options, "rootless") else "false"
+        )
+        result["userns_remap_detected"] = (
+            "true" if _security_option_detected(normalized_options, "userns") else "false"
+        )
         return result
 
     def run(self, argv: list[str], timeout_seconds: int) -> RunnerResult:
@@ -347,14 +354,29 @@ def _decode_timeout_stream(value: str | bytes | None) -> str:
 
 
 def _assert_no_prohibited_docker_options(argv: list[str]) -> None:
+    pull_never_count = 0
+    network_none_count = 0
     index = 0
     while index < len(argv):
         token = argv[index]
+        if token == "--pull":
+            value = argv[index + 1] if index + 1 < len(argv) else None
+            if value != PULL_POLICY:
+                rendered = f"{token} {value}" if value is not None else token
+                raise ValueError(f"prohibited docker option generated: {rendered}")
+            pull_never_count += 1
+            index += 2
+            continue
+        if token.startswith("--pull="):
+            if token != f"--pull={PULL_POLICY}":
+                raise ValueError(f"prohibited docker option generated: {token}")
+            pull_never_count += 1
         if token in _NETWORK_OPTIONS:
             value = argv[index + 1] if index + 1 < len(argv) else None
             if value not in _ALLOWED_NETWORK_MODES:
                 rendered = f"{token} {value}" if value is not None else token
                 raise ValueError(f"prohibited docker option generated: {rendered}")
+            network_none_count += 1
             index += 2
             continue
         network_prefix = _network_option_prefix(token)
@@ -362,11 +384,14 @@ def _assert_no_prohibited_docker_options(argv: list[str]) -> None:
             value = token[len(network_prefix) :]
             if value not in _ALLOWED_NETWORK_MODES:
                 raise ValueError(f"prohibited docker option generated: {token}")
+            network_none_count += 1
         if token in _NAMESPACE_OPTIONS or token.startswith(_NAMESPACE_OPTION_PREFIXES):
             raise ValueError(f"prohibited docker option generated: {token}")
         if token == "--cap-add" or token.startswith("--cap-add="):
             raise ValueError(f"prohibited docker option generated: {token}")
         if token == "--privileged" or token.startswith("--privileged="):
+            raise ValueError(f"prohibited docker option generated: {token}")
+        if any(option in token.lower() for option in _PROHIBITED_SECURITY_OPTIONS):
             raise ValueError(f"prohibited docker option generated: {token}")
         if token in {"/var/run/docker.sock", "/", "/etc"}:
             raise ValueError(f"prohibited mount target generated: {token}")
@@ -375,6 +400,10 @@ def _assert_no_prohibited_docker_options(argv: list[str]) -> None:
         if "dst=/" in token and "dst=/workspace" not in token and "dst=/out" not in token:
             raise ValueError("prohibited root-like mount generated")
         index += 1
+    if pull_never_count != 1:
+        raise ValueError("docker argv must contain exactly one --pull=never")
+    if network_none_count != 1:
+        raise ValueError("docker argv must contain exactly one --network none")
 
 
 def _network_option_prefix(token: str) -> str | None:
@@ -383,3 +412,10 @@ def _network_option_prefix(token: str) -> str | None:
         if token.startswith(prefix):
             return prefix
     return None
+
+
+def _security_option_detected(options: tuple[str, ...], name: str) -> bool:
+    return any(
+        option in {name, f"name={name}"} or option.startswith(f"name={name},")
+        for option in options
+    )

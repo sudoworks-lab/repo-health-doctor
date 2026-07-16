@@ -1,11 +1,29 @@
 from __future__ import annotations
 
+import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from repo_health_doctor.sandbox.docker_runner import _assert_no_prohibited_docker_options, build_docker_run_argv
-from repo_health_doctor.sandbox.profiles import get_sandbox_profile
+from repo_health_doctor.sandbox.docker_runner import (
+    DockerRunner,
+    _assert_no_prohibited_docker_options,
+    build_docker_run_argv,
+)
+from repo_health_doctor.sandbox.profiles import (
+    PROFILE_MOBY_DEFAULT,
+    SECCOMP_PROFILE_CHOICES,
+    get_sandbox_profile,
+    recognized_profiles,
+)
+
+
+ROOT = Path(__file__).resolve().parents[1]
+DOCKER_ARGV_GOLDEN = (
+    ROOT / "tests" / "fixtures" / "golden" / "sandbox-run-docker-argv.json"
+)
 
 
 def _docker_argv_with(*option_tokens: str) -> list[str]:
@@ -13,6 +31,9 @@ def _docker_argv_with(*option_tokens: str) -> list[str]:
         "docker",
         "run",
         "--rm",
+        "--pull=never",
+        "--network",
+        "none",
         *option_tokens,
         "--mount",
         "type=bind,src=/tmp/rhd-workspace,dst=/workspace",
@@ -28,6 +49,119 @@ class SandboxRunDockerCommandTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         return Path(temporary.name) / "workspace"
+
+    def test_all_implemented_profile_seccomp_argv_match_golden(self) -> None:
+        golden = json.loads(DOCKER_ARGV_GOLDEN.read_text(encoding="utf-8"))
+        implemented_profiles = tuple(
+            name for name in recognized_profiles() if get_sandbox_profile(name).implemented
+        )
+        expected_cases = {
+            f"{profile_name}:{seccomp_name}"
+            for profile_name in implemented_profiles
+            for seccomp_name in SECCOMP_PROFILE_CHOICES
+        }
+
+        self.assertEqual(expected_cases, set(golden))
+        for case_name in sorted(expected_cases):
+            profile_name, seccomp_name = case_name.split(":", maxsplit=1)
+            profile = get_sandbox_profile(profile_name)
+            seccomp_path = (
+                Path("<seccomp-profile>")
+                if seccomp_name == PROFILE_MOBY_DEFAULT
+                else None
+            )
+            argv = build_docker_run_argv(
+                image="<image>",
+                command_argv=["python3", "-c", "print('hello')"],
+                workspace_host_path=Path("<workspace>"),
+                out_host_path=Path("<out>"),
+                profile=profile,
+                seccomp_profile_name=seccomp_name,
+                seccomp_profile_path=seccomp_path,
+            )
+            argv[argv.index("--user") + 1] = "<container-user>"
+
+            with self.subTest(case=case_name):
+                self.assertEqual(golden[case_name], argv)
+                _assert_no_prohibited_docker_options(argv)
+
+    def test_rootless_detection_uses_docker_security_options(self) -> None:
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout='["name=seccomp,profile=builtin", "name=rootless", "name=userns"]',
+            stderr="",
+        )
+        with patch(
+            "repo_health_doctor.sandbox.docker_runner.subprocess.run",
+            return_value=completed,
+        ) as run:
+            detected = DockerRunner().detect_runtime()
+
+        self.assertEqual(
+            {
+                "rootless_docker_detected": "true",
+                "userns_remap_detected": "true",
+            },
+            detected,
+        )
+        run.assert_called_once_with(
+            ["docker", "info", "--format", "{{json .SecurityOptions}}"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+    def test_rootless_detection_is_false_only_for_valid_marker_absence(self) -> None:
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout='["name=seccomp,profile=builtin", "name=cgroupns"]',
+            stderr="",
+        )
+        with patch(
+            "repo_health_doctor.sandbox.docker_runner.subprocess.run",
+            return_value=completed,
+        ):
+            detected = DockerRunner().detect_runtime()
+
+        self.assertEqual(
+            {
+                "rootless_docker_detected": "false",
+                "userns_remap_detected": "false",
+            },
+            detected,
+        )
+
+    def test_rootless_detection_failures_remain_unknown(self) -> None:
+        unknown = {
+            "rootless_docker_detected": "unknown",
+            "userns_remap_detected": "unknown",
+        }
+        invalid_results = (
+            subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=""),
+            subprocess.CompletedProcess(args=[], returncode=0, stdout="not-json", stderr=""),
+            subprocess.CompletedProcess(
+                args=[], returncode=0, stdout='{"name": "rootless"}', stderr=""
+            ),
+            subprocess.CompletedProcess(
+                args=[], returncode=0, stdout='["name=rootless", 1]', stderr=""
+            ),
+        )
+        for completed in invalid_results:
+            with self.subTest(returncode=completed.returncode, stdout=completed.stdout):
+                with patch(
+                    "repo_health_doctor.sandbox.docker_runner.subprocess.run",
+                    return_value=completed,
+                ):
+                    self.assertEqual(unknown, DockerRunner().detect_runtime())
+
+        with patch(
+            "repo_health_doctor.sandbox.docker_runner.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="docker info", timeout=10),
+        ):
+            self.assertEqual(unknown, DockerRunner().detect_runtime())
 
     def test_no_network_default_docker_argv_includes_required_constraints(self) -> None:
         workspace_path = self._workspace_path()
@@ -106,16 +240,42 @@ class SandboxRunDockerCommandTests(unittest.TestCase):
             ("--ipc=host",),
             ("--uts", "host"),
             ("--uts=host",),
+            ("--cgroupns", "host"),
+            ("--cgroupns=host",),
+            ("--userns", "host"),
+            ("--userns=host",),
             ("--cap-add", "NET_ADMIN"),
             ("--cap-add=NET_ADMIN",),
             ("--privileged",),
             ("--privileged=true",),
+            ("--pull", "always"),
+            ("--pull=always",),
+            ("--pull", "missing"),
+            ("--pull=missing",),
+            ("--security-opt", "seccomp=unconfined"),
+            ("--security-opt=seccomp=unconfined",),
+            ("--security-opt", "apparmor=unconfined"),
+            ("--security-opt=apparmor=unconfined",),
         ]
 
         for option_tokens in prohibited_cases:
             with self.subTest(option_tokens=option_tokens):
                 with self.assertRaisesRegex(ValueError, "prohibited docker option generated"):
                     _assert_no_prohibited_docker_options(_docker_argv_with(*option_tokens))
+
+    def test_pull_never_and_network_none_are_required_exactly_once(self) -> None:
+        valid = _docker_argv_with()
+
+        with self.assertRaisesRegex(ValueError, "exactly one --pull=never"):
+            _assert_no_prohibited_docker_options([token for token in valid if token != "--pull=never"])
+        with self.assertRaisesRegex(ValueError, "exactly one --pull=never"):
+            _assert_no_prohibited_docker_options(["--pull=never", *valid])
+        network_index = valid.index("--network")
+        without_network = valid[:network_index] + valid[network_index + 2 :]
+        with self.assertRaisesRegex(ValueError, "exactly one --network none"):
+            _assert_no_prohibited_docker_options(without_network)
+        with self.assertRaisesRegex(ValueError, "exactly one --network none"):
+            _assert_no_prohibited_docker_options(["--network=none", *valid])
 
     def test_docker_socket_mount_is_rejected(self) -> None:
         argv = _docker_argv_with("--mount", "type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock")
