@@ -159,3 +159,11 @@
 - 判断と理由: 指定の`python3 -m build --wheel --no-isolation`は再実行しても、activeな`/usr/bin/python3`に実行可能な`build.__main__`がないためexit 1となった。network accessや依存取得は行わず、実装側の専用testと同じsetuptools backendによるoffline代替buildの成功だけを確認した。このためF015は`passes:false`、`blocked:false`、`verified_at:null`のままとした。
 - 既知の問題: `python3 -m build`を実行するPyPA `build` packageが検証環境にない。指定された直接の`PYTHONPATH=src ...`表記もprocess生成ポリシーにより拒否され、同値の`env PYTHONPATH=src ...`で実行した。Moby runtimeでの実効性はF015の対象外で未確認である。
 - follow-up候補: `build` packageを備えた検証環境で指定buildを再実行し、成功した場合にのみF015の状態を更新する。F016以降のfeatureは今回扱っていない。
+
+## 2026-07-16 JST — F015 Human wheel検証完了
+
+- 今回やったこと: repo rootのignored `build/`がPython namespace packageとして誤認される状態を確認し、tracked fileがないこととignore対象であることを確認して削除した。PyPA `build` packageは未導入であることを確認した。
+- 検証結果: `tests.test_seccomp_package_resource`、`pip wheel --no-deps --no-build-isolation`、wheel内resource収録、source/wheel SHA-256一致、`scripts/init.sh`、public-safety、policy validation、JSON parse、`git diff --check`が成功した。
+- Human判断: F015の受入条件はsource checkoutとinstalled wheelから同一hashでresourceを解決できることである。同一build backendによるoffline wheelと専用testで条件を満たしたため、frontendである`python3 -m build`の不在だけを理由に未完了とはしない。
+- 状態更新: F015をpasses:true、blocked:false、verified_at:2026-07-16T17:52:57+09:00へ更新した。
+- 制約: network access、依存取得、CLI/argv接続、Docker実効性の主張、他featureの検証緩和は行っていない。

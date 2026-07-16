@@ -195,8 +195,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_seccomp_package_resource -v を実行し、importlib.resources、provenance、license、hashを確認する",
         "python3 -m build --wheel --no-isolation を実行し、built wheelのresource testを確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T17:52:57+09:00",
       "blocked": false
     },
     {

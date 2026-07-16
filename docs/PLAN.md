@@ -418,3 +418,13 @@ python3 -m json.tool /tmp/repo-health-doctor-result.json >/dev/null
 ## 判断メモ
 
 - 2026-07-15 Human review: KICKOFFの旧11-feature planは1 process / 1 feature / 1 bounded goal契約に対して大きすぎたため、F001〜F036へ差し替えた。製品実装は未開始である。
+
+## F015 wheel検証手順の補足
+
+- 記録日: 2026-07-16 JST
+- repo rootのignored `build/`はPyPA `build` packageではなく、Pythonのnamespaceとして解決されていた。
+- 追加packageの取得は行わず、同じsetuptools backendを使う`python3 -m pip wheel . --no-deps --no-build-isolation`を検証手順として実行した。
+- 専用testでsource checkoutと一時wheel installからのresource解決、provenance、license、profile hash一致を確認した。
+- wheel内resourceの存在とsource/wheel SHA-256一致を再確認した。
+- F015の受入条件はpackage dataとwheel resourceの同一性であり、特定のfrontend command自体は必須条件ではないため、F015を完了扱いとした。
+- この判断はF015だけに適用し、他featureの検証条件は変更しない。
