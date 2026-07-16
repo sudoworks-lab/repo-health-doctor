@@ -41,13 +41,21 @@ EVIDENCE_SUMMARY_FIELDS = {
     "degraded_observers",
 }
 POLICY_FIELDS = {"policy_version", "fail_closed"}
-EVIDENCE_REF_FIELDS = {
+EXTERNAL_EVIDENCE_REF_FIELDS = {
     "report_kind",
     "report_fingerprint",
     "generated_at",
     "subject",
     "size_bytes",
     "truncated",
+    "validation_status",
+    "reasons",
+}
+SANDBOX_EVIDENCE_REF_FIELDS = {
+    "report_kind",
+    "report_fingerprint",
+    "run_id",
+    "gate_decision_fingerprint",
     "validation_status",
     "reasons",
 }
@@ -60,6 +68,16 @@ EVIDENCE_REF_REASONS = {
     "external_evidence_over_budget",
     "external_evidence_duplicate",
     "external_evidence_truncated",
+}
+SANDBOX_EVIDENCE_REF_REASONS = {
+    "sandbox_evidence_invalid",
+    "sandbox_evidence_fingerprint_mismatch",
+    "sandbox_evidence_stale",
+    "sandbox_evidence_subject_mismatch",
+    "sandbox_evidence_policy_mismatch",
+    "sandbox_evidence_over_budget",
+    "sandbox_evidence_duplicate",
+    "sandbox_evidence_truncated",
 }
 
 VERDICTS = {"allow_limited", "warn", "quarantine", "block", "unknown"}
@@ -155,7 +173,25 @@ def _validate_evidence_refs(value: object, errors: list[str]) -> None:
         errors.append("evidence_refs_invalid")
         return
     for item in value:
-        evidence_ref = _mapping(item, EVIDENCE_REF_FIELDS, "evidence_ref", errors)
+        if not isinstance(item, Mapping):
+            errors.append("evidence_ref_must_be_object")
+            continue
+        if item.get("report_kind") == "sandbox_run":
+            evidence_ref = _mapping(
+                item,
+                SANDBOX_EVIDENCE_REF_FIELDS,
+                "evidence_ref",
+                errors,
+            )
+            if evidence_ref is not None:
+                _validate_sandbox_evidence_ref(evidence_ref, errors)
+            continue
+        evidence_ref = _mapping(
+            item,
+            EXTERNAL_EVIDENCE_REF_FIELDS,
+            "evidence_ref",
+            errors,
+        )
         if evidence_ref is None:
             continue
         if evidence_ref.get("report_kind") not in {"real_scanner_suite", None}:
@@ -209,6 +245,44 @@ def _validate_evidence_refs(value: object, errors: list[str]) -> None:
             or any(reason not in EVIDENCE_REF_REASONS for reason in reasons)
         ):
             errors.append("evidence_ref_reasons_invalid")
+
+
+def _validate_sandbox_evidence_ref(
+    evidence_ref: Mapping[str, Any],
+    errors: list[str],
+) -> None:
+    for field in ("report_fingerprint", "gate_decision_fingerprint"):
+        fingerprint = evidence_ref.get(field)
+        if fingerprint is not None and not _is_fingerprint(fingerprint):
+            errors.append(f"evidence_ref_{field}_invalid")
+    run_id = evidence_ref.get("run_id")
+    if run_id is not None and (
+        not isinstance(run_id, str)
+        or not run_id
+        or len(run_id) > 128
+        or any(not (character.isalnum() or character in "._:-") for character in run_id)
+    ):
+        errors.append("evidence_ref_run_id_invalid")
+    if evidence_ref.get("validation_status") not in {"valid", "invalid"}:
+        errors.append("evidence_ref_validation_status_invalid")
+    reasons = evidence_ref.get("reasons")
+    if (
+        not isinstance(reasons, list)
+        or len(reasons) > len(SANDBOX_EVIDENCE_REF_REASONS)
+        or any(not isinstance(reason, str) for reason in reasons)
+        or len(reasons) != len(set(reasons))
+        or any(reason not in SANDBOX_EVIDENCE_REF_REASONS for reason in reasons)
+    ):
+        errors.append("evidence_ref_reasons_invalid")
+
+
+def _is_fingerprint(value: object) -> bool:
+    return bool(
+        isinstance(value, str)
+        and value.startswith("sha256:")
+        and len(value) == 71
+        and all(character in "0123456789abcdef" for character in value[7:])
+    )
 
 
 def _is_timestamp(value: object) -> bool:

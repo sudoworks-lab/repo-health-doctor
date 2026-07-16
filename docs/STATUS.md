@@ -233,3 +233,11 @@
 - 既知の問題: `--sandbox-evidence` CLI、file count、file size、total bytes、age、duplicate fingerprint、subject/policy/gate fingerprint検証、evidence reference出力はF024の範囲であり、今回未実装である。実Docker executionは実施していない。
 - follow-up候補: F024でboundedなCLI入力検証とgate/sandbox fingerprint・run IDの相互参照を接続する。F024以降のfeatureは今回扱っていない。
 - 検証件数の訂正: 上記の「全unit 790件pass・3件skip」は「全unit 790件実行・787件pass・3件skip・0件fail」が正しい。unittestの`Ran 790 tests`はskipを含む総実行件数である。
+
+## 2026-07-16 JST — F024 bounded sandbox evidence CLIと相互参照
+
+- 今回やったこと: `gate-check`へrepeatableな`--sandbox-evidence`を追加し、report数16件、1 file 256 KiB、合計1 MiB、生成後24時間、future skew 5分を上限としてsandbox-run reportを検証するようにした。closed schema、canonical fingerprint、run ID、gate decision fingerprint、subject、policy version、重複をfail-closedで照合し、gate decisionの`evidence_refs`にはboundedな識別子とvalidation結果だけを格納する。`sandbox-run`のJSON reportにはcanonical `report_fingerprint`を付け、gate経由の実行では元gate fingerprint、subject、policy versionを相互参照用に記録する。schema、専用test、公開契約、sandbox運用文書、CHANGELOGを同期した。
+- 検証結果: 指定された先頭`PYTHONPATH=src`形式の専用commandは実行環境のprocess生成ポリシーにより開始前に拒否されたため、同値の`env PYTHONPATH=src python3 -m unittest tests.test_sandbox_evidence_cli -v`を実行し6件pass・0件failを確認した。CLI、両schema、count、file size、total bytes、age、duplicate、invalid schema、omission compatibility、fingerprintとrun IDの相互参照を確認した。関連回帰24件は全件pass、full unit suiteは796件実行・793件pass・3件skip・0件failだった。指定のdocs `rg`、schema JSON parse、`py_compile`、`git diff --check`、CLI help/version、public-safety scan、policy validation、default JSON report生成・parseも成功した。
+- 判断と理由: sandbox evidenceと既存external evidenceの合計も16件に制限し、raw report、command、path、stdout、stderrはgate decisionへ保持しない。sandbox reportのfingerprint fieldは既存のprogrammatic report shapeを壊さないためschema上optionalとし、CLIが出力するJSONには常に付与する。successful executionは安全性やgate verdictを改善せず、fake/dry-run、invalid、stale、mismatch、over-budgetなどの問題だけをF023の悪化方向signalへ渡す。
+- 既知の問題: 実Docker daemonとlocal imageによるlive executionは実施しておらず、dry-runで生成したschema-valid reportとunit testで相互参照契約を検証した。これは後続のreal Docker検証featureの範囲である。指定commandの直接`PYTHONPATH=src`表記は環境差分で実行できず、同値の`env PYTHONPATH=src`で代替した。
+- follow-up候補: real Dockerのcases検証はrunnerが別processで指定する後続featureで扱う。F024以外のfeatureには着手していない。

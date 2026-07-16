@@ -166,6 +166,8 @@ The JSON report is `schemas/sandbox-run.schema.json` with
 - copy policy, exclusions, symlink policy, special-file policy, and copy budget
 - env policy with keys only
 - gate and authorization summaries
+- canonical report fingerprintとrun ID、およびgate-bound reportでは元gate decisionの
+  fingerprint、subject、policy version
 - `policy_blocked`, `command_started`, `command_exit_code`,
   `sandbox_exit_code`, and `block_reason`
 - bounded redacted stdout/stderr previews
@@ -174,6 +176,21 @@ The JSON report is `schemas/sandbox-run.schema.json` with
 
 Reports must not contain raw secrets, raw host private paths, raw local
 environment values, or unbounded stdout/stderr.
+
+JSON reportは次のgateへ明示的に還流できる。
+
+```bash
+env PYTHONPATH=src python3 -m repo_health_doctor gate-check . \
+  --sandbox-evidence /tmp/rhd-sandbox-run.json \
+  -- <next-command>
+```
+
+`--sandbox-evidence`は最大16件、各256 KiB、合計1 MiB、生成から24時間以内に
+boundedされる。gate decisionはraw reportを保持せず、sandbox report fingerprint、
+run ID、元gate decision fingerprint、validation status、machine-readable reasonだけを
+`evidence_refs`へ残す。duplicate fingerprintはinvalid evidenceとして扱う。
+successful executionは`successful_execution_is_not_safety`というinformational noteであり、
+安全証明でも次のcommandのauthorizationでもなく、gate verdictを改善しない。
 
 ## Fake Runner And Dry-Run
 

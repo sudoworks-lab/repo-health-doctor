@@ -48,6 +48,7 @@ from .gate import (
     build_execution_authorization_draft,
     evaluate_gate_decision_from_v3_report,
     format_gate_summary,
+    gate_decision_fingerprint,
     validate_execution_authorization,
 )
 from .gate.authorization_discovery import discover_execution_authorization
@@ -56,6 +57,13 @@ from .gate.external_evidence import (
     EXTERNAL_SUITE_EVIDENCE_MAX_BYTES,
     EXTERNAL_SUITE_EVIDENCE_MAX_COUNT,
     validate_external_suite_evidence,
+)
+from .gate.sandbox_evidence import (
+    SANDBOX_EVIDENCE_MAX_BYTES,
+    SANDBOX_EVIDENCE_MAX_COUNT,
+    SANDBOX_EVIDENCE_MAX_TOTAL_BYTES,
+    SandboxRunEvidenceValidationResult,
+    validate_sandbox_run_evidence,
 )
 from .external_scanner import (
     REAL_SCANNER_ADAPTER_NAMES,
@@ -295,6 +303,12 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             action="append",
             default=[],
             help="Real scanner suite report to validate. Repeat for multiple reports; raw reports are not embedded.",
+        )
+        parser.add_argument(
+            "--sandbox-evidence",
+            action="append",
+            default=[],
+            help="Sandbox-run report to validate. Repeat for multiple reports; raw reports are not embedded.",
         )
     if real_scan_mode:
         parser.add_argument(
@@ -694,6 +708,12 @@ def main(argv: list[str] | None = None) -> int:
                 authorization_path=Path(args.authorization) if args.authorization else None,
                 authorization_validation=sandbox_authorization_validation,
             )
+            if sandbox_gate_decision is not None:
+                gate_report = dict(_mapping(report.get("gate")))
+                gate_report["decision_fingerprint"] = gate_decision_fingerprint(sandbox_gate_decision)
+                gate_report["subject"] = dict(_mapping(sandbox_gate_decision.get("subject")))
+                gate_report["policy_version"] = _mapping(sandbox_gate_decision.get("policy")).get("policy_version")
+                report = {**report, "gate": gate_report}
             fail_on = None
         elif command == "sandbox-profile":
             report = profile_unknown_repo(target)
@@ -720,6 +740,14 @@ def main(argv: list[str] | None = None) -> int:
                 parser.error(
                     f"--external-evidence accepts at most {EXTERNAL_SUITE_EVIDENCE_MAX_COUNT} reports"
                 )
+            if len(args.sandbox_evidence) > SANDBOX_EVIDENCE_MAX_COUNT:
+                parser.error(
+                    f"--sandbox-evidence accepts at most {SANDBOX_EVIDENCE_MAX_COUNT} reports"
+                )
+            if len(args.external_evidence) + len(args.sandbox_evidence) > EXTERNAL_SUITE_EVIDENCE_MAX_COUNT:
+                parser.error(
+                    f"--external-evidence and --sandbox-evidence accept at most {EXTERNAL_SUITE_EVIDENCE_MAX_COUNT} reports in total"
+                )
             if gate_check_argv and args.argv_json:
                 parser.error("--argv-json cannot be combined with trailing argv")
             if args.authorization and not args.argv_json:
@@ -743,10 +771,26 @@ def main(argv: list[str] | None = None) -> int:
                 )
             except ValueError as exc:
                 parser.error(str(exc))
+            baseline_gate_decision = evaluate_gate_decision_from_v3_report(
+                scan_report,
+                repo_root=target,
+                external_suite_evidence=external_suite_evidence,
+            )
+            try:
+                sandbox_evidence = _load_sandbox_run_evidence(
+                    args.sandbox_evidence,
+                    expected_subject=_mapping(baseline_gate_decision.get("subject")),
+                    expected_policy_version=str(
+                        _mapping(baseline_gate_decision.get("policy")).get("policy_version", "unknown")
+                    ),
+                )
+            except ValueError as exc:
+                parser.error(str(exc))
             gate_decision = evaluate_gate_decision_from_v3_report(
                 scan_report,
                 repo_root=target,
                 external_suite_evidence=external_suite_evidence,
+                sandbox_evidence=sandbox_evidence,
             )
             authorization_validation = None
             if args.authorization:
@@ -994,6 +1038,50 @@ def _external_evidence_subject(target: Path) -> Mapping[str, object]:
     return {"repo_commit": commit, "dirty_state": dirty_state}
 
 
+def _load_sandbox_run_evidence(
+    paths: Sequence[str],
+    *,
+    expected_subject: Mapping[str, object],
+    expected_policy_version: str,
+) -> tuple[SandboxRunEvidenceValidationResult, ...]:
+    seen_fingerprints: set[str] = set()
+    evidence: list[SandboxRunEvidenceValidationResult] = []
+    total_bytes = 0
+    for path_value in paths:
+        path = Path(path_value)
+        try:
+            if not path.is_file():
+                raise ValueError("sandbox evidence path is not a regular file: <path>")
+            source_size_bytes = path.stat().st_size
+            with path.open("rb") as handle:
+                raw = handle.read(SANDBOX_EVIDENCE_MAX_BYTES + 1)
+        except OSError as exc:
+            raise ValueError("sandbox evidence could not be read: <path>") from exc
+
+        measured_size = max(source_size_bytes, len(raw))
+        total_bytes += measured_size
+        payload: object = None
+        if measured_size <= SANDBOX_EVIDENCE_MAX_BYTES:
+            try:
+                payload = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                payload = None
+
+        validation = validate_sandbox_run_evidence(
+            payload,
+            expected_subject=expected_subject,
+            expected_policy_version=expected_policy_version,
+            source_size_bytes=measured_size,
+            total_over_budget=total_bytes > SANDBOX_EVIDENCE_MAX_TOTAL_BYTES,
+            seen_fingerprints=seen_fingerprints,
+        )
+        evidence.append(validation)
+        fingerprint = validation.evidence_ref.get("report_fingerprint")
+        if isinstance(fingerprint, str):
+            seen_fingerprints.add(fingerprint)
+    return tuple(evidence)
+
+
 def _git_output(target: Path, argv: Sequence[str]) -> str | None:
     try:
         completed = subprocess.run(
@@ -1127,7 +1215,13 @@ def _format_evidence_ref(value: object) -> str:
     status = str(evidence_ref.get("validation_status", "invalid"))
     reasons = _string_items(evidence_ref.get("reasons"))
     reason_text = ",".join(reasons) if reasons else "none"
-    return f"{fingerprint if isinstance(fingerprint, str) else 'fingerprint-unavailable'} status={status} reasons={reason_text}"
+    run_id = evidence_ref.get("run_id")
+    gate_fingerprint = evidence_ref.get("gate_decision_fingerprint")
+    cross_reference = ""
+    if isinstance(run_id, str):
+        gate_value = gate_fingerprint if isinstance(gate_fingerprint, str) else "fingerprint-unavailable"
+        cross_reference = f" run_id={run_id} gate={gate_value}"
+    return f"{fingerprint if isinstance(fingerprint, str) else 'fingerprint-unavailable'}{cross_reference} status={status} reasons={reason_text}"
 
 
 def _sandbox_run_exit_code(report: Mapping[str, Any]) -> int:

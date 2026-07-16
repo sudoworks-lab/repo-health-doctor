@@ -88,6 +88,12 @@
       "additionalProperties": false
     },
     "evidence_ref": {
+      "oneOf": [
+        {"$ref": "#/$defs/external_evidence_ref"},
+        {"$ref": "#/$defs/sandbox_evidence_ref"}
+      ]
+    },
+    "external_evidence_ref": {
       "type": "object",
       "required": [
         "report_kind",
@@ -137,6 +143,52 @@
               "external_evidence_over_budget",
               "external_evidence_duplicate",
               "external_evidence_truncated"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "sandbox_evidence_ref": {
+      "type": "object",
+      "required": [
+        "report_kind",
+        "report_fingerprint",
+        "run_id",
+        "gate_decision_fingerprint",
+        "validation_status",
+        "reasons"
+      ],
+      "properties": {
+        "report_kind": {"type": "string", "const": "sandbox_run"},
+        "report_fingerprint": {
+          "type": ["string", "null"],
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "run_id": {
+          "type": ["string", "null"],
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "gate_decision_fingerprint": {
+          "type": ["string", "null"],
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "validation_status": {"type": "string", "enum": ["valid", "invalid"]},
+        "reasons": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "sandbox_evidence_invalid",
+              "sandbox_evidence_fingerprint_mismatch",
+              "sandbox_evidence_stale",
+              "sandbox_evidence_subject_mismatch",
+              "sandbox_evidence_policy_mismatch",
+              "sandbox_evidence_over_budget",
+              "sandbox_evidence_duplicate",
+              "sandbox_evidence_truncated"
             ]
           }
         }

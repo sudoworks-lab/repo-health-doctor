@@ -40,6 +40,10 @@
   "properties": {
     "schema_version": {"type": "string", "enum": ["0.1-draft"]},
     "report_kind": {"type": "string", "enum": ["sandbox_run"]},
+    "report_fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
     "kind": {"type": "string", "enum": ["sandbox_run"]},
     "tool": {"type": "string", "enum": ["repo-health-doctor"]},
     "version": {"type": "string"},

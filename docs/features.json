@@ -303,8 +303,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_sandbox_evidence_cli -v を実行し、CLI、schema、count/size/total bytes/age/duplicateを確認する",
         "rg -n \"sandbox-evidence|evidence_refs|fingerprint|run_id|successful execution\" docs/public-contracts.md docs/sandbox-run.md CHANGELOG.md を実行してdocsを確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T22:20:34+09:00",
       "blocked": false
     },
     {

@@ -32,6 +32,7 @@ from repo_health_doctor.external_scanner.risk_mapper import (
 from repo_health_doctor.external_scanner.result_validator import validate_external_scanner_result
 
 from .external_evidence import ExternalSuiteEvidenceValidationResult
+from .sandbox_evidence import SandboxRunEvidenceValidationResult
 from .limitation_policy import highest_limitation_severity
 from .policy import load_pre_execution_gate_policy
 from .validation import DECISION_KIND, GATE_DECISION_SCHEMA_VERSION, validate_gate_decision
@@ -135,7 +136,7 @@ def evaluate_gate_decision(
     subject: Mapping[str, Any] | None = None,
     policy: Mapping[str, Any] | None = None,
     external_suite_evidence: Sequence[ExternalSuiteGateEvidence] = (),
-    sandbox_evidence: Sequence[Mapping[str, Any]] = (),
+    sandbox_evidence: Sequence[Mapping[str, Any] | SandboxRunEvidenceValidationResult] = (),
 ) -> GateEvaluationResult:
     active_policy = policy or load_pre_execution_gate_policy()
     evidence_items = list(evidence)
@@ -357,10 +358,16 @@ def evaluate_gate_decision(
         },
         "residual_risks": list(_dedupe(residual_risks)),
     }
-    if external_suite_evidence:
-        decision["evidence_refs"] = [
-            dict(suite.validation.evidence_ref) for suite in external_suite_evidence
-        ]
+    evidence_refs = [
+        dict(suite.validation.evidence_ref) for suite in external_suite_evidence
+    ]
+    evidence_refs.extend(
+        dict(item.evidence_ref)
+        for item in sandbox_evidence
+        if isinstance(item, SandboxRunEvidenceValidationResult)
+    )
+    if evidence_refs:
+        decision["evidence_refs"] = evidence_refs
     gate_validation = validate_gate_decision(decision)
     blocking_errors = list(gate_validation.blocking_errors)
     if not gate_validation.valid:
@@ -377,14 +384,19 @@ def evaluate_gate_decision(
 
 
 def _sandbox_gate_signals(
-    evidence_items: Sequence[Mapping[str, Any]],
+    evidence_items: Sequence[Mapping[str, Any] | SandboxRunEvidenceValidationResult],
 ) -> _SandboxGateSignals:
     candidates: list[str] = []
     reasons: list[str] = []
     blocking: list[str] = []
     warning: list[str] = []
 
-    for evidence_index, item in enumerate(evidence_items, start=1):
+    for evidence_index, raw_item in enumerate(evidence_items, start=1):
+        item = (
+            raw_item.normalized_evidence
+            if isinstance(raw_item, SandboxRunEvidenceValidationResult)
+            else raw_item
+        )
         evidence_id = f"sandbox_evidence:{evidence_index}"
         signals: list[str]
         if (

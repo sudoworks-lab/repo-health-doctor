@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+from ..evidence.sandbox_run import sandbox_run_report_fingerprint
+
 
 def format_sandbox_json(report: dict) -> str:
     return json.dumps(report, indent=2, ensure_ascii=False) + "\n"
@@ -16,7 +18,9 @@ def format_unknown_repo_approval_draft_json(report: dict) -> str:
 
 
 def format_sandbox_run_json(report: dict) -> str:
-    return json.dumps(report, indent=2, ensure_ascii=False) + "\n"
+    payload = dict(report)
+    payload["report_fingerprint"] = sandbox_run_report_fingerprint(payload)
+    return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
 
 def format_sandbox_run_text(report: dict) -> str:

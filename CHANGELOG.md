@@ -20,6 +20,11 @@ change. See [docs/versioning.md](docs/versioning.md).
 
 ### Added
 
+- Experimental `gate-check --sandbox-evidence`の複数入力、count・file size・
+  total bytes・age・duplicate検証を追加した。gate decisionはraw sandbox reportを
+  埋め込まず、report fingerprint、run ID、元gate decision fingerprintだけを
+  boundedな`evidence_refs`として相互参照し、successful executionではverdictを
+  改善しない。
 - Experimental execution authorization `0.2-draft` image bindingを追加した。`0.1-draft` artifactは後方互換として受理し、`approved_image`ではdigest-pinned requested referenceとlocal image IDを別値としてexact検証する。`RepoDigests`とlocal image IDは同一視しない。
 - Gitleaks `8.27.2`、OSV-Scanner `2.0.3`、Trivy `0.69.3`の対称な
   `Tested Versions`表、追加compatibility scenario、`Not Covered`、
