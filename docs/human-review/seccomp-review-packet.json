@@ -17,6 +17,11 @@
       "observation": "Moby v28.3.3由来のprofileはdefaultActionがSCMP_ACT_ERRNOで、276個のsyscallを1つのSCMP_ACT_ALLOW groupに持つ。"
     },
     {
+      "evidence_id": "E-CANDIDATE",
+      "path": "docs/human-review/rhd-locked-down-v1.candidate.json",
+      "observation": "F029で5組11 syscallをbaselineから除いた265 syscallのHuman未承認candidate artifactを作成した。製品pathには接続していない。"
+    },
+    {
       "evidence_id": "E-PROVENANCE",
       "path": "src/repo_health_doctor/sandbox/resources/rhd-moby-default-v1.provenance.json",
       "observation": "baselineのsource、version、revision、license、取得日、resource SHA-256が記録され、syscall削減は行われていない。"
@@ -46,6 +51,38 @@
     "allow_group_count": 1,
     "allowlisted_syscall_count": 276,
     "syscall_reductions_from_source": 0
+  },
+  "candidate_artifact": {
+    "created_by_feature_id": "F029",
+    "profile": "rhd-locked-down-v1",
+    "path": "docs/human-review/rhd-locked-down-v1.candidate.json",
+    "profile_sha256": "1860f395ed5ddde5f50fd2c3c779568b62421c0368f9fc3c706fa5f9d8e961a5",
+    "baseline_profile_sha256": "7cb8f61c6f90a7f0491194c5e3e3ac41f0d4e65e9494a0afca1575cbb43b86a2",
+    "approval_state": "human_unapproved",
+    "runtime_regression_state": "not_run",
+    "product_connection_state": "disconnected",
+    "allow_group_count": 1,
+    "allowlisted_syscall_count": 265,
+    "removed_candidate_ids": [
+      "SC-001",
+      "SC-002",
+      "SC-003",
+      "SC-004",
+      "SC-005"
+    ],
+    "removed_syscalls": [
+      "chroot",
+      "mknod",
+      "mknodat",
+      "fanotify_mark",
+      "io_uring_setup",
+      "io_uring_enter",
+      "io_uring_register",
+      "mq_open",
+      "mq_notify",
+      "mq_send",
+      "mq_unlink"
+    ]
   },
   "comparison": {
     "moby_default": {

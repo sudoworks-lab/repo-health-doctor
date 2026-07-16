@@ -363,8 +363,8 @@
         "python3 -m json.tool docs/human-review/rhd-locked-down-v1.candidate.json >/dev/null を実行する",
         "PYTHONPATH=src python3 -m unittest tests.test_seccomp_candidate_contract -v を実行し、candidate hash、review packet対応、製品path非接続、verified表現不在を確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T23:23:23+09:00",
       "blocked": false
     },
     {
