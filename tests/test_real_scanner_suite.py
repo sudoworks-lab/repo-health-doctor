@@ -14,6 +14,7 @@ from repo_health_doctor.external_scanner import (
     real_scanner_capabilities,
     real_scanner_inventory,
     run_real_scanner_suite,
+    run_real_scanner_suite_sequential,
     run_gitleaks_scan,
     run_osv_scan,
     run_trivy_scan,
@@ -143,6 +144,32 @@ class RealScannerSuiteTests(unittest.TestCase):
             with self.subTest(scanner=entry.scanner_name):
                 self.assertEqual(entry.blocking_errors, ("suite_runner_error",))
                 self.assertNotIn("synthetic runner failure", json.dumps(entry.to_dict()))
+
+    def test_sequential_suite_continues_after_mixed_runner_failures(self) -> None:
+        calls: list[str] = []
+        outcomes = iter(("unavailable", "timeout", "error"))
+
+        def mixed_runner(argv, timeout_seconds):
+            del timeout_seconds
+            scanner_name = argv[0]
+            calls.append(scanner_name)
+            outcome = next(outcomes)
+            if outcome == "unavailable":
+                raise FileNotFoundError(scanner_name)
+            if outcome == "timeout":
+                return GitleaksCommandResult(returncode=124, stdout="", stderr="", timed_out=True)
+            raise RuntimeError("synthetic runner failure")
+
+        report = run_real_scanner_suite_sequential(ROOT, runner=mixed_runner)
+
+        self.assertEqual(tuple(calls), REAL_SCANNER_ADAPTER_NAMES)
+        self.assertEqual(tuple(entry.scanner_name for entry in report.entries), REAL_SCANNER_ADAPTER_NAMES)
+        self.assertEqual(tuple(entry.status for entry in report.entries), ("unknown", "unknown", "unknown"))
+        self.assertEqual(report.suite_status, "degraded")
+        self.assertFalse(report.execution_authorized)
+        for entry in report.entries:
+            with self.subTest(scanner=entry.scanner_name):
+                self.assertFalse(entry.normalized_result["execution_authorized"])
 
     def test_offline_suite_skips_network_scanners_without_calling_runner(self) -> None:
         calls: list[str] = []
