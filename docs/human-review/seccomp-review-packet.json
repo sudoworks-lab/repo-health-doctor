@@ -1,0 +1,376 @@
+{
+  "schema_version": "0.1-draft",
+  "packet_kind": "seccomp_human_review",
+  "feature_id": "F028",
+  "review_state": "pending_human_decision",
+  "review_scope": {
+    "baseline_profile": "rhd-moby-default-v1",
+    "candidate_profile_name": "rhd-locked-down-v1",
+    "candidate_artifact_created": false,
+    "candidate_product_connected": false,
+    "human_approval_recorded": false
+  },
+  "evidence_sources": [
+    {
+      "evidence_id": "E-BASELINE",
+      "path": "src/repo_health_doctor/sandbox/resources/rhd-moby-default-v1.json",
+      "observation": "Moby v28.3.3由来のprofileはdefaultActionがSCMP_ACT_ERRNOで、276個のsyscallを1つのSCMP_ACT_ALLOW groupに持つ。"
+    },
+    {
+      "evidence_id": "E-PROVENANCE",
+      "path": "src/repo_health_doctor/sandbox/resources/rhd-moby-default-v1.provenance.json",
+      "observation": "baselineのsource、version、revision、license、取得日、resource SHA-256が記録され、syscall削減は行われていない。"
+    },
+    {
+      "evidence_id": "E-CASES",
+      "path": "tests/test_real_docker_verification.py",
+      "observation": "cases 1〜6、8、10は固定された無害なPython commandをcontainerで実行し、case 7はDocker開始前にblockし、case 9はauthorization bindingだけを検証する。"
+    },
+    {
+      "evidence_id": "E-BOUNDARIES",
+      "path": "src/repo_health_doctor/sandbox/profiles.py",
+      "observation": "sandboxはnetwork none、capability drop、no-new-privileges、non-root user、resource limit、使い捨てworkspaceを組み合わせる。"
+    },
+    {
+      "evidence_id": "E-RUNTIME-STATUS",
+      "path": "docs/STATUS.md",
+      "observation": "F025とF026のreal Docker casesは環境前提不足で未実測であり、F027はworkflowのstatic contractだけが完了している。"
+    }
+  ],
+  "baseline": {
+    "profile": "rhd-moby-default-v1",
+    "source_version": "v28.3.3",
+    "source_revision": "moby-default-seccomp-v28.3.3",
+    "profile_sha256": "7cb8f61c6f90a7f0491194c5e3e3ac41f0d4e65e9494a0afca1575cbb43b86a2",
+    "default_action": "SCMP_ACT_ERRNO",
+    "allow_group_count": 1,
+    "allowlisted_syscall_count": 276,
+    "syscall_reductions_from_source": 0
+  },
+  "comparison": {
+    "moby_default": {
+      "role": "汎用container向けのupstream default policyを変更せず同梱した互換性baseline",
+      "policy_shape": "276 syscallを無条件にallowし、それ以外をSCMP_ACT_ERRNOにするallowlist",
+      "known_limit": "repo-health-doctor固有の固定caseやsandbox境界に合わせた最小化は行っていない。"
+    },
+    "sandbox_use": {
+      "role": "Human authorization後の固定されたbounded commandを、network none、capability drop、non-root、resource limit、使い捨てworkspaceと組み合わせて実行する。",
+      "runtime_regression_cases": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        8,
+        10
+      ],
+      "non_runtime_cases": [
+        7,
+        9
+      ],
+      "known_limit": "case suiteは全sandbox workload、image entrypoint、libc、architecture、runtimeのsyscall使用を代表しない。"
+    },
+    "conclusion": "sandboxで明示的に不要と考えられる小単位だけを削減候補にし、実runtime回帰とHuman reviewに通るまでは削除を決定しない。"
+  },
+  "reduction_candidates": [
+    {
+      "candidate_id": "SC-001",
+      "syscalls": [
+        "chroot"
+      ],
+      "rationale": "container rootとmountはDocker側で構成され、固定caseのPython commandはcontainer内でroot変更を要求しないため、sandbox payloadへchrootを許可する必要性は現時点のcaseから確認できない。",
+      "evidence_ids": [
+        "E-BASELINE",
+        "E-CASES",
+        "E-BOUNDARIES"
+      ],
+      "case_impact": {
+        "must_remain_green": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          8,
+          10
+        ],
+        "not_executed_under_candidate": [
+          7,
+          9
+        ],
+        "expected_impact": "影響なしという仮説であり、candidate real Docker regression前は未確認である。"
+      },
+      "unconfirmed_runtimes": [
+        "UR-ROOTFUL",
+        "UR-ROOTLESS",
+        "UR-IMAGE",
+        "UR-ARCH",
+        "UR-OCI"
+      ],
+      "rejection_conditions": [
+        "必須runtime regression caseがchroot拒否を原因として1件でも失敗する。",
+        "対応対象imageのentrypointまたはbootstrapがseccomp適用後のchrootを必要とする。",
+        "Human reviewでbounded sandbox commandにchrootを許可する運用要件が確認される。"
+      ]
+    },
+    {
+      "candidate_id": "SC-002",
+      "syscalls": [
+        "mknod",
+        "mknodat"
+      ],
+      "rationale": "固定caseが作成するのはworkspaceまたはtmpfs上の通常fileだけであり、capabilityはすべてdropされ、device nodeやspecial file作成の要件は記録されていない。",
+      "evidence_ids": [
+        "E-BASELINE",
+        "E-CASES",
+        "E-BOUNDARIES"
+      ],
+      "case_impact": {
+        "must_remain_green": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          8,
+          10
+        ],
+        "not_executed_under_candidate": [
+          7,
+          9
+        ],
+        "expected_impact": "case 1と4の通常file作成を含め影響なしという仮説であり、実測前は未確認である。"
+      },
+      "unconfirmed_runtimes": [
+        "UR-ROOTFUL",
+        "UR-ROOTLESS",
+        "UR-IMAGE",
+        "UR-ARCH",
+        "UR-OCI"
+      ],
+      "rejection_conditions": [
+        "case 1または4を含む必須runtime regressionがmknodまたはmknodat拒否を原因として失敗する。",
+        "対応対象imageのentrypointがseccomp適用後にspecial fileを作成する。",
+        "Human reviewでFIFOまたはdevice node作成をbounded sandboxの必要機能として認める。"
+      ]
+    },
+    {
+      "candidate_id": "SC-003",
+      "syscalls": [
+        "fanotify_mark"
+      ],
+      "rationale": "固定caseのfile観測は通常のread、stat、mountinfo参照で行い、fanotifyによるfilesystem監視を開始しないため、現行caseからfanotify_markの必要性は確認できない。",
+      "evidence_ids": [
+        "E-BASELINE",
+        "E-CASES"
+      ],
+      "case_impact": {
+        "must_remain_green": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          8,
+          10
+        ],
+        "not_executed_under_candidate": [
+          7,
+          9
+        ],
+        "expected_impact": "影響なしという仮説であり、observerやimage初期化処理を含む実測前は未確認である。"
+      },
+      "unconfirmed_runtimes": [
+        "UR-ROOTFUL",
+        "UR-ROOTLESS",
+        "UR-IMAGE",
+        "UR-ARCH",
+        "UR-OCI"
+      ],
+      "rejection_conditions": [
+        "必須runtime regressionがfanotify_mark拒否を原因として失敗する。",
+        "対応対象のobserverまたはimage entrypointがfanotifyを必要とする。",
+        "将来の必須file observationがfanotifyに依存し、別方式では契約を満たせない。"
+      ]
+    },
+    {
+      "candidate_id": "SC-004",
+      "syscalls": [
+        "io_uring_setup",
+        "io_uring_enter",
+        "io_uring_register"
+      ],
+      "rationale": "固定caseはPython standard libraryの同期file、procfs、socket、sleep処理だけを明示し、io_uring APIを直接使用しないため、3 syscallを一組の候補として回帰確認できる。",
+      "evidence_ids": [
+        "E-BASELINE",
+        "E-CASES"
+      ],
+      "case_impact": {
+        "must_remain_green": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          8,
+          10
+        ],
+        "not_executed_under_candidate": [
+          7,
+          9
+        ],
+        "expected_impact": "固定commandへの影響なしという仮説だが、libc、Python build、image実装による間接利用は未確認である。"
+      },
+      "unconfirmed_runtimes": [
+        "UR-ROOTFUL",
+        "UR-ROOTLESS",
+        "UR-IMAGE",
+        "UR-ARCH",
+        "UR-OCI"
+      ],
+      "rejection_conditions": [
+        "必須runtime regressionがio_uring syscall拒否を原因として失敗する。",
+        "対応対象のPython、libc、image entrypointがio_uringを間接利用する。",
+        "Human reviewでio_uringをbounded sandbox workloadの必要機能として維持すると判断する。"
+      ]
+    },
+    {
+      "candidate_id": "SC-005",
+      "syscalls": [
+        "mq_open",
+        "mq_notify",
+        "mq_send",
+        "mq_unlink"
+      ],
+      "rationale": "固定caseはPOSIX message queueを作成、通知、送信、削除せず、case間のIPCも行わないため、baselineでallowされる4 syscallを一組の候補として回帰確認できる。",
+      "evidence_ids": [
+        "E-BASELINE",
+        "E-CASES"
+      ],
+      "case_impact": {
+        "must_remain_green": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          8,
+          10
+        ],
+        "not_executed_under_candidate": [
+          7,
+          9
+        ],
+        "expected_impact": "影響なしという仮説であり、image entrypointや追加libraryのPOSIX message queue利用は未確認である。"
+      },
+      "unconfirmed_runtimes": [
+        "UR-ROOTFUL",
+        "UR-ROOTLESS",
+        "UR-IMAGE",
+        "UR-ARCH",
+        "UR-OCI"
+      ],
+      "rejection_conditions": [
+        "必須runtime regressionがPOSIX message queue syscall拒否を原因として失敗する。",
+        "対応対象imageのentrypointまたは必須libraryがPOSIX message queueを使用する。",
+        "Human reviewでprocess間message queueをbounded sandboxの必要機能として認める。"
+      ]
+    }
+  ],
+  "retained_for_now": [
+    {
+      "syscalls": [
+        "socket",
+        "ioctl",
+        "getsockname"
+      ],
+      "reason": "case 2のnetwork interface列挙がkernel network interface APIを使用する可能性があり、network noneはsocket syscall自体の不要を意味しない。"
+    },
+    {
+      "syscalls": [
+        "clone",
+        "clone3",
+        "execve",
+        "execveat",
+        "futex"
+      ],
+      "reason": "Python、libc、process/thread起動との互換性影響が大きく、staticなcase command確認だけでは削減根拠が不足する。"
+    },
+    {
+      "syscalls": [
+        "read",
+        "write",
+        "openat",
+        "newfstatat",
+        "getdents64"
+      ],
+      "reason": "workspace、tmpfs、procfs、Python module読込を含む複数caseの基本file I/Oに必要である。"
+    }
+  ],
+  "unconfirmed_runtimes": [
+    {
+      "runtime_id": "UR-ROOTFUL",
+      "scope": "rootful Docker daemonとcandidate profile",
+      "reason": "F028ではcandidate artifactもcandidate real Docker executionも存在しない。"
+    },
+    {
+      "runtime_id": "UR-ROOTLESS",
+      "scope": "rootless Dockerとuserns-remap",
+      "reason": "UID/GID mapping、mount、seccomp適用順序の差を実測していない。"
+    },
+    {
+      "runtime_id": "UR-IMAGE",
+      "scope": "digest-pinned Python image以外のentrypoint、Python build、libc",
+      "reason": "固定case suiteはimageとuser-space実装の組合せを網羅しない。"
+    },
+    {
+      "runtime_id": "UR-ARCH",
+      "scope": "x86_64以外のarchitectureとkernel version差",
+      "reason": "syscall availabilityとuser-space fallbackの差を実測していない。"
+    },
+    {
+      "runtime_id": "UR-OCI",
+      "scope": "Podman、containerd直接利用、gVisor、KataなどDocker以外のruntime",
+      "reason": "現行sandbox-runとcase suiteの対象外である。"
+    }
+  ],
+  "candidate_runtime_results": [],
+  "residual_risks": [
+    {
+      "risk_id": "RR-NO-CANDIDATE-RUNTIME-EVIDENCE",
+      "description": "削減候補はstaticなcase比較だけに基づき、candidate profileでのruntime syscall failureは未観測である。"
+    },
+    {
+      "risk_id": "RR-CASE-COVERAGE",
+      "description": "cases 1〜10がgreenでも、任意のauthorized command、image entrypoint、library、kernel pathの互換性を保証しない。"
+    },
+    {
+      "risk_id": "RR-PLATFORM-SCOPE",
+      "description": "結果は記録されたDocker version、OS、architecture、kernel、image digestに限定される。"
+    },
+    {
+      "risk_id": "RR-SECCOMP-LIMIT",
+      "description": "syscall allowlist削減はkernel、container runtime、image、別のsandbox境界のriskを除去せず、安全性や完全な隔離を証明しない。"
+    },
+    {
+      "risk_id": "RR-HUMAN-DECISION",
+      "description": "各候補の削減可否と最終profile hashはHuman reviewが完了するまで未決定である。"
+    }
+  ],
+  "human_review": {
+    "decision": "pending",
+    "required_checks": [
+      "各candidateのsyscall単位と根拠がsandbox用途に対して妥当か確認する。",
+      "candidate real Docker regressionの全case結果と全failureを確認する。",
+      "tested runtime、未確認runtime、image digest、profile hashが判断範囲を十分に限定しているか確認する。",
+      "candidateごとにapprove、reject、reviseのいずれかを記録する。"
+    ],
+    "decision_effect": "F028 packetは分析資料であり、candidate artifact作成、製品path接続、default変更、Human approvalを行わない。"
+  }
+}

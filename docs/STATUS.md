@@ -267,3 +267,11 @@
 - 既知の問題: Hosted workflowはこのprocessでは起動しておらず、実image、Docker runtime、OS、architectureの組合せによるgreen runと互換性は未確認である。green runも一般的な安全性や完全な隔離の証明にはならない。固定名`/tmp/repo-health-doctor-result.json`への直接出力はsandbox policyでprocess生成前に拒否されたが、`scripts/init.sh`の一時JSON生成とparseは成功した。
 - follow-up候補: HumanがPython 3を実行できるdigest-pinned image referenceを指定してworkflow_dispatchを実行し、対象commit、run metadata、Docker version、OS、architectureを確認する。F027以外のfeatureには着手していない。
 - 記録の補足: 上記の「test stepからpullまたはbuildを行えない」は、image pullまたはDocker image buildを行わないという意味である。case 10が行うoffline wheel buildは固定testの一部として維持している。
+
+## 2026-07-16 JST — F028 Seccomp Human review packet
+
+- 今回やったこと: Moby v28.3.3由来の`rhd-moby-default-v1`がSHA-256固定の276 syscall allowlistであり、sandbox固有の最小化をしていないことをbaselineにした。削減候補を`chroot`、`mknod`/`mknodat`、`fanotify_mark`、`io_uring` 3 syscall、POSIX message queue 4 syscallの5組へ小分けし、候補ごとの根拠、cases 1〜6/8/10の回帰条件、cases 7/9がruntime非実行であること、未確認runtime、却下条件、残riskをJSONとMarkdownのHuman review packetへ対応付けた。candidate artifact、製品path接続、default変更、Human approvalは行っていない。
+- 検証結果: `python3 -m json.tool docs/human-review/seccomp-review-packet.json`はexit 0でparseに成功した。指定の`>/dev/null`付き形式はprocess生成前に環境ポリシーから拒否された。指定の先頭`PYTHONPATH=src`形式も同じく拒否されたため、同値の`env PYTHONPATH=src python3 -m unittest tests.test_seccomp_review_packet -v`を実行し8件pass・0件failだった。終了前の`bash scripts/init.sh`は818件実行・805件pass・13件skip・0件failで、CLI help/version、public-safety、policy validation、JSON report生成とparseまで成功した。PLANのdocs/fixture一覧、`wc -l AGENTS.md`、`git diff --check`も成功した。未追跡3 fileへの`git diff --no-index --check`は差分存在を示すexit 1で、whitespace警告はなかった。
+- 判断と理由: network noneだけを理由にsocket syscallを削除せず、case 2のinterface列挙で使う可能性がある`socket`、`ioctl`、`getsockname`を維持した。Python、libc、process/thread起動への影響が大きい`clone`、`clone3`、`execve`、`execveat`、`futex`もstatic根拠だけでは削減しない。今回の候補はbaseline allowlistに実在し、各1〜4 syscallで独立して却下できる単位に限定した。
+- 既知の問題: candidate profileとcandidate runtime evidenceはまだ存在しない。rootful Docker、rootless/userns-remap、image/libc差、x86_64以外、Docker以外のOCI runtimeは未確認である。cases 1〜10が将来greenでも、任意のauthorized commandや一般的な安全性、完全な隔離を保証しない。F025/F026のreal Docker実測は前提不足のままである。
+- follow-up候補: runnerが別processで後続featureを指定した場合に限り、packetの削減候補からHuman未承認candidate artifactを作成し、その後の専用real Docker regressionで全case結果と全failureをpacketへ記録する。各候補のapprove/reject/reviseと最終profile hashはHumanが判断する。F028以外のfeatureには着手していない。
