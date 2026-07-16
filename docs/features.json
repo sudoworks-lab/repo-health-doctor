@@ -171,8 +171,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_authorization_discovery_cli -v を実行する",
         "test出力でargv非discover、single candidate、explicit優先、--no-discover、fallbackなしを確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T14:18:33+09:00",
       "blocked": false
     },
     {

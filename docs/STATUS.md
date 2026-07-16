@@ -127,3 +127,11 @@
 - 判断と理由: tracked判定をfile openより前に行い、Gitのunexpected exit、timeout、実行不能をすべて`git_error`へ閉じた。`lstat`とopen後`fstat`のdevice、inode、mode、size、mtime、ctimeを比較し、読取後にも同じ状態とbyte数を照合することで観測可能なfile差替え・変更を拒否する。discovery結果は既存authorization validatorを緩和せず、CLI接続も行わない独立境界に限定した。
 - 既知の問題: 指定commandの先頭`PYTHONPATH=src`形式は実行環境のapproval policyによりprocess生成前に拒否されたため、同値の`env PYTHONPATH=src`形式で検証した。local write可能processとのTOCTOUを完全には排除できず、moduleはartifactを発見するだけでexecution authorizationを付与しない。
 - follow-up候補: F013で明示authorization優先、trailing argv条件、`--no-discover`をCLIへ接続し、F014でreason contractとTOCTOU残余riskを文書化する。F013以降は今回のprocessでは扱っていない。
+
+## 2026-07-16 JST — F013 gate-check authorization discovery CLI接続
+
+- 今回やったこと: `gate-check`へ`--no-discover`を追加し、trailing argvが存在し、explicit authorizationが指定されていない場合だけrepo rootの単一候補をdiscoveryするよう接続した。explicit authorizationはtrailing argvと併用した場合も常に優先し、argv-jsonは従来どおりexplicit authorizationとの組み合わせに限定した。候補の検証は既存の`validate_execution_authorization`へ渡し、候補がない場合や`--no-discover`時に別pathへfallbackしないことを固定した。
+- 検証結果: `bash scripts/init.sh`はPython 3.12.3で全unit 739件pass・3件skip・0件fail、CLI help/version、public-safety、policy validation、JSON report生成・parseまで成功した。指定の`PYTHONPATH=src python3 -m unittest tests.test_authorization_discovery_cli -v`は実行環境のapproval policyでprocess生成前に拒否されたため、同値の`env PYTHONPATH=src python3 -m unittest tests.test_authorization_discovery_cli -v`を実行し5件pass・0件failを確認した。専用testではargv非discover、single candidate、explicit優先、`--no-discover`、nested候補へのfallbackなしを確認した。関連回帰30件と全unit suite 744件は全件pass・3件skip・0件fail、`python3 -m py_compile`、`git diff --check`、CLI help/version、public-safety、policy validation、JSON outputと`python3 -m json.tool`によるparseも成功した。
+- 判断と理由: discoveryはcommand実行対象を示すtrailing argvがある時だけ有効にし、argvのないgate-checkの従来のauthorization missing挙動を維持した。explicit authorizationを先に処理することで、候補fileが存在しても明示入力を上書きせず、`--no-discover`はexplicit authorizationの利用を妨げない。候補はF012のsingle-file fail-closed moduleだけに委譲し、複数path探索やvalidation緩和は追加していない。
+- 既知の問題: 指定test commandの直接表記は実行環境のapproval policyにより実行できず、`env PYTHONPATH=src`の同値commandで検証した。discovery refusal reasonの文書同期はF014の範囲であり、今回変更していない。
+- follow-up候補: F013の範囲に残作業はない。F014以降のfeatureは今回扱っていない。

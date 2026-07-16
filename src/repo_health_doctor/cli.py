@@ -48,6 +48,7 @@ from .gate import (
     format_gate_summary,
     validate_execution_authorization,
 )
+from .gate.authorization_discovery import discover_execution_authorization
 from .gate.evaluator import ExternalSuiteGateEvidence
 from .gate.external_evidence import (
     EXTERNAL_SUITE_EVIDENCE_MAX_BYTES,
@@ -269,6 +270,11 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
     if gate_check_mode:
         parser.add_argument("--authorization", help="Execution authorization artifact JSON to validate.")
         parser.add_argument("--argv-json", help="JSON array containing the exact argv to validate.")
+        parser.add_argument(
+            "--no-discover",
+            action="store_true",
+            help="Do not discover the single repository-root authorization candidate.",
+        )
         parser.add_argument(
             "--external-evidence",
             action="append",
@@ -673,10 +679,11 @@ def main(argv: list[str] | None = None) -> int:
                 parser.error(
                     f"--external-evidence accepts at most {EXTERNAL_SUITE_EVIDENCE_MAX_COUNT} reports"
                 )
-            if gate_check_argv and (args.authorization or args.argv_json):
-                parser.error("trailing argv cannot be combined with explicit authorization in this version")
+            if gate_check_argv and args.argv_json:
+                parser.error("--argv-json cannot be combined with trailing argv")
             if args.authorization and not args.argv_json:
-                parser.error("--argv-json is required when --authorization is provided")
+                if not gate_check_argv:
+                    parser.error("--argv-json is required when --authorization is provided without trailing argv")
             if args.argv_json and not args.authorization:
                 parser.error("--authorization is required when --argv-json is provided")
             scan_report = diagnose_repo(
@@ -704,10 +711,18 @@ def main(argv: list[str] | None = None) -> int:
             if args.authorization:
                 try:
                     authorization = _load_json_object(Path(args.authorization), "authorization")
-                    argv = _load_argv_json(Path(args.argv_json))
+                    argv = gate_check_argv or _load_argv_json(Path(args.argv_json))
                     authorization_validation = validate_execution_authorization(authorization, gate_decision, argv)
                 except ValueError as exc:
                     parser.error(str(exc))
+            elif gate_check_argv and not args.no_discover:
+                discovered = discover_execution_authorization(target)
+                if discovered.discovered and discovered.authorization is not None:
+                    authorization_validation = validate_execution_authorization(
+                        discovered.authorization,
+                        gate_decision,
+                        gate_check_argv,
+                    )
             report = _build_gate_check_report(
                 gate_decision,
                 fail_on_gate=args.fail_on_gate,
