@@ -425,8 +425,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_schema_contracts tests.test_public_contracts -v とPLANの基本検証を実行する",
         "git diff --check を実行し、Hosted real DockerとHuman seccomp approvalを未完了のまま確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-17T00:19:27+09:00",
       "blocked": false
     },
     {

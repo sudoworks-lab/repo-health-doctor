@@ -315,3 +315,11 @@
 - 判断と理由: tool別bindingの確認済み強制範囲はF032のまま変更せず、正準契約と中央文書の導線・exit解釈だけをF033で同期した。agent orchestrationのexit表は各CLI固有のexit semanticsを置き換えず、exit 0だけが次の定義済み段階へ進み、exit 1、exit 2、unknown、target commandのnonzeroは停止する境界を維持した。全local link解決と非実行smokeを専用testで固定できたため、F033を`passes:true`、`blocked:false`としてJSTの検証日時を記録した。
 - 既知の問題: 指定testの先頭`PYTHONPATH=src`形式は実行環境ポリシーによりprocess生成前に拒否されたため、同値の`env PYTHONPATH=src`形式で実行した。JSON parseの`>/dev/null`付き形式も同様に拒否されたため、出力抑制なしで同じfileをparseした。verified-as-of以後のtool仕様変更と各bindingの未確認強制機構はF032記録どおり残る。
 - follow-up候補: F034以降のfeatureは今回扱っていない。次featureの選択と新process起動はhost runnerに委ねる。
+
+## 2026-07-17 JST — F034 full local verification
+
+- 今回やったこと: F001〜F033を支える全unit、schema、public contract、CLI、public-safety、redaction、docs、diff整合をlocalで再検証した。製品codeと既存contractは変更せず、F034の状態更新と本記録だけを行った。
+- 検証結果: `bash scripts/init.sh`はexit 0だった。独立したfull suiteは840件実行・826件pass・14件skip・0件fail、schema/public contract専用testは8件pass・0件failだった。CLI help/version、public-safety self-scanの12件pass・0件warn・0件block、policy validation、JSON report生成とparse、docs/fixture一覧、AGENTS.md 77行、`git diff --check`はすべて成功した。先頭の`PYTHONPATH=src`形式と`>/dev/null`付きJSON parseはprocess生成前に実行環境ポリシーで拒否されたため、それぞれ同値の`env PYTHONPATH=src`形式と出力抑制なしのparseで検証した。
+- 判断と理由: full suite、F034専用test、PLANの基本検証がgreenで、redactionとdocs contractもfull suite内で通過したため、F034を`passes:true`、`blocked:false`としてJSTの検証日時を記録した。14件のskipは明示opt-inが必要なreal Docker cases 1〜10、candidate回帰、任意のlive scannerまたはDocker integrationであり、未完了の外部実測をlocal成功へ読み替えていない。
+- 既知の問題: Hosted workflow_dispatchは未実行で、`docs/human-review/final-security-gates.json`は存在しない。F025/F026は前提不足により`passes:false`、`blocked:true`のままである。seccomp review packetは`pending_human_decision`、candidate runtime regressionは`preflight_failed`かつ全case `not_run`で、Human seccomp approvalは未完了である。
+- follow-up候補: Humanが別processでHosted workflow_dispatchのgreen run metadataとseccomp approvalをmachine-readable evidenceとして提供した後、runnerがF035を検証する。F035以降は今回のprocessでは扱っていない。
