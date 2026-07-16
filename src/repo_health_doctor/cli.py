@@ -50,6 +50,9 @@ from .gate import (
 from .external_scanner import (
     REAL_SCANNER_ADAPTER_NAMES,
     REAL_SCANNER_DEFAULT_TIMEOUT_SECONDS,
+    REAL_SCANNER_MAX_FINDINGS,
+    REAL_SCANNER_MAX_FINDINGS_PER_SCANNER,
+    REAL_SCANNER_MAX_REPORT_BYTES,
     run_real_scanner_suite_sequential,
 )
 from .formatters import format_real_scanner_suite
@@ -156,7 +159,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             if authorization_validate_mode
             else "Gate-check mode: repo-health-doctor gate-check <path> --authorization authorization.json --argv-json argv.json [--fail-on-gate unknown]"
             if gate_check_mode
-            else "Real-scan mode: repo-health-doctor real-scan <path> [--scanner NAME ...] [--offline] [--format text|json|markdown]"
+            else "Real-scan mode: repo-health-doctor real-scan <path> [--scanner NAME ...] [--offline] [--fail-on-degraded] [--format text|json|markdown]"
             if real_scan_mode
             else "Policy-only mode: repo-health-doctor validate-policy <path> [--format json|markdown]"
             if validate_mode
@@ -279,6 +282,35 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             type=int,
             default=REAL_SCANNER_DEFAULT_TIMEOUT_SECONDS,
             help="Timeout in seconds for each scanner command.",
+        )
+        parser.add_argument(
+            "--max-findings-per-scanner",
+            "--per-scanner-finding-budget",
+            dest="max_findings_per_scanner",
+            type=int,
+            default=REAL_SCANNER_MAX_FINDINGS_PER_SCANNER,
+            help="Maximum normalized findings retained for each scanner.",
+        )
+        parser.add_argument(
+            "--max-findings",
+            "--suite-finding-budget",
+            dest="max_findings",
+            type=int,
+            default=REAL_SCANNER_MAX_FINDINGS,
+            help="Maximum normalized findings retained across the suite.",
+        )
+        parser.add_argument(
+            "--max-report-bytes",
+            "--report-byte-budget",
+            dest="max_report_bytes",
+            type=int,
+            default=REAL_SCANNER_MAX_REPORT_BYTES,
+            help="Maximum compact JSON report size before findings are truncated.",
+        )
+        parser.add_argument(
+            "--fail-on-degraded",
+            action="store_true",
+            help="Return exit code 1 when the suite is degraded, including offline skips or truncation.",
         )
     if sandbox_mode:
         parser.add_argument(
@@ -509,12 +541,23 @@ def main(argv: list[str] | None = None) -> int:
         if command == "real-scan":
             if args.timeout_seconds <= 0:
                 parser.error("--timeout-seconds must be greater than 0")
+            for option_name in ("max_findings_per_scanner", "max_findings", "max_report_bytes"):
+                if getattr(args, option_name) <= 0:
+                    parser.error(f"--{option_name.replace('_', '-')} must be greater than 0")
+            suite_kwargs = {}
+            if args.max_findings_per_scanner != REAL_SCANNER_MAX_FINDINGS_PER_SCANNER:
+                suite_kwargs["max_findings_per_scanner"] = args.max_findings_per_scanner
+            if args.max_findings != REAL_SCANNER_MAX_FINDINGS:
+                suite_kwargs["max_findings"] = args.max_findings
+            if args.max_report_bytes != REAL_SCANNER_MAX_REPORT_BYTES:
+                suite_kwargs["max_report_bytes"] = args.max_report_bytes
             try:
                 report = run_real_scanner_suite_sequential(
                     target,
                     timeout_seconds=args.timeout_seconds,
                     offline=args.offline,
                     scanners=tuple(args.scanners or REAL_SCANNER_ADAPTER_NAMES),
+                    **suite_kwargs,
                 )
             except ValueError as exc:
                 parser.error(str(exc))
@@ -764,7 +807,7 @@ def main(argv: list[str] | None = None) -> int:
     if command == "sandbox-profile":
         return 1 if report["overall_status"] == "block" else 0
     if command == "real-scan":
-        return 0
+        return 1 if args.fail_on_degraded and report.suite_status == "degraded" else 0
     if command == "sandbox-approval-draft":
         return 1 if report["source_risk_tier"] in {"T4", "T5"} else 0
     if command == "sandbox-run":

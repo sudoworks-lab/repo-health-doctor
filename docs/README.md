@@ -37,6 +37,7 @@ This directory contains the public documentation set for `repo-health-doctor`.
 - `external-scanner-adapter-design.md`: external scanner adapter design boundary
 - `docker-integration-ci.md`: Docker integration CI boundary
 - `real-scanner-suite.md`: Gitleaks / OSV-Scanner / Trivy real adapter suite
+  with offline CI smoke, explicit live opt-in, and bounded report budgets
 - `real-gitleaks-compatibility.md`: real Gitleaks compatibility scope
 - `real-osv-compatibility.md`: real OSV-Scanner compatibility scope
 - `real-trivy-compatibility.md`: real Trivy compatibility scope

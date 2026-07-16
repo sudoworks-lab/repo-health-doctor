@@ -75,8 +75,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_real_scan_budget tests.test_real_scan_cli -v を実行し、per-scanner/suite/byte budgetと--fail-on-degradedを確認する",
         "rg -n \"offline|opt-in|truncated|omitted|fail-on-degraded|authorization\" .github/workflows/ci.yml README.md docs/real-scanner-suite.md CHANGELOG.md を実行し、取得なしのCIとdocsを確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T12:33:45+09:00",
       "blocked": false
     },
     {

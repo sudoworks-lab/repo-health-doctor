@@ -10,7 +10,34 @@ replacement and not a safety proof.
 The default `repo-health-doctor .` CLI path does not run this suite. It does
 not install, download, upgrade, or execute Gitleaks, OSV-Scanner, or Trivy, and
 it does not contact scanner APIs as part of the default local review command.
-A dedicated CLI command for the real scanner suite is future product scope.
+The dedicated `real-scan` command is an explicit opt-in surface:
+
+```bash
+env PYTHONPATH=src python3 -m repo_health_doctor real-scan . --offline \
+  --format json --output /tmp/rhd-real-scan.json
+```
+
+`--offline` never invokes OSV-Scanner or Trivy. It is the deterministic CI
+smoke mode; Gitleaks is invoked only when its local binary is available. A
+live run that omits `--offline` is an operator opt-in and may use network,
+cache, or scanner database state. CI does not install, download, or invoke
+live scanners. A live run is evidence collection only and is not execution
+authorization.
+
+The suite applies these bounded defaults before formatting:
+
+- 100 findings per scanner;
+- 300 findings across the suite;
+- 256 KiB for the compact JSON report;
+- 1024 characters for one normalized text field.
+
+`--max-findings-per-scanner`, `--max-findings`, and `--max-report-bytes` can
+lower or raise those limits for an explicitly reviewed local run. An exceeded
+finding or byte budget keeps only the bounded prefix, records
+`omitted_finding_count` and `truncated` on the affected entry, adds a
+limitation, and changes the suite to `degraded`. `--fail-on-degraded` returns
+exit code 1 after emitting the report. Truncation is never permission to
+continue or evidence that the repository is safe.
 
 ## Inventory
 

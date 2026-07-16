@@ -114,8 +114,26 @@ of hidden as local-only behavior.
 
 The default `repo-health-doctor .` CLI path still does not install scanners,
 download scanners, run live scanners, contact scanner APIs, or authorize
-execution. Real scanner execution is an explicit adapter/API surface in this
-version; a dedicated CLI suite command is future product scope.
+execution. The dedicated `real-scan` command is an explicit opt-in surface:
+
+```bash
+env PYTHONPATH=src python3 -m repo_health_doctor real-scan . --offline \
+  --format json --output /tmp/rhd-real-scan.json
+```
+
+The offline mode is suitable for CI and skips network-capable scanners without
+requiring their binaries. Omitting `--offline` is an operator opt-in for a
+local live run; OSV-Scanner and Trivy may use network or cache state. CI does
+not acquire scanners or databases, and no live run grants execution
+authorization.
+
+Each real-scan report is bounded to 100 findings per scanner, 300 findings for
+the suite, 256 KiB of compact JSON, and 1024 characters per normalized text
+field by default. Budget overflow is recorded as `truncated` with an
+`omitted_finding_count` and makes the suite `degraded`. Use
+`--fail-on-degraded` when a degraded report must stop the caller with exit
+code 1. A truncated or completed report is limited evidence, not a safety
+proof.
 
 See [docs/real-scanner-suite.md](docs/real-scanner-suite.md),
 [docs/real-gitleaks-compatibility.md](docs/real-gitleaks-compatibility.md),

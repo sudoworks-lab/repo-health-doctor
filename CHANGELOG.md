@@ -20,6 +20,9 @@ change. See [docs/versioning.md](docs/versioning.md).
 
 ### Added
 
+- Experimental `real-scan` finding and report budgets with explicit offline
+  CI smoke, local live opt-in, truncation and omitted-count reporting, and
+  `--fail-on-degraded`.
 - Experimental `--fail-on-gate` exit-2 gate contract and `gate-check`
   one-command authorization gate for agent integrations.
 - General static supply-chain shape evidence for arbitrary repository names,
