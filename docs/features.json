@@ -387,8 +387,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_agent_contract_docs -v を実行する",
         "rg -n \"exit 0|exit 1|exit 2|unknown|real-scan|external-evidence|authorization|sandbox-run|sandbox-evidence\" docs/agent-contract.md を実行して正準flowを確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T23:53:09+09:00",
       "blocked": false
     },
     {
