@@ -1,6 +1,6 @@
 # Compatibility Regeneration Runbook
 
-This runbook documents how to refresh Gitleaks and OSV-Scanner
+This runbook documents how to refresh Gitleaks, OSV-Scanner, and Trivy
 real-output-compatible fixtures without weakening repo-health-doctor's safety
 boundary.
 
@@ -34,9 +34,10 @@ scan step. Record the limitation and keep existing fixtures unchanged.
 
 - `scripts/regenerate-gitleaks-compat-fixtures.sh`
 - `scripts/regenerate-osv-compat-fixtures.sh`
+- `scripts/regenerate_real_scanner_fixtures.py`
 
-Both scripts default to a dry explanation. A scan requires `--run` and a
-synthetic target under `examples/` or `tests/fixtures/`.
+The two shell helpers default to a dry explanation. A scan requires `--run`
+and a synthetic target under `examples/` or `tests/fixtures/`.
 
 Raw output is written under `/tmp` or `$TMPDIR`. The scripts do not overwrite
 committed fixtures. Manual redaction and normalization are required before any
@@ -84,6 +85,28 @@ OSV database lookup may need network access in a dedicated compatibility
 session. If network is required, use the explicit script flag for synthetic
 fixtures only and record that network was used. Do not use this path for
 unknown repositories.
+
+## Trivy Regeneration
+
+Trivy raw-output collection is a separate Human-approved operation. Keep raw
+output under `/tmp`, never place it in the repository, and manually reduce it
+to the minimum redacted fields required by the compatibility scenario. Do not
+commit raw scanner output.
+
+After reviewing and redacting the synthetic license fixture, place only the
+reviewed fixture at
+`tests/fixtures/real-scanners/trivy/licenses-redacted.real.json`. Then
+regenerate the bounded expected evidence and verify it deterministically:
+
+```bash
+python3 scripts/regenerate_real_scanner_fixtures.py --scanner trivy --write
+python3 scripts/regenerate_real_scanner_fixtures.py --scanner trivy --check
+```
+
+The Python helper does not acquire or run Trivy and does not read raw output.
+It reads only the committed redacted fixture and version record, normalizes the
+fixture through the adapter, validates the result, and writes only
+`expected-evidence.json`.
 
 ## Docker Unavailable
 

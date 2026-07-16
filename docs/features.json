@@ -135,8 +135,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_real_trivy_compatibility tests.test_compatibility_regeneration_scripts -v を実行する",
         "find tests/fixtures/real-scanners/trivy -maxdepth 2 -type f | sort を実行し、raw outputを含まないfixture、expected evidence、version recordを確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T13:41:30+09:00",
       "blocked": false
     },
     {

@@ -101,6 +101,25 @@ The optional live adapter test is disabled by default even when `trivy` is
 installed. It requires `RHD_LIVE_TRIVY_TEST=1` so default unit test discovery
 does not download or update Trivy databases by accident.
 
+## Redacted Compatibility Fixture
+
+The committed compatibility contract records Trivy `0.69.3` in
+`tests/fixtures/real-scanners/trivy/trivy-version.txt`. Its
+`licenses-redacted.real.json` fixture contains only the minimum synthetic
+license fields consumed by the adapter; raw scanner output and vendor detail
+are not committed. `expected-evidence.json` records the bounded normalized
+facts asserted by the compatibility test.
+
+Run the offline consistency check with:
+
+```bash
+python3 scripts/regenerate_real_scanner_fixtures.py --scanner trivy --check
+```
+
+Raw-output collection, if separately approved, stays under `/tmp` until Human
+review and redaction. The helper does not acquire or run Trivy. See
+`docs/compatibility-regeneration.md` for the complete boundary.
+
 ## Compatibility Matrix
 
 - Trivy filesystem JSON: supported through redacted compatibility fixtures

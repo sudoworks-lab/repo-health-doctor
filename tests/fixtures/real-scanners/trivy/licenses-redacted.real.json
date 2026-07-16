@@ -1,0 +1,20 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "synthetic-trivy-fixture",
+  "ArtifactType": "filesystem",
+  "Results": [
+    {
+      "Target": "package-lock.json",
+      "Class": "lang-pkgs",
+      "Type": "npm",
+      "Licenses": [
+        {
+          "Name": "GPL-3.0-only",
+          "PkgName": "synthetic-package",
+          "Severity": "HIGH",
+          "Category": "restricted"
+        }
+      ]
+    }
+  ]
+}

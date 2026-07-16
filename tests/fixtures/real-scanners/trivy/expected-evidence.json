@@ -1,0 +1,17 @@
+{
+  "license": {
+    "expected_count": 1,
+    "outcome": "findings_present",
+    "primary_category": "repo_posture",
+    "secondary_category": "low_security_posture",
+    "scanner_rule_id": "GPL-3.0-only",
+    "scanner_severity": "high",
+    "normalized_severity": "warn",
+    "gate_effect": "requires_human_review",
+    "redaction_validated": true,
+    "raw_scanner_output_included": false,
+    "raw_output_retained": false,
+    "risk_lowering_allowed": false,
+    "execution_authorized": false
+  }
+}

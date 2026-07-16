@@ -103,3 +103,11 @@
 - 判断と理由: major versionの一致だけではfixtureで観測した出力互換性を証明できないため、exact fixture version以外を`tested`へ昇格させない。denylistは各scanner policyに明示し、`unsupported`より先に評価することで両statusを機械的に区別する。version出力はscanner名付きまたはbare versionの1行だけを受理し、任意文字列からversionらしい部分を抽出しない。
 - 既知の問題: 指定commandの先頭`PYTHONPATH=src`形式とJSON parserの`>/dev/null`付き形式は実行環境のapproval policyによりprocess生成前に拒否されたため、同値の`env PYTHONPATH=src`形式と出力抑制なしのJSON parseで検証した。live scannerの取得は行っていない。local Gitleaks binaryが存在する環境の既存optional adapter testは実行されたが、network accessやfixture再生成は行っていない。
 - follow-up候補: F010のTrivy compatibility対称化とF011の3 scanner文書matrixは今回扱っていない。F009の範囲に残作業はない。
+
+## 2026-07-16 JST — F010 Trivy compatibility資材
+
+- 今回やったこと: `tests/fixtures/real-scanners/trivy/`へTrivy 0.69.3のversion record、raw scanner fieldを含まないsynthetic license fixture、bounded expected evidenceを追加した。redacted fixtureを現行adapterでnormalizeしてexpected evidenceを再生成または照合するoffline Python helperと、version、redaction、非認可、再生成、文書境界を固定するcompatibility testを追加し、2つのcompatibility文書へHuman-approved raw collectionと`/tmp`境界を記録した。
+- 検証結果: 指定の`env PYTHONPATH=src python3 -m unittest tests.test_real_trivy_compatibility tests.test_compatibility_regeneration_scripts -v`は最終的に9件pass・0件failだった。初回は文書中の正規なpublic ECR domainをprivate config markerとして拾うtest過検知と、adapter findingのgate effectを別mapperの返値へ誤適用したtest期待により2件failし、製品codeを変えずtest主張を実契約へ修正した。指定の`find tests/fixtures/real-scanners/trivy -maxdepth 2 -type f | sort`はfixture、expected evidence、version recordの3件を返し、raw field、secret-like pattern、private path検査は無検出だった。全unit suiteは722件pass・3件skip・0件fail、CLI help/version、public-safety、policy validation、JSON report生成・parse、`git diff --check`、docs/fixture一覧、AGENTS行数も成功した。
+- 判断と理由: 既存のvulnerability、misconfiguration、secret、no-finding fixtureを重複させず、設計で未充足だったlicense含有scenarioだけを追加した。再生成helperはscanner取得やraw output読込みを行わず、Humanがreview・redactしたcommitted fixtureからexpected evidenceだけを決定的に生成する境界とした。
+- 既知の問題: live Trivy実行、imageまたはscanner取得、raw output収集は実施していない。fixtureは安全なsynthetic compatibility資材であり、実repoの安全性やexecution authorizationを証明しない。
+- follow-up候補: F011で3 scannerのTested Versions表、Not Covered、追加fixture、CHANGELOGを対称化する。F011は今回のprocessでは扱っていない。
