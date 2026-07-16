@@ -231,8 +231,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_execution_authorization_expiry -v を実行する",
         "rg -n \"repo|commit|tree|dirty|binding_kind|expires-in-minutes|expires-at|refusal\" docs/authorization-contract.md を実行し、T0根拠とreason台帳を確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T19:01:07+09:00",
       "blocked": false
     },
     {

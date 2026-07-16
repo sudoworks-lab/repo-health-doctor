@@ -35,6 +35,37 @@ TOP_LEVEL_FIELDS = {
 BASED_ON_FIELDS = {"decision_kind", "schema_version", "verdict", "fingerprint"}
 SUBJECT_FIELDS = {"repo", "commit", "tree_hash"}
 DISALLOWED_GATE_VERDICTS = {"block", "quarantine", "unknown"}
+AUTHORIZATION_REFUSAL_REASONS = frozenset(
+    {
+        "authorization_must_be_object",
+        "authorization_top_level_required_or_unknown_field",
+        "authorization_kind_unsupported",
+        "authorization_schema_version_unsupported",
+        "approval_missing",
+        "approved_must_be_boolean",
+        "limitations_empty",
+        "residual_risks_empty",
+        "approved_scope_mismatch",
+        "approved_argv_mismatch",
+        "approved_policy_version_mismatch",
+        "based_on_gate_decision_required_or_unknown_field",
+        "based_on_gate_decision_mismatch",
+        "authorization_subject_required_or_unknown_field",
+        "authorization_subject_mismatch",
+        "expires_at_required",
+        "expires_at_invalid",
+        "authorization_expired",
+        "approved_by_required",
+        "approved_at_required",
+        "approved_at_invalid",
+        "gate_verdict_block_cannot_be_authorized",
+        "gate_verdict_quarantine_cannot_be_authorized",
+        "gate_verdict_unknown_cannot_be_authorized",
+        "gate_verdict_invalid_for_authorization",
+        "authorization_contains_forbidden_raw_pattern",
+        "authorization_contains_raw_host_path",
+    }
+)
 FORBIDDEN_PATTERNS = (
     "/home/",
     "/Users/",
@@ -103,6 +134,13 @@ def build_execution_authorization_draft(
     approved artifact exactly matches the decision and argv.
     """
     subject = _gate_subject(gate_decision)
+    limitations = [
+        "draft_only_not_approved",
+        "not_execution_authorization_until_human_approved",
+        "argv_scope_policy_and_gate_decision_must_match_exactly",
+    ]
+    if not expires_at:
+        limitations.append("expires_at_must_be_set_before_approval")
     return {
         "authorization_kind": AUTHORIZATION_KIND,
         "schema_version": AUTHORIZATION_SCHEMA_VERSION,
@@ -119,11 +157,7 @@ def build_execution_authorization_draft(
             "commit": subject["commit"],
             "tree_hash": subject["tree_hash"],
         },
-        "limitations": [
-            "draft_only_not_approved",
-            "not_execution_authorization_until_human_approved",
-            "argv_scope_policy_and_gate_decision_must_match_exactly",
-        ],
+        "limitations": limitations,
         "residual_risks": [
             "human approval required before execution",
             "authorization is only valid for the exact reviewed command and scope",

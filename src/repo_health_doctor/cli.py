@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import subprocess
@@ -162,7 +163,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             else
             "Release mode: repo-health-doctor release-check <path> [--baseline-report before.json] [--format json|markdown]"
             if release_check_mode
-            else "Authorization draft mode: repo-health-doctor authorization draft --gate-decision gate.json --argv-json argv.json --output authorization.json"
+            else "Authorization draft mode: repo-health-doctor authorization draft --gate-decision gate.json --argv-json argv.json [--expires-in-minutes N | --expires-at ISO8601] --output authorization.json"
             if authorization_draft_mode
             else "Authorization validate mode: repo-health-doctor authorization validate --authorization authorization.json --gate-decision gate.json --argv-json argv.json"
             if authorization_validate_mode
@@ -266,6 +267,19 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
     if authorization_draft_mode or authorization_validate_mode:
         parser.add_argument("--gate-decision", required=True, help="Gate decision JSON used as the authorization basis.")
         parser.add_argument("--argv-json", required=True, help="JSON array containing the exact argv to authorize or validate.")
+    if authorization_draft_mode:
+        expiry_group = parser.add_mutually_exclusive_group()
+        expiry_group.add_argument(
+            "--expires-in-minutes",
+            type=int,
+            metavar="N",
+            help="Set expires_at to N minutes from the current UTC time; N must be positive.",
+        )
+        expiry_group.add_argument(
+            "--expires-at",
+            metavar="ISO8601",
+            help="Set expires_at to the supplied ISO 8601 timestamp.",
+        )
     if authorization_validate_mode:
         parser.add_argument("--authorization", required=True, help="Execution authorization artifact JSON to validate.")
     if gate_check_mode:
@@ -554,7 +568,25 @@ def main(argv: list[str] | None = None) -> int:
             gate_decision = _load_json_object(Path(args.gate_decision), "gate decision")
             argv = _load_argv_json(Path(args.argv_json))
             if command == "authorization-draft":
-                report = build_execution_authorization_draft(gate_decision, argv)
+                expires_at = args.expires_at
+                if expires_at is not None:
+                    try:
+                        datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                    except ValueError:
+                        parser.error("--expires-at must be an ISO 8601 timestamp")
+                if args.expires_in_minutes is not None:
+                    if args.expires_in_minutes <= 0:
+                        parser.error("--expires-in-minutes must be greater than 0")
+                    try:
+                        expiry = datetime.now(timezone.utc) + timedelta(minutes=args.expires_in_minutes)
+                    except OverflowError:
+                        parser.error("--expires-in-minutes is outside the supported datetime range")
+                    expires_at = expiry.isoformat(timespec="seconds").replace("+00:00", "Z")
+                report = build_execution_authorization_draft(
+                    gate_decision,
+                    argv,
+                    expires_at=expires_at,
+                )
                 authorization_valid = True
             else:
                 authorization = _load_json_object(Path(args.authorization), "authorization")

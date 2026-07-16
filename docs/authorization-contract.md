@@ -1,0 +1,102 @@
+# Execution Authorization Contract
+
+この文書はexperimentalなexecution authorization `0.1-draft`の現行実装を記録する。gate decisionは単独では実行を認可せず、authorizationもexact scope、argv、policy、gate decision、expiryの検証をすべて通過した場合だけ`execution_authorized=true`になる。
+
+## T0 subject binding根拠
+
+F018開始時点の算出経路は次のとおりである。ここに記録する値は、将来の直接Git bindingが既に存在するという主張ではない。
+
+| 項目 | 現行の算出元と値 | 現行契約への影響 |
+| --- | --- | --- |
+| `repo` | `src/repo_health_doctor/evidence/v3_adapter.py`の`_repo()`が常に`<repo>`を返し、`build_gate_decision_candidate_from_v3_report()`がgate subjectへ入れる。v3 reportの表示用`repo_path`はauthorization identityとして使わない。 | private pathを保持しない一方、repository identityの直接照合ではない。 |
+| `commit` | v3 adapterが`null`を設定する。`git rev-parse HEAD`はこのsubject生成経路では実行しない。 | clean commitへのbindingを主張できない。 |
+| `tree_hash` | v3 adapterが`null`を設定する。HEAD treeもworktree content digestもこの経路では算出しない。 | treeへのbindingを主張できない。 |
+| `dirty` | gate decision subjectとauthorization `approved_scope`にはfield自体がなく、この経路ではdirty worktreeを取得しない。 | clean/dirtyをauthorization validatorだけで区別できない。 |
+| `binding_kind` | v3 adapterが`path_bound`を設定する。`src/repo_health_doctor/gate/evaluator.py`の`_decision_subject()`は明示subjectを優先して、この値を正規化する。 | `commit_bound`または`tree_bound`ではない。 |
+
+`src/repo_health_doctor/gate/authorization.py`の`_gate_subject()`はgate decisionの`repo`、`commit`、`tree_hash`、`binding_kind`を`approved_scope`へ写す。artifact内の`subject`は0.1-draft互換の`repo`、`commit`、`tree_hash`だけを持つ。validatorは`approved_scope`を4 fieldすべてで、`subject`を3 fieldすべてでgate decisionとexact比較するが、上流に存在しないGit情報を補完しない。
+
+`gate-check`と`sandbox-run --authorization`は、対象repoのv3 scanから上記gate decisionを作り、command argvとともに同じvalidatorへ渡す。現行`sandbox-run`はworkspace copy前にrepo root、HEAD commit、HEAD tree、dirty statusを直接取得してauthorization subjectと比較しない。non-git対象もsubject生成だけでは拒否されない。この直接照合は本契約の現状には含まれない。
+
+`src/repo_health_doctor/cli.py`の`_external_evidence_subject()`はexternal scanner evidenceの入力検証用に`git rev-parse HEAD`と`git status --short`からcommitとdirty stateを取得するが、その結果はauthorization gate subjectの算出元ではなく、tree hashも取得しない。scanner evidenceのbindingとexecution authorizationのbindingを同一視してはならない。
+
+## Expiry CLI
+
+`authorization draft`は次のexpiry optionを持つ。
+
+```text
+repo-health-doctor authorization draft --gate-decision gate.json --argv-json argv.json --expires-in-minutes 60
+repo-health-doctor authorization draft --gate-decision gate.json --argv-json argv.json --expires-at 2026-07-16T12:00:00Z
+```
+
+- `--expires-in-minutes N`と`--expires-at ISO8601`は相互排他である。
+- `--expires-in-minutes`は正の整数だけを受理し、現在のUTCからN分後を秒精度の`expires_at`として出力する。60分以内は運用上の推奨であり、固定policyまたは上限ではない。
+- `--expires-at`はISO 8601としてparseできる値をそのまま`expires_at`へ入れる。過去時刻のdraft生成自体は可能だが、validatorは`authorization_expired`で拒否する。
+- どちらも未指定なら従来どおり`expires_at: null`を出力し、`expires_at_must_be_set_before_approval` limitationを付ける。validatorはnullを`expires_at_required`で拒否する。
+- draftはexpiryの有無にかかわらず`approved=false`であり、Human approvalや実行認可を生成しない。
+
+## Refusal reason台帳
+
+reasonはraw入力値やpathを含まないmachine-readable tokenである。artifact validatorが返す正本は`AUTHORIZATION_REFUSAL_REASONS`、discoveryが返す正本は`AUTHORIZATION_DISCOVERY_REFUSAL_REASONS`であり、testがこの文書との同期を確認する。
+
+### Authorization artifact validator
+
+| refusal reason | 拒否条件 |
+| --- | --- |
+| `authorization_must_be_object` | 入力がJSON objectではない。 |
+| `authorization_top_level_required_or_unknown_field` | top-levelのrequired/allowed field集合が0.1-draftと一致しない。 |
+| `authorization_kind_unsupported` | `authorization_kind`が未対応である。 |
+| `authorization_schema_version_unsupported` | schema versionが未対応である。 |
+| `approval_missing` | `approved`が`true`ではない。 |
+| `approved_must_be_boolean` | `approved`がbooleanではない。 |
+| `limitations_empty` | limitationが空または不正である。 |
+| `residual_risks_empty` | residual riskが空または不正である。 |
+| `approved_scope_mismatch` | repo、commit、tree、`binding_kind`を含むapproved scopeがgate subjectと一致しない。 |
+| `approved_argv_mismatch` | approved argvが実行対象argvとexact一致しない。 |
+| `approved_policy_version_mismatch` | approved policy versionがgate decisionと一致しない。 |
+| `based_on_gate_decision_required_or_unknown_field` | gate referenceのfield集合が一致しない。 |
+| `based_on_gate_decision_mismatch` | decision kind、schema、verdict、fingerprintが一致しない。 |
+| `authorization_subject_required_or_unknown_field` | 0.1-draft subjectのrepo、commit、tree field集合が一致しない。 |
+| `authorization_subject_mismatch` | 0.1-draft subjectがgate subjectのrepo、commit、treeと一致しない。 |
+| `expires_at_required` | expiryがnullまたは空である。 |
+| `expires_at_invalid` | expiryをISO 8601としてparseできない。 |
+| `authorization_expired` | expiryが検証時刻以前である。 |
+| `approved_by_required` | approved artifactにapprover識別子がない。 |
+| `approved_at_required` | approved artifactにapproval時刻がない。 |
+| `approved_at_invalid` | approval時刻をISO 8601としてparseできない。 |
+| `gate_verdict_block_cannot_be_authorized` | gate verdictがblockである。 |
+| `gate_verdict_quarantine_cannot_be_authorized` | gate verdictがquarantineである。 |
+| `gate_verdict_unknown_cannot_be_authorized` | gate verdictがunknownである。 |
+| `gate_verdict_invalid_for_authorization` | verdictが認可対象の既知値ではない。 |
+| `authorization_contains_forbidden_raw_pattern` | artifact内に保持禁止patternがある。 |
+| `authorization_contains_raw_host_path` | artifact内にraw host pathがある。 |
+
+warn verdictの`warn_verdict_authorization_requires_explicit_human_acceptance`はwarningであり、単独のrefusal reasonではない。
+
+### Authorization discovery
+
+| refusal reason | 拒否条件 |
+| --- | --- |
+| `tracked_refused` | repository-root候補がGit trackedである。 |
+| `not_a_git_repo` | 対象が要求されたGit top-levelではない。 |
+| `symlink_refused` | 候補がsymlinkまたはsymlinkとしてopenされた。 |
+| `not_found` | 単一候補が存在しない。 |
+| `parse_failed` | bounded read結果がJSON objectではない。 |
+| `too_large` | 候補が64 KiB上限を超える。 |
+| `git_error` | boundedなGit確認を完了できない。 |
+| `file_changed` | lstat、open、fstat、readの間に候補の同一性または状態を確認できない。 |
+
+discovery refusalは別候補へのfallbackを行わず、成功時もartifact validatorを迂回しない。
+
+### Gate-checkとsandbox-runの統合reason
+
+| refusal reason | 拒否条件 |
+| --- | --- |
+| `authorization_missing` | validation対象のauthorizationがない。 |
+| `authorization_invalid` | validation結果が認可せず、より具体的なblocking errorもない場合のfail-closed fallbackである。 |
+| `gate_verdict_block` | 選択した`--fail-on-gate` thresholdがblock verdictを拒否する。 |
+| `gate_verdict_quarantine` | 選択したthresholdがquarantine verdictを拒否する。 |
+| `gate_verdict_warn` | 選択したthresholdがwarn verdictを拒否する。 |
+| `gate_verdict_unknown` | 選択したthresholdがunknown verdictを拒否する。 |
+
+argparseによるexpiry option相互排他や不正なCLI値はusage errorとしてexit 2になり、artifactの`blocking_errors`には入らない。
