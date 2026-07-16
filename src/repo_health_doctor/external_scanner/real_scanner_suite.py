@@ -26,6 +26,11 @@ from .adapters import (
     run_osv_scan,
     run_trivy_scan,
 )
+from .version_assessment import (
+    VERSION_STATUS_COMPATIBLE_FAMILY_UNVERIFIED,
+    assess_gitleaks_version,
+    assess_osv_scanner_version,
+)
 
 
 SUITE_REPORT_KIND = "real_scanner_suite"
@@ -167,7 +172,7 @@ def run_real_scanner_suite(
         entries.append(entry)
         suite_findings_used += entry.finding_count
 
-    status = "completed" if all(entry.valid and entry.status == "completed" for entry in entries) else "degraded"
+    status = "completed" if all(_entry_completed_without_degradation(entry) for entry in entries) else "degraded"
     limitations = list(REAL_SCANNER_SUITE_LIMITATIONS)
     if per_scanner_budget_exceeded:
         limitations.append("per_scanner_finding_budget_exceeded")
@@ -296,6 +301,9 @@ def _entry_from_run_result(
         normalized = _truncate_normalized_result(normalized, retained_finding_count)
     omitted_finding_count = max(0, original_finding_count - retained_finding_count)
     warnings = list(result.warnings)
+    version_status = _entry_version_status(scanner_name, normalized)
+    if version_status == VERSION_STATUS_COMPATIBLE_FAMILY_UNVERIFIED:
+        warnings.append("scanner_version_compatible_family_unverified")
     if omitted_finding_count and truncation_warning not in warnings:
         warnings.append(truncation_warning)
     finding_count = min(len(finding_records), retained_finding_count)
@@ -389,7 +397,7 @@ def _apply_report_byte_budget(
     generated_at: str,
     subject: Mapping[str, object],
 ) -> tuple[list[RealScannerSuiteEntry], bool]:
-    status = "completed" if all(entry.valid and entry.status == "completed" for entry in entries) else "degraded"
+    status = "completed" if all(_entry_completed_without_degradation(entry) for entry in entries) else "degraded"
     if any(entry.truncated for entry in entries):
         status = "degraded"
     placeholder_fingerprint = "sha256:" + "0" * 64
@@ -557,6 +565,26 @@ def _subject_from_entries(entries: Sequence[RealScannerSuiteEntry]) -> Mapping[s
 def _mapping_value(value: Mapping[str, object], key: str) -> Mapping[str, object]:
     nested = value.get(key)
     return nested if isinstance(nested, Mapping) else {}
+
+
+def _entry_version_status(scanner_name: str, normalized: Mapping[str, object]) -> str | None:
+    scanner = _mapping_value(normalized, "scanner")
+    version = scanner.get("version")
+    if not isinstance(version, str):
+        return None
+    if scanner_name == "gitleaks":
+        return assess_gitleaks_version(version).status
+    if scanner_name == "osv-scanner":
+        return assess_osv_scanner_version(version).status
+    return None
+
+
+def _entry_completed_without_degradation(entry: RealScannerSuiteEntry) -> bool:
+    return (
+        entry.valid
+        and entry.status == "completed"
+        and "scanner_version_compatible_family_unverified" not in entry.warnings
+    )
 
 
 def _nonnegative_int(value: object) -> int:

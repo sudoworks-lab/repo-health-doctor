@@ -6,6 +6,7 @@ import unittest
 
 from repo_health_doctor.evidence.adapters import normalize_osv_report_to_evidence
 from repo_health_doctor.evidence.validation import validate_evidence
+from repo_health_doctor.external_scanner import assess_osv_scanner_version
 from repo_health_doctor.gate import evaluate_gate_decision
 
 
@@ -39,6 +40,16 @@ def _load(name: str) -> object:
 
 
 class RealOsvCompatibilityTests(unittest.TestCase):
+    def test_fixture_exact_version_is_the_only_tested_version(self) -> None:
+        fixture_version = (FIXTURES / "osv-scanner-version.txt").read_text(encoding="utf-8")
+        exact = assess_osv_scanner_version(fixture_version)
+        same_family = assess_osv_scanner_version("osv-scanner 2.0.4")
+
+        self.assertEqual(exact.status, "tested")
+        self.assertEqual(exact.version, "2.0.3")
+        self.assertEqual(same_family.status, "compatible_family_unverified")
+        self.assertNotEqual(same_family.status, "tested")
+
     def test_real_compatible_json_fixture_parses_to_valid_evidence(self) -> None:
         expected = _load("expected-evidence.json")["vulnerability"]  # type: ignore[index]
         evidence = normalize_osv_report_to_evidence(_load("vulnerabilities.real.json"), tool_version="2.0.3")

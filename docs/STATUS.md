@@ -95,3 +95,11 @@
 - 判断と理由: `evidence_refs`をoptionalにし、external evidence指定時だけ追加することで未指定時の既存出力を変えない。file pathは保存せず、invalid JSONやover-budget inputも黙ってskipせずinvalidなbounded referenceへ変換する。trailing argvによるauthorization discoveryはF013の範囲なので実装せず、明示authorizationは従来の`--authorization`と`--argv-json`に限定した。
 - 既知の問題: 指定test commandの`PYTHONPATH=src`直接表記は実行環境のapproval policyによりprocess生成前に拒否されたため、同値の`env PYTHONPATH=src`で実行しexit 0を確認した。実repoのoffline suiteはdirty worktreeとnetwork scanner skipによりdegradedだが、これは既存のfail-closed契約に従う結果である。
 - follow-up候補: F008の範囲に残作業はない。F009以降のfeatureは今回扱っていない。
+
+## 2026-07-16 JST — F009 Gitleaks/OSV version assessment
+
+- 今回やったこと: GitleaksとOSV-Scannerに共通のversion assessmentを追加し、既存fixtureのexact versionだけを`tested`、同一majorの別versionを`compatible_family_unverified`、別majorを`unsupported`、明示denylistを`denylisted`、安全にparseできない出力を`unparseable`として区別した。compatible familyは実行可能のままentryへwarningを残し、real scanner suite全体を`degraded`にするよう接続した。Trivy、fixture、schema version、既存`rule_id`は変更していない。
+- 検証結果: 指定の3-module検証を同値の`env PYTHONPATH=src python3 -m unittest tests.test_real_gitleaks_compatibility tests.test_real_osv_compatibility tests.test_real_scanner_version_status -v`で実行し、18件pass・0件failだった。test出力でGitleaks 8.27.2とOSV-Scanner 2.0.3だけが`tested`となり、同一familyの別versionが`compatible_family_unverified`かつsuite `degraded`になることを確認した。suite、formatter、budget、CLI、両adapterの回帰60件は59件pass・1件skip・0件fail、全unit suiteは717件pass・3件skip・0件failだった。CLI help/version、public-safety、policy validation、JSON report生成・parse、docs/fixture一覧、AGENTS行数、`git diff --check`も成功した。
+- 判断と理由: major versionの一致だけではfixtureで観測した出力互換性を証明できないため、exact fixture version以外を`tested`へ昇格させない。denylistは各scanner policyに明示し、`unsupported`より先に評価することで両statusを機械的に区別する。version出力はscanner名付きまたはbare versionの1行だけを受理し、任意文字列からversionらしい部分を抽出しない。
+- 既知の問題: 指定commandの先頭`PYTHONPATH=src`形式とJSON parserの`>/dev/null`付き形式は実行環境のapproval policyによりprocess生成前に拒否されたため、同値の`env PYTHONPATH=src`形式と出力抑制なしのJSON parseで検証した。live scannerの取得は行っていない。local Gitleaks binaryが存在する環境の既存optional adapter testは実行されたが、network accessやfixture再生成は行っていない。
+- follow-up候補: F010のTrivy compatibility対称化とF011の3 scanner文書matrixは今回扱っていない。F009の範囲に残作業はない。

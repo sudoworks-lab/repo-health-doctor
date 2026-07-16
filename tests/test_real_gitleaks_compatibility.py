@@ -6,6 +6,7 @@ import unittest
 
 from repo_health_doctor.evidence.adapters import normalize_gitleaks_report_to_evidence
 from repo_health_doctor.evidence.validation import validate_evidence
+from repo_health_doctor.external_scanner import assess_gitleaks_version
 from repo_health_doctor.gate import evaluate_gate_decision
 
 
@@ -39,6 +40,16 @@ def _load(name: str) -> object:
 
 
 class RealGitleaksCompatibilityTests(unittest.TestCase):
+    def test_fixture_exact_version_is_the_only_tested_version(self) -> None:
+        fixture_version = (FIXTURES / "gitleaks-version.txt").read_text(encoding="utf-8")
+        exact = assess_gitleaks_version(fixture_version)
+        same_family = assess_gitleaks_version("gitleaks 8.27.3")
+
+        self.assertEqual(exact.status, "tested")
+        self.assertEqual(exact.version, "8.27.2")
+        self.assertEqual(same_family.status, "compatible_family_unverified")
+        self.assertNotEqual(same_family.status, "tested")
+
     def test_real_compatible_json_fixture_parses_to_valid_evidence(self) -> None:
         expected = _load("expected-evidence.json")["redacted_finding"]  # type: ignore[index]
         evidence = normalize_gitleaks_report_to_evidence(_load("findings-redacted.real.json"), tool_version="8.27.2")

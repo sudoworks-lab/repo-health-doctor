@@ -123,8 +123,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_real_gitleaks_compatibility tests.test_real_osv_compatibility tests.test_real_scanner_version_status -v を実行する",
         "test出力でfixture exact versionだけがtestedとなり、compatible familyがdegradedになることを確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T13:30:00+09:00",
       "blocked": false
     },
     {
