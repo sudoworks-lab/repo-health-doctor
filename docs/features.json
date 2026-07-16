@@ -39,8 +39,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_real_scanner_suite -v を実行する",
         "test出力で3 scannerの処理継続、suite degraded、execution_authorized=falseを確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T11:57:05+09:00",
       "blocked": false
     },
     {
