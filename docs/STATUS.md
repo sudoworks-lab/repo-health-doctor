@@ -299,3 +299,11 @@
 - 判断と理由: 非zeroを一律停止にしつつ、`sandbox-run`のpolicy block exit 2と開始済みtarget command自身のexit 2はreportとstderr prefixで区別する。どちらも自動継続は許可しない。gate decisionやscanner finding 0件、sandbox successはauthorizationまたは安全性の証明に昇格させず、次commandには新しいexact bindingとHuman controlを要求する。
 - 既知の問題: `sandbox-run`はexternal evidenceを直接受け取らず内部gateを生成するため、external-evidence gate用artifactとsandbox内部gate用artifactはfingerprintが異なる場合に流用できない。文書は別artifactと再reviewを要求し、差異を隠していない。指定test commandの先頭環境代入形式はこの実行環境では未実行であるが、同値commandはgreenである。
 - follow-up候補: F032のtool別bindingとF033のREADME、docs index、public contract、CHANGELOG同期は各指定featureのprocessで行う。F031では変更していない。
+
+## 2026-07-17 JST — F032 公式source packetに基づくtool別binding
+
+- 今回やったこと: Human提供の`docs/human-review/agent-binding-official-sources.md`をread-onlyかつofflineで参照し、Codex、Claude Code、Cursorのbinding文書へ`verified-as-of: 2026-07-16 JST`、公式source URL、確認済み事項、未確認事項、instruction-based limitationを記録した。CodexはAGENTS.md instruction chain、Claude Codeは`PreToolUse`のdecisionとevent別exit behavior、CursorはRules、Hooks、CLIの公式page存在までに根拠を限定した。source packet、account設定、tool設定は変更せず、network accessも行っていない。
+- 検証結果: `test -f docs/human-review/agent-binding-official-sources.md`はexit 0だった。指定の先頭`PYTHONPATH=src`形式はprocess生成前に実行環境ポリシーから拒否されたため、同値の`env PYTHONPATH=src python3 -m unittest tests.test_agent_binding_docs -v`を実行した。初回は見出しの大小文字比較だけを原因として5件中1件failし、test側の比較を修正後に5件pass・0件failとなった。関連するAI agent integrationとcanonical contractの10件もpassし、全unit suiteは837件実行・823件pass・14件skip・0件failだった。PLANのdocs/fixture一覧、AGENTS.md 77行、`git diff --check`、CLI help/version、public-safety、policy validation、JSON report生成も成功した。JSON parseの`>/dev/null`付き形式はprocess生成前に拒否されたため、出力抑制なしの`python3 -m json.tool`で同じreportをparseしexit 0を確認した。
+- 判断と理由: source packetで確認されていない強制機構やexit semanticsは推測せず、CodexとCursorはinstruction-based limitationとして明示した。Claude Codeの`PreToolUse`は強制surface候補としたが、この作業では設定をinstallせず、Human review前の有効化済み表現を避けた。専用検証と基本検証がすべてgreenになったため、F032を`passes:true`、`blocked:false`としてJSTの検証日時を記録した。
+- 既知の問題: verified-as-of以後の公式仕様変更には自動追随しない。Codexのcommand実行前の強制hook、Claude Codeの対象環境での設定状態と完全な設定schema、Cursorのhook event名、decision schema、exit code block契約、project ruleおよびnon-interactive CLIの強制契約は未確認である。
+- follow-up候補: F033の別processでREADME、docs index、public contract、CHANGELOGとのcross-linkと表示commandの非実行smokeを同期する。F032以外のfeatureには着手していない。

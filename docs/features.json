@@ -400,8 +400,8 @@
         "packetをread-onlyで参照し、network accessを行わず、確認済み事項だけを3つのbinding docsへ反映する",
         "PYTHONPATH=src python3 -m unittest tests.test_agent_binding_docs -v を実行し、verified-as-of、公式source、未確認事項、強制機構不在時のlimitationを確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-17T00:02:04+09:00",
       "blocked": false
     },
     {

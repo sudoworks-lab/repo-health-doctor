@@ -1,157 +1,45 @@
-# Claude Code Integration
+# Claude Code Binding
 
-This guide is for using repo-health-doctor as a pre-execution gate in an
-external project. It is not the development workflow for this repository; see
-[agent-development-guide.md](agent-development-guide.md) for that.
+- verified-as-of: 2026-07-16 JST
+- offline evidence: [Human提供の公式source packet](human-review/agent-binding-official-sources.md)
+- official source: [Claude Code hooks](https://code.claude.com/docs/en/hooks)
 
-repo-health-doctor does not authorize execution by itself. A gate decision says
-what the current evidence supports. A separate execution authorization artifact
-is required before running repository-derived commands.
+この文書は、上記packetをofflineで参照して作成した。作成時にnetwork access、
+account設定変更、Claude Code設定変更は行っていない。verified-as-of以後の公式仕様変更には
+自動追随しない。
 
 Start with the plan-only AI agent demo in
-[ai-agent-preflight.md](ai-agent-preflight.md). It does not edit Claude Code,
-Codex, Cursor, MCP, hook, or global configuration, and it never executes the
-target command. The hook examples below are project-local integration sketches
-for a separate reviewed step, not something the demo installs.
-The plan-only demo never executes the target command.
-Do not change global Claude Code configuration as part of the plan-only demo.
+[ai-agent-preflight.md](ai-agent-preflight.md). It never executes the target command.
 
-## Claude Code Hook Contract
+## 確認済み事項
 
-Claude Code hook behavior is documented in Anthropic's
-[hooks reference](https://docs.anthropic.com/en/docs/claude-code/hooks) and
-[hooks guide](https://docs.anthropic.com/en/docs/claude-code/hooks-guide).
-For `PreToolUse`, exit `2` blocks the tool call and stderr is fed back to
-Claude. Exit `1` is not a reliable block for most hook events; treat it as a
-foot-gun for policy enforcement.
+- `PreToolUse`はtool parameter作成後、tool call処理前に実行される。
+- `PreToolUse`は`allow`、`deny`、`ask`、`defer`のdecisionを扱える。
+- command hookのexit 2はblocking errorである。
+- `PreToolUse`におけるexit 2はtool callをblockする。
+- 多くのhook eventではexit 1はnon-blocking errorである。
+- structured decisionを返す場合はexit 0とJSON outputを使用する。
 
 ## Project-Local PreToolUse Sketch
 
-This section is a manual sketch for later project-local integration. Do not use
-it as part of the safe plan-only demo, and do not change global Claude Code
-configuration without a separate human review.
+`PreToolUse`は、[AI Agent Canonical Contract](agent-contract.md)をcommand実行前に確認する
+強制surfaceの候補として扱える。ただし、この文書はhook設定例をinstallせず、accountまたは
+tool設定を変更しない。実際の設定内容と適用範囲は、公式sourceを再確認したうえでHumanが
+別途reviewする。Do not change global Claude Code configuration as part of this offline binding work.
 
-Example `.claude/settings.json`:
+hookを設計する場合、exit 2だけをpacketで確認済みのblocking errorとして扱う。exit 1を
+blockとして利用しない。structured decisionを使う場合はexit 0とJSON outputを使用し、
+eventごとにexit behaviorが異なる境界を維持する。
 
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/repo-health-gate.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+## 未確認事項
 
-Example `.claude/hooks/repo-health-gate.sh`:
+- 対象環境で`PreToolUse` hookが設定済みまたは有効であるか。
+- accountまたはprojectごとのhook設定の正確な配置と設定schema。
+- packetに個別記載されていない各hook eventのexit behavior。
+- structured decision JSONの完全なfield schema。
 
-```bash
-#!/usr/bin/env bash
-set -u
+## Instruction-based limitation
 
-tmp_stderr="$(mktemp)"
-repo-health-doctor "$PWD" --public-safety --fail-on-gate quarantine \
-  >/dev/null 2>"$tmp_stderr"
-status=$?
-
-if [ "$status" -eq 0 ]; then
-  rm -f "$tmp_stderr"
-  exit 0
-fi
-
-if [ "$status" -eq 2 ]; then
-  cat "$tmp_stderr" >&2
-else
-  echo "repo-health-doctor pre-execution gate did not pass; review locally before running repository commands." >&2
-fi
-
-rm -f "$tmp_stderr"
-exit 2
-```
-
-The wrapper intentionally does not print the Claude Code tool input, command
-body, environment values, or local file paths. It maps any non-zero
-repo-health-doctor result to exit `2` so the hook blocks instead of becoming a
-non-blocking exit `1` error.
-
-## Gate-Check With Authorization
-
-`gate-check` combines gate generation and authorization validation. It exits
-`2` unless a valid authorization artifact is supplied and the selected gate
-threshold allows the verdict.
-
-```bash
-repo-health-doctor gate-check "$PWD" \
-  --fail-on-gate quarantine \
-  --authorization .repo-health-doctor.local/authorization.json \
-  --argv-json .repo-health-doctor.local/argv.json
-```
-
-Current limitation: `gate-check` does not auto-discover authorization artifacts.
-Pass explicit local-only paths and do not commit those files.
-
-## Flow
-
-```text
-repository checkout
-  -> repo-health-doctor gate decision
-  -> human reviews evidence and writes authorization artifact
-  -> repo-health-doctor authorization validate or gate-check
-  -> sandbox-run executes the exact argv in a locked-down disposable workspace
-     when policy allows it
-```
-
-## Handling Decisions
-
-- `BLOCK`: do not run the command. Fix the blocking evidence or redaction issue
-  first.
-- `QUARANTINE`: do not run locally. Use a dedicated VM or stronger isolation if
-  execution is still necessary.
-- `UNKNOWN`: do not treat missing evidence as confidence. Collect or review the
-  missing evidence.
-- `WARN`: review limitations and require explicit authorization before
-  execution.
-- `ALLOW_LIMITED`: still not a safety proof. Run only the exact reviewed command
-  and scope after authorization validation succeeds.
-
-## CLAUDE.md Or AGENTS.md Rule Example
-
-```markdown
-Before running repository-derived Bash commands, run:
-
-repo-health-doctor . --public-safety --fail-on-gate quarantine
-
-If it exits 2, stop and follow the redacted stderr next actions. Do not paste
-secrets, command bodies, local paths, or environment values into logs or chat.
-A gate decision is not execution authorization; validate an explicit
-authorization artifact for the exact argv before running commands.
-```
-
-## Sandbox-Run Execution
-
-When an agent needs execution evidence after the gate step, use `sandbox-run`
-instead of running the repository-derived command on the host:
-
-```bash
-repo-health-doctor sandbox-run "$PWD" \
-  --profile locked-down \
-  --fail-on-gate quarantine \
-  --authorization .repo-health-doctor.local/authorization.json \
-  --evidence-output /tmp/repo-health-doctor-sandbox-run.json \
-  -- python -m pytest
-```
-
-The sandbox-run policy block exit is `2` and uses stderr prefix
-`SANDBOX-RUN POLICY BLOCK`. If the command itself exits `2`, stderr uses
-`SANDBOX-RUN COMMAND EXIT` and the evidence has `command_started=true`.
-
-See [sample-outputs/gate-check-blocked.txt](sample-outputs/gate-check-blocked.txt)
-for a redacted blocked-hook style message.
+`PreToolUse`はpacketで確認済みの強制surface候補だが、このrepositoryはhookやtool設定を
+自動構成しない。Humanが設定をreviewして有効化し、そのblock動作を確認するまでは、文書や
+CLAUDE.mdだけの運用はinstruction-based limitationを持ち、tool callの技術的な停止を保証しない。
