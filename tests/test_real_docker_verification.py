@@ -1,13 +1,24 @@
 from __future__ import annotations
 
+from copy import deepcopy
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
+from textwrap import dedent
 import unittest
 from unittest.mock import patch
 
+from repo_health_doctor.gate.authorization import validate_execution_authorization
 from repo_health_doctor.sandbox.docker_runner import DockerRunner
+from repo_health_doctor.sandbox.image_binding import (
+    is_digest_pinned_authorization_reference,
+    is_full_local_image_id,
+)
+from repo_health_doctor.sandbox.profiles import PROFILE_MOBY_DEFAULT, resolve_seccomp_profile
 from repo_health_doctor.sandbox.run import DEFAULT_SANDBOX_IMAGE, run_sandbox_run
 from repo_health_doctor.sandbox.run_workspace import CopyBudget, fingerprint_target
 
@@ -61,6 +72,16 @@ CASE_7_COMMAND = [
     "python3",
     "-c",
     "print('copy-budget-command-must-not-start')",
+]
+CASE_8_COMMAND = [
+    "python3",
+    "-c",
+    "print('packaged-seccomp-profile-active')",
+]
+CASE_10_COMMAND = [
+    "python3",
+    "-c",
+    "print('installed-package-seccomp-profile-active')",
 ]
 
 
@@ -235,6 +256,268 @@ class RealDockerBoundaryCasesOneToSeven(unittest.TestCase):
         self.assertIn("copy_budget_exceeded", report["approval"]["refusal_reasons"])
         self.assertTrue(report["disposable_workspace"]["copy_budget"]["copy_budget_exceeded"])
         self.assertEqual(CASE_7_COMMAND, report["command"]["argv_redacted"])
+
+
+@unittest.skipUnless(REAL_DOCKER_ENABLED, "set RHD_REAL_DOCKER_TEST=1 to run real Docker boundary cases")
+class RealDockerBoundaryCasesEightToTen(unittest.TestCase):
+    image: str
+    image_id: str
+    runner: DockerRunner
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.image = os.environ.get("RHD_REAL_DOCKER_IMAGE", "").strip()
+        if not cls.image:
+            raise RuntimeError(
+                "cases 8-10 require RHD_REAL_DOCKER_IMAGE to name an existing local digest-pinned image"
+            )
+        if not is_digest_pinned_authorization_reference(cls.image):
+            raise RuntimeError("cases 8-10 require a digest-pinned RHD_REAL_DOCKER_IMAGE")
+        cls.runner = DockerRunner()
+        if not cls.runner.docker_available():
+            raise RuntimeError("RHD_REAL_DOCKER_TEST=1 requires an accessible local Docker daemon")
+        if not cls.runner.image_available_locally(cls.image):
+            raise RuntimeError(
+                "RHD_REAL_DOCKER_IMAGE must already exist locally; cases 8-10 do not pull images"
+            )
+        completed = subprocess.run(
+            ["docker", "image", "inspect", "--format", "{{.Id}}", cls.image],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        cls.image_id = completed.stdout.strip()
+        if completed.returncode != 0 or not is_full_local_image_id(cls.image_id):
+            raise RuntimeError("the selected local image must resolve to one full sha256 image ID")
+
+    def _repo(self, root: Path) -> Path:
+        repo = root / "repo"
+        repo.mkdir()
+        (repo / "README.md").write_text("synthetic real Docker cases 8-10 fixture\n", encoding="utf-8")
+        return repo
+
+    def _run_case(self, repo: Path, *, command: list[str]) -> dict[str, object]:
+        original_fingerprint = fingerprint_target(repo).fingerprint
+        created_run_roots: list[Path] = []
+        real_mkdtemp = tempfile.mkdtemp
+
+        def tracked_mkdtemp(*args: object, **kwargs: object) -> str:
+            created = Path(real_mkdtemp(*args, **kwargs))
+            created_run_roots.append(created)
+            return str(created)
+
+        with patch("repo_health_doctor.sandbox.run_workspace.tempfile.mkdtemp", side_effect=tracked_mkdtemp):
+            report = run_sandbox_run(
+                repo,
+                image=self.image,
+                profile_name="no-network-readonly",
+                seccomp_profile_name=PROFILE_MOBY_DEFAULT,
+                command_argv=command,
+                timeout_seconds=10,
+                runner=self.runner,
+            )
+
+        self.assertEqual(original_fingerprint, fingerprint_target(repo).fingerprint)
+        self.assertTrue(created_run_roots)
+        self.assertTrue(all(not path.exists() for path in created_run_roots))
+        self._assert_completed_execution_contract(report, command)
+        return report
+
+    def _assert_schema_valid(self, report: dict[str, object]) -> None:
+        schema = json.loads((ROOT / "schemas" / "sandbox-run.schema.json").read_text(encoding="utf-8"))
+        try:
+            from jsonschema import Draft202012Validator
+        except ModuleNotFoundError:
+            self.assertTrue(set(schema["required"]).issubset(report))
+            self.assertIn(report["result"]["status"], schema["properties"]["result"]["properties"]["status"]["enum"])
+        else:
+            Draft202012Validator(schema).validate(report)
+
+    def _assert_completed_execution_contract(self, report: dict[str, object], command: list[str]) -> None:
+        self._assert_schema_valid(report)
+        self.assertEqual("completed", report["result"]["status"])
+        self.assertEqual(0, report["sandbox_exit_code"])
+        self.assertTrue(report["command_started"])
+        self.assertTrue(report["docker"]["docker_invoked"])
+        self.assertEqual("never", report["docker"]["pull_policy"])
+        self.assertEqual(1, report["docker"]["argv_redacted"].count("--pull=never"))
+        self.assertEqual(1, report["docker"]["argv_redacted"].count("--rm"))
+        self.assertEqual(command, report["command"]["argv_redacted"])
+        self.assertEqual("ok", report["disposable_workspace"]["cleanup"])
+        self.assertFalse(report["output_summary"]["raw_stdout_stderr_persisted"])
+
+    def _assert_packaged_seccomp_evidence(self, report: dict[str, object]) -> None:
+        resolved = resolve_seccomp_profile()
+        self.assertEqual(PROFILE_MOBY_DEFAULT, report["seccomp"]["profile"])
+        self.assertEqual(resolved.profile_sha256, report["seccomp"]["profile_sha256"])
+        self.assertEqual("package_data", report["seccomp"]["source"])
+        argv = report["docker"]["argv_redacted"]
+        self.assertIn("--security-opt", argv)
+        self.assertIn("seccomp=<sandbox-run-root>/rhd-moby-default-v1.json", argv)
+
+    def test_case_8_packaged_moby_default_seccomp_runs_with_local_image(self) -> None:
+        """case 8: rhd-moby-default-v1 executes under Docker without pulling the selected local image."""
+        with tempfile.TemporaryDirectory() as tmp:
+            report = self._run_case(self._repo(Path(tmp)), command=CASE_8_COMMAND)
+
+        self._assert_packaged_seccomp_evidence(report)
+        self.assertTrue(report["docker"]["image_digest_pinned"])
+
+    def test_case_9_real_local_image_identity_matches_and_mismatch_fails_closed(self) -> None:
+        """case 9: a real local image ID binds separately from its digest-pinned requested reference."""
+        fixture_root = ROOT / "tests" / "fixtures" / "execution-authorization"
+        authorization = json.loads((fixture_root / "approved-exact-0.2.json").read_text(encoding="utf-8"))
+        gate = json.loads((fixture_root / "gate-allow-limited.json").read_text(encoding="utf-8"))
+        argv = json.loads((fixture_root / "argv.json").read_text(encoding="utf-8"))
+        authorization["approved_image"] = {
+            "requested_reference": self.image,
+            "resolved_image_id": self.image_id,
+        }
+
+        matched = validate_execution_authorization(
+            authorization,
+            gate,
+            argv,
+            now=datetime(2026, 6, 26, tzinfo=timezone.utc),
+            runtime_image_reference=self.image,
+            runtime_image_id=self.image_id,
+        )
+        self.assertTrue(matched.execution_authorized, matched.to_dict())
+        self.assertTrue(matched.image_reference_matches)
+        self.assertTrue(matched.image_id_matches)
+
+        mismatched_id = "sha256:" + ("0" if self.image_id[7] != "0" else "1") + self.image_id[8:]
+        mismatched = validate_execution_authorization(
+            deepcopy(authorization),
+            gate,
+            argv,
+            now=datetime(2026, 6, 26, tzinfo=timezone.utc),
+            runtime_image_reference=self.image,
+            runtime_image_id=mismatched_id,
+        )
+        self.assertFalse(mismatched.execution_authorized)
+        self.assertIn("approved_image_id_mismatch", mismatched.blocking_errors)
+        self.assertNotIn("approved_image_reference_mismatch", mismatched.blocking_errors)
+
+    def test_case_10_installed_package_resource_runs_the_seccomp_profile(self) -> None:
+        """case 10: an offline-installed wheel resolves package seccomp data for a real Docker run."""
+        original_fingerprint: str
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo = self._repo(root)
+            original_fingerprint = fingerprint_target(repo).fingerprint
+            wheel_dir = root / "wheel"
+            install_dir = root / "install"
+            wheel_dir.mkdir()
+            install_dir.mkdir()
+
+            built = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "wheel",
+                    str(ROOT),
+                    "--no-deps",
+                    "--no-build-isolation",
+                    "--wheel-dir",
+                    str(wheel_dir),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONPATH": "", "PIP_NO_INDEX": "1"},
+            )
+            self.assertEqual(0, built.returncode, built.stderr)
+            wheels = sorted(wheel_dir.glob("repo_health_doctor-*.whl"))
+            self.assertEqual(1, len(wheels), built.stdout)
+
+            installed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--no-deps",
+                    "--no-index",
+                    "--target",
+                    str(install_dir),
+                    str(wheels[0]),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONPATH": ""},
+            )
+            self.assertEqual(0, installed.returncode, installed.stderr)
+
+            probe_code = dedent(
+                """
+                import json
+                from pathlib import Path
+                import sys
+                import tempfile
+                from unittest.mock import patch
+
+                from repo_health_doctor.sandbox.docker_runner import DockerRunner
+                from repo_health_doctor.sandbox.profiles import PROFILE_MOBY_DEFAULT
+                from repo_health_doctor.sandbox.run import run_sandbox_run
+
+                created = []
+                real_mkdtemp = tempfile.mkdtemp
+
+                def tracked_mkdtemp(*args, **kwargs):
+                    path = Path(real_mkdtemp(*args, **kwargs))
+                    created.append(path)
+                    return str(path)
+
+                with patch(
+                    "repo_health_doctor.sandbox.run_workspace.tempfile.mkdtemp",
+                    side_effect=tracked_mkdtemp,
+                ):
+                    report = run_sandbox_run(
+                        Path(sys.argv[1]),
+                        image=sys.argv[2],
+                        profile_name="no-network-readonly",
+                        seccomp_profile_name=PROFILE_MOBY_DEFAULT,
+                        command_argv=[
+                            "python3",
+                            "-c",
+                            "print('installed-package-seccomp-profile-active')",
+                        ],
+                        timeout_seconds=10,
+                        runner=DockerRunner(),
+                    )
+
+                print(
+                    json.dumps(
+                        {
+                            "report": report,
+                            "run_roots_removed": bool(created)
+                            and all(not path.exists() for path in created),
+                        }
+                    )
+                )
+                """
+            )
+            probed = subprocess.run(
+                [sys.executable, "-c", probe_code, str(repo), self.image],
+                check=False,
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env={**os.environ, "PYTHONPATH": str(install_dir)},
+            )
+            self.assertEqual(0, probed.returncode, probed.stderr)
+            envelope = json.loads(probed.stdout)
+            report = envelope["report"]
+
+            self.assertTrue(envelope["run_roots_removed"])
+            self.assertEqual(original_fingerprint, fingerprint_target(repo).fingerprint)
+
+        self._assert_completed_execution_contract(report, CASE_10_COMMAND)
+        self._assert_packaged_seccomp_evidence(report)
 
 
 if __name__ == "__main__":
