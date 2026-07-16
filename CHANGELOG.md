@@ -28,6 +28,9 @@ change. See [docs/versioning.md](docs/versioning.md).
 - Experimental `gate-check --external-evidence`の複数入力、subject・age・size・
   fingerprint・duplicate・truncation検証、raw reportを含まないboundedな
   `evidence_refs` gate schema記録を追加した。
+- Experimental `gate-check` authorization discoveryを追加した。trailing argvが
+  ある場合だけGit top-levelの単一untracked candidateを読む。explicit
+  authorizationを優先し、拒否理由、no-fallback、TOCTOU残余riskを文書化した。
 - Experimental `real-scan` finding and report budgets with explicit offline
   CI smoke, local live opt-in, truncation and omitted-count reporting, and
   `--fail-on-degraded`.
@@ -87,8 +90,11 @@ change. See [docs/versioning.md](docs/versioning.md).
 
 ### Known Limitations
 
-- `gate-check` requires explicit `--authorization` and `--argv-json`; it does
-  not auto-discover authorization artifacts.
+- `gate-check` discovery is narrow and experimental: it reads only the
+  untracked Git-top-level `.repo-health-doctor.authorization.json` when
+  trailing argv is present. It has no nested or alternate-path fallback, and
+  discovery remains separate from execution authorization. Local-writer TOCTOU
+  risk remains.
 - Real compatibility remains limited to documented fixture, version, and scope.
 - No scanner result proves a repository is safe.
 

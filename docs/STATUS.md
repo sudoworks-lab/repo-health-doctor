@@ -135,3 +135,11 @@
 - 判断と理由: discoveryはcommand実行対象を示すtrailing argvがある時だけ有効にし、argvのないgate-checkの従来のauthorization missing挙動を維持した。explicit authorizationを先に処理することで、候補fileが存在しても明示入力を上書きせず、`--no-discover`はexplicit authorizationの利用を妨げない。候補はF012のsingle-file fail-closed moduleだけに委譲し、複数path探索やvalidation緩和は追加していない。
 - 既知の問題: 指定test commandの直接表記は実行環境のapproval policyにより実行できず、`env PYTHONPATH=src`の同値commandで検証した。discovery refusal reasonの文書同期はF014の範囲であり、今回変更していない。
 - follow-up候補: F013の範囲に残作業はない。F014以降のfeatureは今回扱っていない。
+
+## 2026-07-16 JST — F014 discovery refusal contractと文書同期
+
+- 今回やったこと: discoveryの8つのmachine-readable refusal reasonを一覧化する`docs/authorization-discovery.md`を追加し、single top-level candidate、`.gitignore`例、explicit authorization優先、trailing argv、`--no-discover`、no-fallback、TOCTOU残余risk、`execution_authorized`非付与を記録した。`docs/threat-model.md`、`docs/public-contracts.md`、`docs/README.md`、`CHANGELOG.md`を同じcode contractへ同期し、`.repo-health-doctor.authorization.json`を`.gitignore`へ追加した。`tests/test_authorization_discovery_contract.py`で実装定数と文書を照合する4件の契約テストを追加した。authorization codeと候補artifactは変更・作成していない。
+- 検証結果: `env PYTHONPATH=src python3 -m unittest tests.test_authorization_discovery_contract -v`は4件pass・0件fail。指定の`rg -n "tracked_refused|not_a_git_repo|symlink_refused|not_found|parse_failed|too_large|git_error|file_changed|TOCTOU|fallback" docs/authorization-discovery.md docs/threat-model.md docs/public-contracts.md .gitignore`は全reason、TOCTOU、fallbackの記載を確認した。`env PYTHONPATH=src python3 -m unittest discover -s tests -v`は748件pass・3件skip・0件fail、CLI help/version、public-safety scan、policy validation、JSON report生成と`python3 -m json.tool`によるparse、`git diff --check`も成功した。指定の`PYTHONPATH=src`直接表記は環境のprocess生成ポリシーで拒否されたため、同値の`env PYTHONPATH=src`で検証した。
+- 判断と理由: refusal reasonの正本は`src/repo_health_doctor/gate/authorization_discovery.py`の既存定数とし、文書側でreasonを再定義しないよう契約テストから直接参照した。discoveryは単一候補のbounded input lookupに限定し、拒否時の探索拡大、成功時の安全証明、実行認可への昇格を文書化しなかった。lstat/open/fstat/readで観測可能な変更を拒否する一方、local writerとのTOCTOUを完全排除できない残余riskとして明記した。
+- 既知の問題: 環境差分により指定commandの直接表記は実行できない。local writer raceの完全排除とsecurity reviewは今回の文書同期で解決していない。
+- follow-up候補: F015以降のfeatureは今回扱っていない。discoveryの実行認可強化やTOCTOU対策の追加は、後続featureの許可範囲で扱う。

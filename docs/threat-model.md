@@ -36,6 +36,7 @@ Handles? values:
 | scanner unavailable | partial | External scanner validators and risk mapper treat scanner failure, parse failure, unsupported version, or timeout as unknown/block rather than PASS. | Coverage depends on supplied scanner result fields and adapter maturity. |
 | raw scanner output leakage | partial | External scanner schemas track raw-output flags; Docker path discards bounded raw output after normalization. | Full redaction pipeline and report UX hardening remain future work. |
 | commit mismatch / unbound evidence | partial | Imported report validator can fail closed on expected commit mismatch and tracks binding/trust fields. | Future evidence model needs stronger subject identity, tree hash, and signature fields. |
+| authorization artifact confusion or substitution | partial | Experimental discovery reads only the untracked Git-top-level `.repo-health-doctor.authorization.json`, refuses tracked files, symlinks, missing or malformed files, size overflow, Git errors, and observable file changes, and never falls back to another path. | The refusal contract is bounded, but local-writer races remain a TOCTOU residual risk. Discovery is not authorization; exact argv, subject, expiry, and runtime checks remain required. |
 
 ## Non-Goals
 
@@ -44,3 +45,10 @@ review, endpoint detection, or complete malware sandboxing. It is the gate and
 evidence normalizer that keeps scanner silence, missing evidence, degraded
 observation, and unbound evidence from becoming false confidence or execution
 authorization.
+
+Authorization discovery has the same bounded safety posture. Its machine-readable
+refusal reasons are `tracked_refused`, `not_a_git_repo`, `symlink_refused`,
+`not_found`, `parse_failed`, `too_large`, `git_error`, and `file_changed`.
+The implementation performs single-file discovery only; nested or alternate
+candidate fallback is not allowed; this is a no-fallback contract. The lstat/open/fstat/read sequence reduces
+but cannot eliminate TOCTOU races with a local writer.

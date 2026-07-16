@@ -33,6 +33,7 @@ This directory contains the public documentation set for `repo-health-doctor`.
 - `demo.md`: legacy simple offline demo flow
 - `requirements.md`: public product requirements and scope
 - `threat-model.md`: threat assumptions and non-goals
+- `authorization-discovery.md`: experimental single-candidate authorization discovery and refusal contract
 - `compatibility-regeneration.md`: safe regeneration workflow for compatibility fixtures
 - `external-scanner-adapter-design.md`: external scanner adapter design boundary
 - `docker-integration-ci.md`: Docker integration CI boundary

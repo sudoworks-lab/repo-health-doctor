@@ -18,3 +18,4 @@ node_modules/
 .idea/
 .repo-health-doctor.local.yml
 .repo-health-doctor.local/
+.repo-health-doctor.authorization.json

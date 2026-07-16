@@ -183,8 +183,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_authorization_discovery_contract -v を実行する",
         "rg -n \"tracked_refused|not_a_git_repo|symlink_refused|not_found|parse_failed|too_large|git_error|file_changed|TOCTOU|fallback\" docs/authorization-discovery.md docs/threat-model.md docs/public-contracts.md .gitignore を実行して同期を確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T14:52:21+09:00",
       "blocked": false
     },
     {
