@@ -20,6 +20,7 @@ change. See [docs/versioning.md](docs/versioning.md).
 
 ### Added
 
+- Experimental execution authorization `0.2-draft` image bindingを追加した。`0.1-draft` artifactは後方互換として受理し、`approved_image`ではdigest-pinned requested referenceとlocal image IDを別値としてexact検証する。`RepoDigests`とlocal image IDは同一視しない。
 - Gitleaks `8.27.2`、OSV-Scanner `2.0.3`、Trivy `0.69.3`の対称な
   `Tested Versions`表、追加compatibility scenario、`Not Covered`、
   regeneration手順、matrix testを追加した。fixture exact versionだけを

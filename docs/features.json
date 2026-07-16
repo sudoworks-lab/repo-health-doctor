@@ -243,8 +243,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_execution_authorization_image_binding tests.test_execution_authorization -v を実行する",
         "python3 -m json.tool schemas/execution-authorization.schema.json >/dev/null を実行し、old/new goldenとversion別allowed/required fieldsを確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T19:15:54+09:00",
       "blocked": false
     },
     {

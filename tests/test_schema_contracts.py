@@ -9,7 +9,7 @@ SCHEMAS_ROOT = Path(__file__).resolve().parents[1] / "schemas"
 
 EXPECTED_SCHEMA_METADATA = {
     "evidence.schema.json": ("0.1-draft", None),
-    "execution-authorization.schema.json": ("0.1-draft", None),
+    "execution-authorization.schema.json": (("0.1-draft", "0.2-draft"), None),
     "external-scanner-plan.schema.json": ("0.1-draft", None),
     "external-scanner-readiness-result.schema.json": ("0.1-draft", "external_scanner_execution_readiness"),
     "external-scanner-result.schema.json": ("0.1-draft", "external_scanner_result"),
@@ -157,7 +157,11 @@ class SchemaContractTests(unittest.TestCase):
                     self.assertNotIn("schema_version", properties)
                 else:
                     self.assertIn("schema_version", required)
-                    self.assertEqual(_single_enum_value(properties, "schema_version"), schema_version)
+                    actual_version = _single_enum_value(properties, "schema_version")
+                    if isinstance(schema_version, tuple):
+                        self.assertEqual(actual_version, list(schema_version))
+                    else:
+                        self.assertEqual(actual_version, schema_version)
 
     def test_report_kind_contract_is_required_except_documented_exceptions(self) -> None:
         for name, (_schema_version, report_kind) in EXPECTED_SCHEMA_METADATA.items():

@@ -192,3 +192,11 @@
 - 判断と理由: expiry option未指定は0.1-draftの従来shapeを保ち、null artifactを実行可能にはせず`expires_at_required`でfail-closedにする。`--expires-in-minutes`の60分以内は推奨に留め、正の整数以外の固定policyを追加しない。T0調査で未実装と確認したdirect repo / commit / tree / dirty bindingをF018へ先取り実装せず、現行のpath-bound制約を明示した。
 - 既知の問題: 現行authorization subjectはrepository identity、HEAD commit、HEAD tree、dirty statusを直接照合しない。image binding、single-use reservation、workspace copy前のworktree direct bindingは今回の許可範囲外で未実装である。指定test commandの先頭`PYTHONPATH=src`形式はprocess生成前に実行環境のapproval policyで拒否されたため、同値の`env PYTHONPATH=src`形式で実行した。
 - follow-up候補: 後続の指定featureでimage binding、single-use、worktree direct bindingをそれぞれ実装・検証する。F018以外のfeatureには着手していない。
+
+## 2026-07-16 JST — F019 authorization 0.2-draft image binding
+
+- 今回やったこと: authorization validatorを`0.1-draft`互換と`0.2-draft`へ拡張し、version別allowed field、optionalな`approved_image`、digest-pinned `requested_reference`、full local `resolved_image_id`を追加した。runtime referenceとlocal image IDを別々にexact比較し、`RepoDigests`をlocal image IDの代替にしないpure shape checkを追加した。旧artifactは`authorization_not_image_bound` limitation付きで受理し、0.1 artifactへの0.2専用field追加は拒否するschema、golden fixture、test、契約文書、CHANGELOGを同期した。
+- 検証結果: `env PYTHONPATH=src python3 -m unittest tests.test_execution_authorization_image_binding tests.test_execution_authorization -v`は15件pass・0件fail、`python3 -m json.tool schemas/execution-authorization.schema.json`はexit 0、expiryと関連CLI回帰25件はpass、full unit suiteは774件pass・3件skip・0件failだった。終了時基本検証のCLI help/version、public-safety、policy validation、JSON report生成・parse、`git diff --check`も成功した。指定featureの状態を`passes:true`、`blocked:false`、`verified_at:2026-07-16T19:15:54+09:00`へ更新した。
+- 判断と理由: `approved_image`は0.2-draftでoptionalとし、image bindingなしの旧artifactを壊さずに受理する一方、fieldが存在する場合はreference mismatch、digest unpinned、runtime ID unresolved、ID mismatchをfail-closedで返す。実Docker daemonへのinspectやimage取得は行わず、runtimeから供給されるreferenceとlocal IDの契約検証に限定した。schema versionを拡張したため、既存schema inventory testのversion期待値だけをF019の契約同期として更新した。
+- 既知の問題: 実Dockerでの`docker image inspect`取得、command起動直前のruntime接続、single-use reservation、worktree direct bindingは今回の範囲外で未実装・未検証である。指定commandの先頭`PYTHONPATH=src`形式と`>/dev/null`付き形式はprocess生成前に環境ポリシーで拒否されたため、同値の`env PYTHONPATH=src`と出力抑制なしで検証した。`scripts/init.sh`も同ポリシーで実行できなかった。
+- follow-up候補: F020でsingle-use reservation、F021でworktree direct bindingを扱う。F019以外のfeatureには着手していない。

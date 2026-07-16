@@ -14,10 +14,19 @@ import json
 import re
 from typing import Any, Mapping, Sequence
 
+from ..sandbox.image_binding import (
+    is_digest_pinned_authorization_reference,
+    is_full_local_image_id,
+)
+
 
 AUTHORIZATION_KIND = "repo_health_execution_authorization"
-AUTHORIZATION_SCHEMA_VERSION = "0.1-draft"
-TOP_LEVEL_FIELDS = {
+LEGACY_AUTHORIZATION_SCHEMA_VERSION = "0.1-draft"
+AUTHORIZATION_SCHEMA_VERSION = "0.2-draft"
+AUTHORIZATION_SCHEMA_VERSIONS = frozenset(
+    {LEGACY_AUTHORIZATION_SCHEMA_VERSION, AUTHORIZATION_SCHEMA_VERSION}
+)
+BASE_TOP_LEVEL_FIELDS = {
     "authorization_kind",
     "schema_version",
     "approved",
@@ -32,6 +41,12 @@ TOP_LEVEL_FIELDS = {
     "limitations",
     "residual_risks",
 }
+APPROVED_IMAGE_FIELDS = {"requested_reference", "resolved_image_id"}
+TOP_LEVEL_FIELDS_BY_VERSION = {
+    LEGACY_AUTHORIZATION_SCHEMA_VERSION: frozenset(BASE_TOP_LEVEL_FIELDS),
+    AUTHORIZATION_SCHEMA_VERSION: frozenset(BASE_TOP_LEVEL_FIELDS | {"approved_image"}),
+}
+TOP_LEVEL_FIELDS = TOP_LEVEL_FIELDS_BY_VERSION[AUTHORIZATION_SCHEMA_VERSION]
 BASED_ON_FIELDS = {"decision_kind", "schema_version", "verdict", "fingerprint"}
 SUBJECT_FIELDS = {"repo", "commit", "tree_hash"}
 DISALLOWED_GATE_VERDICTS = {"block", "quarantine", "unknown"}
@@ -64,6 +79,11 @@ AUTHORIZATION_REFUSAL_REASONS = frozenset(
         "gate_verdict_invalid_for_authorization",
         "authorization_contains_forbidden_raw_pattern",
         "authorization_contains_raw_host_path",
+        "authorization_approved_image_invalid",
+        "approved_image_reference_mismatch",
+        "approved_image_digest_unpinned",
+        "runtime_image_id_unresolved",
+        "approved_image_id_mismatch",
     }
 )
 FORBIDDEN_PATTERNS = (
@@ -101,6 +121,9 @@ class ExecutionAuthorizationValidationResult:
     policy_matches: bool
     not_expired: bool
     based_on_gate_decision_matches: bool
+    image_binding_present: bool
+    image_reference_matches: bool
+    image_id_matches: bool
     limitations: tuple[str, ...]
     residual_risks: tuple[str, ...]
 
@@ -116,6 +139,9 @@ class ExecutionAuthorizationValidationResult:
             "policy_matches": self.policy_matches,
             "not_expired": self.not_expired,
             "based_on_gate_decision_matches": self.based_on_gate_decision_matches,
+            "image_binding_present": self.image_binding_present,
+            "image_reference_matches": self.image_reference_matches,
+            "image_id_matches": self.image_id_matches,
             "limitations": list(self.limitations),
             "residual_risks": list(self.residual_risks),
         }
@@ -126,6 +152,7 @@ def build_execution_authorization_draft(
     argv: Sequence[str],
     *,
     expires_at: str | None = None,
+    approved_image: Mapping[str, Any] | None = None,
 ) -> Mapping[str, Any]:
     """Build a non-approved execution authorization draft.
 
@@ -141,7 +168,9 @@ def build_execution_authorization_draft(
     ]
     if not expires_at:
         limitations.append("expires_at_must_be_set_before_approval")
-    return {
+    if approved_image is None:
+        limitations.append("authorization_not_image_bound")
+    draft: dict[str, Any] = {
         "authorization_kind": AUTHORIZATION_KIND,
         "schema_version": AUTHORIZATION_SCHEMA_VERSION,
         "approved": False,
@@ -163,6 +192,9 @@ def build_execution_authorization_draft(
             "authorization is only valid for the exact reviewed command and scope",
         ],
     }
+    if approved_image is not None:
+        draft["approved_image"] = dict(approved_image)
+    return draft
 
 
 def validate_execution_authorization(
@@ -171,6 +203,8 @@ def validate_execution_authorization(
     argv: Sequence[str],
     *,
     now: datetime | None = None,
+    runtime_image_reference: str | None = None,
+    runtime_image_id: str | None = None,
 ) -> ExecutionAuthorizationValidationResult:
     errors: list[str] = []
     warnings: list[str] = []
@@ -185,14 +219,21 @@ def validate_execution_authorization(
             policy_matches=False,
             not_expired=False,
             based_on_gate_decision_matches=False,
+            image_binding_present=False,
+            image_reference_matches=False,
+            image_id_matches=False,
             limitations=(),
             residual_risks=("invalid_authorization_input",),
         )
-    if set(authorization) != TOP_LEVEL_FIELDS:
+    schema_version = authorization.get("schema_version")
+    allowed_fields = TOP_LEVEL_FIELDS_BY_VERSION.get(
+        schema_version, frozenset(BASE_TOP_LEVEL_FIELDS)
+    )
+    if not BASE_TOP_LEVEL_FIELDS.issubset(authorization) or set(authorization) - allowed_fields:
         errors.append("authorization_top_level_required_or_unknown_field")
     if authorization.get("authorization_kind") != AUTHORIZATION_KIND:
         errors.append("authorization_kind_unsupported")
-    if authorization.get("schema_version") != AUTHORIZATION_SCHEMA_VERSION:
+    if schema_version not in AUTHORIZATION_SCHEMA_VERSIONS:
         errors.append("authorization_schema_version_unsupported")
 
     approved = authorization.get("approved") is True
@@ -240,6 +281,20 @@ def validate_execution_authorization(
     not_expired = _not_expired(authorization.get("expires_at"), now=now, errors=errors)
     _approved_metadata_valid(authorization, errors)
 
+    image_binding_present = "approved_image" in authorization
+    image_reference_matches = False
+    image_id_matches = False
+    if image_binding_present and schema_version == AUTHORIZATION_SCHEMA_VERSION:
+        image_reference_matches, image_id_matches = _validate_image_binding(
+            authorization.get("approved_image"),
+            runtime_image_reference=runtime_image_reference,
+            runtime_image_id=runtime_image_id,
+            errors=errors,
+        )
+    elif not image_binding_present:
+        if "authorization_not_image_bound" not in limitations:
+            limitations = tuple((*limitations, "authorization_not_image_bound"))
+
     verdict = gate_decision.get("verdict")
     if verdict in DISALLOWED_GATE_VERDICTS:
         errors.append(f"gate_verdict_{verdict}_cannot_be_authorized")
@@ -262,6 +317,9 @@ def validate_execution_authorization(
         policy_matches=policy_matches,
         not_expired=not_expired,
         based_on_gate_decision_matches=based_on_gate_decision_matches,
+        image_binding_present=image_binding_present,
+        image_reference_matches=image_reference_matches,
+        image_id_matches=image_id_matches,
         limitations=limitations,
         residual_risks=residual_risks,
     )
@@ -282,6 +340,9 @@ def _result(
     policy_matches: bool,
     not_expired: bool,
     based_on_gate_decision_matches: bool,
+    image_binding_present: bool,
+    image_reference_matches: bool,
+    image_id_matches: bool,
     limitations: tuple[str, ...],
     residual_risks: tuple[str, ...],
 ) -> ExecutionAuthorizationValidationResult:
@@ -297,9 +358,47 @@ def _result(
         policy_matches=policy_matches,
         not_expired=not_expired,
         based_on_gate_decision_matches=based_on_gate_decision_matches,
+        image_binding_present=image_binding_present,
+        image_reference_matches=image_reference_matches,
+        image_id_matches=image_id_matches,
         limitations=limitations,
         residual_risks=residual_risks,
     )
+
+
+def _validate_image_binding(
+    approved_image: object,
+    *,
+    runtime_image_reference: str | None,
+    runtime_image_id: str | None,
+    errors: list[str],
+) -> tuple[bool, bool]:
+    if not isinstance(approved_image, Mapping) or set(approved_image) != APPROVED_IMAGE_FIELDS:
+        errors.append("authorization_approved_image_invalid")
+        return False, False
+
+    requested_reference = approved_image.get("requested_reference")
+    resolved_image_id = approved_image.get("resolved_image_id")
+    if not is_digest_pinned_authorization_reference(requested_reference):
+        errors.append("approved_image_digest_unpinned")
+    reference_matches = (
+        isinstance(requested_reference, str)
+        and runtime_image_reference == requested_reference
+    )
+    if not reference_matches:
+        errors.append("approved_image_reference_mismatch")
+
+    if runtime_image_id is None or not is_full_local_image_id(runtime_image_id):
+        errors.append("runtime_image_id_unresolved")
+        image_id_matches = False
+    else:
+        image_id_matches = runtime_image_id == resolved_image_id
+        if not image_id_matches:
+            errors.append("approved_image_id_mismatch")
+    if not is_full_local_image_id(resolved_image_id):
+        errors.append("approved_image_id_mismatch")
+        image_id_matches = False
+    return reference_matches, image_id_matches
 
 
 def _gate_subject(gate_decision: Mapping[str, Any]) -> Mapping[str, Any]:

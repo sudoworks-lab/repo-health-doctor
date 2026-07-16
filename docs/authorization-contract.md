@@ -1,6 +1,6 @@
 # Execution Authorization Contract
 
-この文書はexperimentalなexecution authorization `0.1-draft`の現行実装を記録する。gate decisionは単独では実行を認可せず、authorizationもexact scope、argv、policy、gate decision、expiryの検証をすべて通過した場合だけ`execution_authorized=true`になる。
+この文書はexperimentalなexecution authorization `0.1-draft`互換と`0.2-draft`の現行実装を記録する。gate decisionは単独では実行を認可せず、authorizationもexact scope、argv、policy、gate decision、expiryの検証をすべて通過した場合だけ`execution_authorized=true`になる。
 
 ## T0 subject binding根拠
 
@@ -34,6 +34,32 @@ repo-health-doctor authorization draft --gate-decision gate.json --argv-json arg
 - `--expires-at`はISO 8601としてparseできる値をそのまま`expires_at`へ入れる。過去時刻のdraft生成自体は可能だが、validatorは`authorization_expired`で拒否する。
 - どちらも未指定なら従来どおり`expires_at: null`を出力し、`expires_at_must_be_set_before_approval` limitationを付ける。validatorはnullを`expires_at_required`で拒否する。
 - draftはexpiryの有無にかかわらず`approved=false`であり、Human approvalや実行認可を生成しない。
+
+## Image bindingと0.2-draft
+
+authorization artifactは`0.1-draft`と`0.2-draft`を受理する。0.1-draftのallowed field集合は変更せず、0.1 artifactへ`approved_image`を追加した場合はunknown fieldとして拒否する。0.2-draftでは`approved_image`がoptionalで、存在する場合のfield集合は次の2つだけである。
+
+```json
+"approved_image": {
+  "requested_reference": "python:3.12-slim@sha256:<registry-manifest-digest>",
+  "resolved_image_id": "sha256:<local-image-config-id>"
+}
+```
+
+- `requested_reference`はHumanが承認したexact referenceであり、`sandbox-run --image`のruntime referenceと完全一致し、registry manifest digestでpinされていなければならない。
+- `resolved_image_id`はcommand開始前にlocal Docker image inspectから得る`.Id`相当のfull local image IDであり、`requested_reference`のmanifest digestとは別値としてexact一致させる。
+- `RepoDigests`の値をlocal image IDの代わりには使わない。runtime image IDが未解決、referenceが不一致、またはIDが不一致ならfail-closedである。
+- `approved_image`のない旧artifactは後方互換として受理するが、validation resultに`authorization_not_image_bound` limitationを付ける。これはimage identityを検証済みという意味ではない。
+
+Image bindingのrefusal reasonは次のとおりである。
+
+| refusal reason | 拒否条件 |
+| --- | --- |
+| `authorization_approved_image_invalid` | approved imageのfield集合またはobject shapeが不正である。 |
+| `approved_image_reference_mismatch` | requested referenceとruntime image referenceがexact一致しない。 |
+| `approved_image_digest_unpinned` | requested referenceがdigest-pinnedではない。 |
+| `runtime_image_id_unresolved` | local image IDが未解決またはfull ID shapeではない。 |
+| `approved_image_id_mismatch` | approved imageのresolved IDとruntime local image IDが一致しない。 |
 
 ## Refusal reason台帳
 
