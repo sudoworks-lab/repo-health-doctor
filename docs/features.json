@@ -159,8 +159,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_authorization_discovery -v を実行する",
         "test出力でuntracked成功とtracked、non-git、symlink、oversize、git error、file change拒否を確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T14:11:02+09:00",
       "blocked": false
     },
     {

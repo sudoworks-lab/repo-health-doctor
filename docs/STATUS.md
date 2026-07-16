@@ -119,3 +119,11 @@
 - 判断と理由: 設計で求める追加scenarioは既存fixtureへdirty stateまたはexit outcomeを組み合わせれば再現できるため、禁止されている重複fixtureを追加しなかった。Tested Versions表はfixture exact versionのGitleaks 8.27.2、OSV-Scanner 2.0.3、Trivy 0.69.3だけに限定し、同一familyや未検証releaseへtested coverageを広げなかった。
 - 既知の問題: 指定commandの先頭`PYTHONPATH=src`形式は実行環境のapproval policyによりprocess生成前に拒否されたため、同値の`env PYTHONPATH=src`形式で実行した。live scanner、network、image/scanner取得、raw output収集は実施しておらず、fixture結果は安全証明やexecution authorizationではない。
 - follow-up候補: F011の範囲に残作業はない。F012以降のfeatureは今回扱っていない。
+
+## 2026-07-16 JST — F012 authorization discovery module
+
+- 今回やったこと: Git top-levelの完全一致と`git ls-files --error-unmatch`によるtracked判定を行い、repo rootの`.repo-health-doctor.authorization.json`だけを読む独立moduleを追加した。untrackedなregular fileに限定し、`lstat`、symlink拒否、64 KiB上限、利用可能時の`O_NOFOLLOW`、open後と読取後の`fstat`、bounded read、JSON object判定を通過した場合だけartifactを返す。拒否時はpathやGit stderrを保持せず、`tracked_refused`、`not_a_git_repo`、`symlink_refused`、`not_found`、`parse_failed`、`too_large`、`git_error`、`file_changed`のmachine-readable reasonを返す。
+- 検証結果: 指定testと同値の`env PYTHONPATH=src python3 -m unittest tests.test_authorization_discovery -v`は12件pass・0件failだった。test出力でuntracked成功、tracked、non-git、symlinkとbroken symlink、oversize、Git unavailable、読取中変更、`lstat`後のfile replacementを確認し、`O_NOFOLLOW`、複数回`fstat`、max bytes + 1のbounded readも直接検証した。終了時`bash scripts/init.sh`はPython 3.12.3で全unit 739件pass・3件skip・0件fail、CLI help/version、public-safety、policy validation、JSON report生成・parseまで成功した。`py_compile`、secret-like pattern検査、PLANのdocs/fixture一覧とAGENTS 77行も成功した。
+- 判断と理由: tracked判定をfile openより前に行い、Gitのunexpected exit、timeout、実行不能をすべて`git_error`へ閉じた。`lstat`とopen後`fstat`のdevice、inode、mode、size、mtime、ctimeを比較し、読取後にも同じ状態とbyte数を照合することで観測可能なfile差替え・変更を拒否する。discovery結果は既存authorization validatorを緩和せず、CLI接続も行わない独立境界に限定した。
+- 既知の問題: 指定commandの先頭`PYTHONPATH=src`形式は実行環境のapproval policyによりprocess生成前に拒否されたため、同値の`env PYTHONPATH=src`形式で検証した。local write可能processとのTOCTOUを完全には排除できず、moduleはartifactを発見するだけでexecution authorizationを付与しない。
+- follow-up候補: F013で明示authorization優先、trailing argv条件、`--no-discover`をCLIへ接続し、F014でreason contractとTOCTOU残余riskを文書化する。F013以降は今回のprocessでは扱っていない。
