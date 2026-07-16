@@ -22,6 +22,22 @@ contract for every scanner version or every repository shape.
   the container.
 - Do not treat regenerated compatibility output as execution authorization.
 
+## Tested Versions
+
+| Scanner | Tested version | Redacted fixture root | Version record | Expected evidence |
+|---|---:|---|---|---|
+| Gitleaks | `8.27.2` | `tests/fixtures/real-compatibility/gitleaks/` | `gitleaks-version.txt` | `expected-evidence.json` |
+| OSV-Scanner | `2.0.3` | `tests/fixtures/real-compatibility/osv/` | `osv-scanner-version.txt` | `expected-evidence.json` |
+| Trivy | `0.69.3` | `tests/fixtures/real-scanners/trivy/` | `trivy-version.txt` | `expected-evidence.json` |
+
+表のfixture exact versionだけが`tested`である。同じsupported major familyの
+別versionは`compatible_family_unverified`、documented family外は
+`unsupported`、明示拒否versionは`denylisted`、parseできないversion出力は
+`unparseable`として記録する。regenerationで別versionを観測しただけでは
+Tested Versions表を更新しない。redacted fixture、expected evidence、version
+record、targeted compatibility testを同時にreviewしてgreenになった場合だけ
+表を更新する。
+
 ## Separate Image Acquisition From Scan
 
 Image acquisition is a separate human-approved step. The helper scripts use
@@ -134,3 +150,15 @@ or authorize execution.
 
 Third-party security review is not done. Regeneration does not replace external
 review of compatibility assumptions, raw-output handling, or Docker boundaries.
+
+## Not Covered
+
+- Gitleaks `8.27.2`、OSV-Scanner `2.0.3`、Trivy `0.69.3`以外のreleaseを
+  testedとすること。
+- Unknown repository、実secret、private package、credential、個人情報を使う
+  compatibility collection。
+- Scannerまたはcontainer imageの自動取得、hostへのinstall、Docker socketの
+  mount。
+- Scanner rules、advisory/database/cache、全schemaと全exit codeの完全な網羅。
+- Regenerated fixtureによるrepositoryの安全証明、risk低下、execution
+  authorization。

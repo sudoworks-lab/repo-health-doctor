@@ -79,6 +79,49 @@ The optional live adapter test is disabled by default even when `osv-scanner`
 is installed. It requires `RHD_LIVE_OSV_TEST=1` so default unit test discovery
 does not make a network-capable OSV.dev query by accident.
 
+## Tested Versions
+
+| Scanner | Tested version | Version record | Expected evidence |
+|---|---:|---|---|
+| OSV-Scanner | `2.0.3` | `tests/fixtures/real-compatibility/osv/osv-scanner-version.txt` | `tests/fixtures/real-compatibility/osv/expected-evidence.json` |
+
+`tested`は上表のfixture exact versionだけを指す。同じmajor versionの別releaseは
+`compatible_family_unverified`であり、実行可能でもdegraded evidenceとして扱う。
+major version 2以外は`unsupported`、明示的に拒否する`0.0.0`は`denylisted`、
+安全にversionを読めない出力は`unparseable`である。これらのstatusは
+advisory databaseや到達したpackage範囲の完全性を保証しない。
+
+## Additional Compatibility Scenarios
+
+- Exit 128: `no-vulnerabilities.real.json`を再利用し、`no_packages_found`として
+  fail closedになることを確認する。専用の重複fixtureは追加しない。
+- Exit/report mismatch: `vulnerabilities.real.json`と
+  `no-vulnerabilities.real.json`を逆のexit outcomeに組み合わせ、parse failureへ
+  正規化されることを確認する。
+- Version parse failure: fixture由来でない不正なversion出力をunit testで
+  `unparseable`として確認し、raw version出力は保存しない。
+
+## Regeneration
+
+Humanが別途image取得、synthetic input、必要なnetwork利用を承認した場合だけ、
+まず次のdry runで境界を確認する。
+
+```bash
+bash scripts/regenerate-osv-compat-fixtures.sh
+```
+
+実行時は`--run --synthetic-repo`に加え、OSV database accessが必要な場合だけ
+`--allow-network-for-osv-db`を明示する。`/tmp`でのraw output管理、manual
+redaction、expected evidence照合は`docs/compatibility-regeneration.md`に従う。
+
+## Not Covered
+
+- `2.0.3`以外のOSV-Scanner release、ecosystem、extractorの互換性。
+- Advisory databaseの完全性、鮮度、network応答、cache状態の保証。
+- Unknown repository、private package metadata、実SBOMのscan。
+- JSON schema、exit code、package managerの全variantの網羅。
+- Finding 0件を安全証明またはexecution authorizationとして扱うこと。
+
 ## Compatibility Matrix
 
 - OSV-Scanner JSON: supported through redacted compatibility fixtures

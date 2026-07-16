@@ -20,6 +20,11 @@ change. See [docs/versioning.md](docs/versioning.md).
 
 ### Added
 
+- Gitleaks `8.27.2`、OSV-Scanner `2.0.3`、Trivy `0.69.3`の対称な
+  `Tested Versions`表、追加compatibility scenario、`Not Covered`、
+  regeneration手順、matrix testを追加した。fixture exact versionだけを
+  `tested`とし、`compatible_family_unverified`、`unsupported`、`denylisted`、
+  `unparseable`をtested coverageから分離した。
 - Experimental `gate-check --external-evidence`の複数入力、subject・age・size・
   fingerprint・duplicate・truncation検証、raw reportを含まないboundedな
   `evidence_refs` gate schema記録を追加した。

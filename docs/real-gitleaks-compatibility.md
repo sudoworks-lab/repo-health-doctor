@@ -45,6 +45,49 @@ ranges, commit, fingerprint, tag count, entropy, and non-sensitive presence
 markers for omitted metadata. It does not persist `Secret`, `Match`,
 `Description`, `Tags`, `Author`, `Email`, or `Message` values.
 
+## Tested Versions
+
+| Scanner | Tested version | Version record | Expected evidence |
+|---|---:|---|---|
+| Gitleaks | `8.27.2` | `tests/fixtures/real-compatibility/gitleaks/gitleaks-version.txt` | `tests/fixtures/real-compatibility/gitleaks/expected-evidence.json` |
+
+`tested`は上表のfixture exact versionだけを指す。同じmajor versionの別releaseは
+`compatible_family_unverified`であり、実行可能でもdegraded evidenceとして扱う。
+major version 8以外は`unsupported`、明示的に拒否する`0.0.0`は`denylisted`、
+安全にversionを読めない出力は`unparseable`である。これらのstatusは
+compatibilityの確認状況であり、scannerやrepositoryの安全性を示さない。
+
+## Additional Compatibility Scenarios
+
+- Dirty worktree: `no-findings.real.json`を再利用し、`dirty_state=dirty`として
+  normalizeするとscope ambiguousとしてfail closedになる。専用の重複fixtureは
+  追加しない。
+- SARIF: `optional-sarif-redacted.real.sarif`がredactedな追加formatを固定する。
+- Version parse failure: fixture由来でない不正なversion出力をunit testで
+  `unparseable`として確認し、raw version出力は保存しない。
+
+## Regeneration
+
+Humanが別途image取得と実行を承認したsafe synthetic repositoryだけを対象に、
+まず次のdry runで境界を確認する。
+
+```bash
+bash scripts/regenerate-gitleaks-compat-fixtures.sh
+```
+
+実行を承認した場合の`--run --synthetic-repo`手順、`/tmp`でのraw output管理、
+manual redaction、expected evidence照合は
+`docs/compatibility-regeneration.md`に従う。helperはcommitted fixtureを直接
+上書きせず、scannerをhostへinstallしない。
+
+## Not Covered
+
+- `8.27.2`以外のGitleaks release、rule set、configurationの互換性。
+- Unknown repositoryや実secretを含むrepositoryのscan。
+- SARIF全variant、全exit code、全Git stateの網羅。
+- Scanner binaryの取得元、署名、supply-chain trustの証明。
+- Finding 0件を安全証明またはexecution authorizationとして扱うこと。
+
 ## Compatibility Matrix
 
 - JSON required: supported through redacted compatibility fixtures

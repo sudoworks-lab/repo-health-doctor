@@ -147,8 +147,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_real_scanner_compatibility_matrix -v を実行する",
         "rg -n \"Tested Versions|Not Covered|compatible_family_unverified|unsupported|denylisted|unparseable\" docs/real-*compatibility.md docs/compatibility-regeneration.md CHANGELOG.md を実行し、3 scannerの記載を確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T13:55:34+09:00",
       "blocked": false
     },
     {

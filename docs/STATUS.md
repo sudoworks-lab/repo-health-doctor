@@ -111,3 +111,11 @@
 - 判断と理由: 既存のvulnerability、misconfiguration、secret、no-finding fixtureを重複させず、設計で未充足だったlicense含有scenarioだけを追加した。再生成helperはscanner取得やraw output読込みを行わず、Humanがreview・redactしたcommitted fixtureからexpected evidenceだけを決定的に生成する境界とした。
 - 既知の問題: live Trivy実行、imageまたはscanner取得、raw output収集は実施していない。fixtureは安全なsynthetic compatibility資材であり、実repoの安全性やexecution authorizationを証明しない。
 - follow-up候補: F011で3 scannerのTested Versions表、Not Covered、追加fixture、CHANGELOGを対称化する。F011は今回のprocessでは扱っていない。
+
+## 2026-07-16 JST — F011 3 scanner compatibility matrixと文書対称化
+
+- 今回やったこと: Gitleaks、OSV-Scanner、Trivyの各compatibility文書へ`Tested Versions`、追加scenario、regeneration、`Not Covered`を同じ構成で追加し、5つのversion statusとCHANGELOGを同期した。新しいmatrix testはGitleaks dirty worktree/SARIF、OSV exit 128/exit-report mismatch、Trivy license/exit-report mismatch、3 scannerのversion parse failureを既存のredacted fixtureで確認する。
+- 検証結果: 指定testと同値の`env PYTHONPATH=src python3 -m unittest tests.test_real_scanner_compatibility_matrix -v`は5件pass・0件fail、関連compatibility回帰は32件pass・0件failだった。指定`rg -n "Tested Versions|Not Covered|compatible_family_unverified|unsupported|denylisted|unparseable" docs/real-*compatibility.md docs/compatibility-regeneration.md CHANGELOG.md`は3 scanner文書、runbook、CHANGELOGの記載を確認した。`find tests/fixtures -maxdepth 3 -type f | sort`、`git diff --check`、docs一覧、AGENTS 77行も成功した。終了時`bash scripts/init.sh`はPython 3.12.3で全unit 727件pass・3件skip・0件fail、CLI help/version、public-safety、policy validation、JSON report生成・parseまで成功した。
+- 判断と理由: 設計で求める追加scenarioは既存fixtureへdirty stateまたはexit outcomeを組み合わせれば再現できるため、禁止されている重複fixtureを追加しなかった。Tested Versions表はfixture exact versionのGitleaks 8.27.2、OSV-Scanner 2.0.3、Trivy 0.69.3だけに限定し、同一familyや未検証releaseへtested coverageを広げなかった。
+- 既知の問題: 指定commandの先頭`PYTHONPATH=src`形式は実行環境のapproval policyによりprocess生成前に拒否されたため、同値の`env PYTHONPATH=src`形式で実行した。live scanner、network、image/scanner取得、raw output収集は実施しておらず、fixture結果は安全証明やexecution authorizationではない。
+- follow-up候補: F011の範囲に残作業はない。F012以降のfeatureは今回扱っていない。

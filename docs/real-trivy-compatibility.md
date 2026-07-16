@@ -120,6 +120,53 @@ Raw-output collection, if separately approved, stays under `/tmp` until Human
 review and redaction. The helper does not acquire or run Trivy. See
 `docs/compatibility-regeneration.md` for the complete boundary.
 
+## Tested Versions
+
+| Scanner | Tested version | Version record | Expected evidence |
+|---|---:|---|---|
+| Trivy | `0.69.3` | `tests/fixtures/real-scanners/trivy/trivy-version.txt` | `tests/fixtures/real-scanners/trivy/expected-evidence.json` |
+
+`tested`は上表のfixture exact versionだけを指す。同じmajor familyの別releaseは
+compatibility記録上`compatible_family_unverified`であり、tested coverageを
+拡張しない。documented family外は`unsupported`、`0.69.4`、`0.69.5`、
+`0.69.6`は`denylisted`、安全にversionを読めない出力は`unparseable`である。
+現行adapterが受理し得るparsed versionであっても、上表にないversionを
+`tested`とは表現しない。
+
+## Additional Compatibility Scenarios
+
+- Licenses: `licenses-redacted.real.json`と`expected-evidence.json`が
+  review-onlyのlicense findingを固定する。
+- Exit/report mismatch: 既存の
+  `tests/fixtures/real-compatibility/trivy/vulnerabilities.real.json`と
+  `no-findings.real.json`を逆のexit outcomeに組み合わせ、parse failureへ
+  正規化されることを確認する。専用の重複fixtureは追加しない。
+- Version parse failure: fixture由来でない不正なversion出力をunit testで
+  `unparseable`相当のfail-closed resultとして確認する。
+
+## Regeneration
+
+Human review済みのredacted license fixtureからbounded expected evidenceだけを
+再生成または照合する。
+
+```bash
+python3 scripts/regenerate_real_scanner_fixtures.py --scanner trivy --write
+python3 scripts/regenerate_real_scanner_fixtures.py --scanner trivy --check
+```
+
+このhelperはscannerを取得・実行せず、raw outputを読まない。raw-output collection
+が別途承認された場合も`/tmp`内に限定し、committed fixtureへ移す前にHumanが
+reviewとredactionを行う。
+
+## Not Covered
+
+- `0.69.3`以外のTrivy releaseやdatabase/cache combinationの互換性。
+- Default live commandに含まれないsecret、license、image、remote git、
+  Kubernetes、cloud scanの実行coverage。
+- 全result class、schema、exit code、database versionの網羅。
+- Scanner binaryまたはcontainer imageの取得元・署名・安全性の証明。
+- Finding 0件を安全証明またはexecution authorizationとして扱うこと。
+
 ## Compatibility Matrix
 
 - Trivy filesystem JSON: supported through redacted compatibility fixtures
