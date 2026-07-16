@@ -375,8 +375,8 @@
         "RHD_REAL_DOCKER_TEST=1 PYTHONPATH=src python3 -m unittest tests.test_candidate_seccomp_real_docker -v を実行する",
         "python3 -m json.tool docs/human-review/seccomp-review-packet.json >/dev/null を実行し、local実測結果またはfailureが省略なく記録され、production/default選択肢へ接続されていないことを確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T23:41:27+09:00",
       "blocked": false
     },
     {

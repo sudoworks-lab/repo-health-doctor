@@ -40,6 +40,11 @@
       "evidence_id": "E-RUNTIME-STATUS",
       "path": "docs/STATUS.md",
       "observation": "F025とF026のreal Docker casesは環境前提不足で未実測であり、F027はworkflowのstatic contractだけが完了している。"
+    },
+    {
+      "evidence_id": "E-CANDIDATE-REGRESSION",
+      "path": "scripts/run_candidate_seccomp_review.py",
+      "observation": "F030のreview専用pathは既存local imageだけを--pull=neverで使用し、環境、candidate hash、cases 1〜6、8、10の結果、全failureをcandidate_local_regressionへ記録する。"
     }
   ],
   "baseline": {
@@ -381,7 +386,7 @@
   "residual_risks": [
     {
       "risk_id": "RR-NO-CANDIDATE-RUNTIME-EVIDENCE",
-      "description": "削減候補はstaticなcase比較だけに基づき、candidate profileでのruntime syscall failureは未観測である。"
+      "description": "F028の削減候補はstaticなcase比較に基づく。F030のcandidate_local_regressionが記録する実行範囲またはpreflight failureを超えるruntime互換性は未確認である。"
     },
     {
       "risk_id": "RR-CASE-COVERAGE",
@@ -409,5 +414,219 @@
       "candidateごとにapprove、reject、reviseのいずれかを記録する。"
     ],
     "decision_effect": "F028 packetは分析資料であり、candidate artifact作成、製品path接続、default変更、Human approvalを行わない。"
+  },
+  "candidate_local_regression": {
+    "recorded_by_feature_id": "F030",
+    "observed_at": "2026-07-16T14:38:52+00:00",
+    "execution_state": "preflight_failed",
+    "profile": "rhd-locked-down-v1",
+    "profile_sha256": "1860f395ed5ddde5f50fd2c3c779568b62421c0368f9fc3c706fa5f9d8e961a5",
+    "approval_state": "human_unapproved",
+    "product_connection_state": "disconnected",
+    "pull_policy": "never",
+    "network_mode": "none",
+    "environment": {
+      "docker_server_version": "unknown",
+      "docker_os": "unknown",
+      "docker_architecture": "unknown",
+      "kernel_version": "unknown",
+      "rootless": "unknown",
+      "userns_remap": "unknown",
+      "image_selection_source": "default_local_tag",
+      "image_digest": "unknown",
+      "local_image_id": "unknown"
+    },
+    "required_case_ids": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      8,
+      10
+    ],
+    "attempted_case_count": 0,
+    "passed_case_count": 0,
+    "failed_case_count": 0,
+    "not_run_case_count": 8,
+    "all_required_cases_recorded": true,
+    "cases": [
+      {
+        "case_id": 1,
+        "description": "workspace write under the candidate profile",
+        "expected_outcome": "completed_exit_0",
+        "status": "not_run",
+        "exit_code": null,
+        "timed_out": false,
+        "duration_ms": 0,
+        "failure_codes": [
+          "preflight_blocked"
+        ]
+      },
+      {
+        "case_id": 2,
+        "description": "network namespace remains limited to loopback",
+        "expected_outcome": "completed_exit_0",
+        "status": "not_run",
+        "exit_code": null,
+        "timed_out": false,
+        "duration_ms": 0,
+        "failure_codes": [
+          "preflight_blocked"
+        ]
+      },
+      {
+        "case_id": 3,
+        "description": "container root filesystem remains read-only",
+        "expected_outcome": "completed_exit_0",
+        "status": "not_run",
+        "exit_code": null,
+        "timed_out": false,
+        "duration_ms": 0,
+        "failure_codes": [
+          "preflight_blocked"
+        ]
+      },
+      {
+        "case_id": 4,
+        "description": "writable tmpfs remains available",
+        "expected_outcome": "completed_exit_0",
+        "status": "not_run",
+        "exit_code": null,
+        "timed_out": false,
+        "duration_ms": 0,
+        "failure_codes": [
+          "preflight_blocked"
+        ]
+      },
+      {
+        "case_id": 5,
+        "description": "container process remains non-root",
+        "expected_outcome": "completed_exit_0",
+        "status": "not_run",
+        "exit_code": null,
+        "timed_out": false,
+        "duration_ms": 0,
+        "failure_codes": [
+          "preflight_blocked"
+        ]
+      },
+      {
+        "case_id": 6,
+        "description": "timeout remains bounded and the container is removed",
+        "expected_outcome": "timed_out",
+        "status": "not_run",
+        "exit_code": null,
+        "timed_out": false,
+        "duration_ms": 0,
+        "failure_codes": [
+          "preflight_blocked"
+        ]
+      },
+      {
+        "case_id": 8,
+        "description": "candidate profile can start the packaged-profile equivalent command",
+        "expected_outcome": "completed_exit_0",
+        "status": "not_run",
+        "exit_code": null,
+        "timed_out": false,
+        "duration_ms": 0,
+        "failure_codes": [
+          "preflight_blocked"
+        ]
+      },
+      {
+        "case_id": 10,
+        "description": "candidate profile can start the installed-package equivalent command",
+        "expected_outcome": "completed_exit_0",
+        "status": "not_run",
+        "exit_code": null,
+        "timed_out": false,
+        "duration_ms": 0,
+        "failure_codes": [
+          "preflight_blocked"
+        ]
+      }
+    ],
+    "failures": [
+      {
+        "scope": "environment",
+        "case_id": null,
+        "failure_code": "docker_daemon_unavailable"
+      },
+      {
+        "scope": "environment",
+        "case_id": null,
+        "failure_code": "docker_os_unavailable"
+      },
+      {
+        "scope": "environment",
+        "case_id": null,
+        "failure_code": "docker_architecture_unavailable"
+      },
+      {
+        "scope": "environment",
+        "case_id": null,
+        "failure_code": "docker_kernel_unavailable"
+      },
+      {
+        "scope": "environment",
+        "case_id": null,
+        "failure_code": "docker_security_options_unavailable"
+      },
+      {
+        "scope": "environment",
+        "case_id": null,
+        "failure_code": "local_image_unavailable"
+      },
+      {
+        "scope": "case",
+        "case_id": 1,
+        "failure_code": "preflight_blocked"
+      },
+      {
+        "scope": "case",
+        "case_id": 2,
+        "failure_code": "preflight_blocked"
+      },
+      {
+        "scope": "case",
+        "case_id": 3,
+        "failure_code": "preflight_blocked"
+      },
+      {
+        "scope": "case",
+        "case_id": 4,
+        "failure_code": "preflight_blocked"
+      },
+      {
+        "scope": "case",
+        "case_id": 5,
+        "failure_code": "preflight_blocked"
+      },
+      {
+        "scope": "case",
+        "case_id": 6,
+        "failure_code": "preflight_blocked"
+      },
+      {
+        "scope": "case",
+        "case_id": 8,
+        "failure_code": "preflight_blocked"
+      },
+      {
+        "scope": "case",
+        "case_id": 10,
+        "failure_code": "preflight_blocked"
+      }
+    ],
+    "raw_process_output_recorded": false,
+    "limitations": [
+      "result_scope_is_recorded_local_environment_only",
+      "successful_cases_do_not_establish_general_compatibility_or_safety",
+      "human_decision_remains_pending",
+      "candidate_remains_disconnected_from_product_and_default_paths"
+    ]
   }
 }
