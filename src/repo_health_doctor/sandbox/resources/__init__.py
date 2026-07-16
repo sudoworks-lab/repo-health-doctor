@@ -1,0 +1,1 @@
+"""Packaged sandbox profile resources."""

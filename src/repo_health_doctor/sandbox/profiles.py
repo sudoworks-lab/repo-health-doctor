@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
+from importlib import resources
 import os
 from typing import Any
 
@@ -11,6 +14,12 @@ PROFILE_DEV_PERMISSIVE = "dev-permissive"
 PROFILE_NO_NETWORK_DEFAULT = "no-network-default"
 PROFILE_NO_NETWORK_READONLY = "no-network-readonly"
 PROFILE_NETWORK_EXPLICIT = "network-explicit"
+PROFILE_MOBY_DEFAULT = "rhd-moby-default-v1"
+
+_SECCOMP_RESOURCE_PACKAGE = "repo_health_doctor.sandbox.resources"
+_SECCOMP_PROFILE_RESOURCE = "rhd-moby-default-v1.json"
+_SECCOMP_PROVENANCE_RESOURCE = "rhd-moby-default-v1.provenance.json"
+_SECCOMP_LICENSE_RESOURCE = "MOBY-APACHE-2.0.txt"
 
 DEFAULT_MEMORY_LIMIT = "512m"
 DEFAULT_CPU_LIMIT = "1.0"
@@ -95,6 +104,59 @@ class SandboxProfile:
                 "host_environment_inherited": False,
             },
         }
+
+
+@dataclass(frozen=True)
+class SeccompProfileResource:
+    """A packaged seccomp profile and its bounded provenance metadata."""
+
+    name: str
+    profile: dict[str, Any]
+    provenance: dict[str, Any]
+    license_text: str
+    profile_sha256: str
+
+
+def _read_seccomp_resource(resource_name: str) -> bytes:
+    if resource_name not in {
+        _SECCOMP_PROFILE_RESOURCE,
+        _SECCOMP_PROVENANCE_RESOURCE,
+        _SECCOMP_LICENSE_RESOURCE,
+    }:
+        raise ValueError("unsupported seccomp resource")
+    return resources.files(_SECCOMP_RESOURCE_PACKAGE).joinpath(resource_name).read_bytes()
+
+
+def resolve_seccomp_profile(name: str = PROFILE_MOBY_DEFAULT) -> SeccompProfileResource:
+    """Resolve the one package-owned profile without accepting arbitrary paths."""
+
+    if name != PROFILE_MOBY_DEFAULT:
+        raise ValueError(f"unsupported packaged seccomp profile: {name}")
+    profile_bytes = _read_seccomp_resource(_SECCOMP_PROFILE_RESOURCE)
+    provenance_bytes = _read_seccomp_resource(_SECCOMP_PROVENANCE_RESOURCE)
+    license_bytes = _read_seccomp_resource(_SECCOMP_LICENSE_RESOURCE)
+    profile = json.loads(profile_bytes.decode("utf-8"))
+    provenance = json.loads(provenance_bytes.decode("utf-8"))
+    if not isinstance(profile, dict) or not isinstance(provenance, dict):
+        raise ValueError("packaged seccomp resource must contain JSON objects")
+    profile_sha256 = hashlib.sha256(profile_bytes).hexdigest()
+    if provenance.get("profile_sha256") != profile_sha256:
+        raise ValueError("packaged seccomp profile hash does not match provenance")
+    if provenance.get("profile_name") != name:
+        raise ValueError("packaged seccomp provenance name does not match profile")
+    return SeccompProfileResource(
+        name=name,
+        profile=profile,
+        provenance=provenance,
+        license_text=license_bytes.decode("utf-8"),
+        profile_sha256=profile_sha256,
+    )
+
+
+def load_seccomp_profile(name: str = PROFILE_MOBY_DEFAULT) -> dict[str, Any]:
+    """Return parsed package data for the supported profile."""
+
+    return resolve_seccomp_profile(name).profile
 
 
 def default_container_user() -> str:

@@ -1,0 +1,20 @@
+{
+  "profile_name": "rhd-moby-default-v1",
+  "source": {
+    "repository": "https://github.com/moby/moby",
+    "path": "profiles/seccomp/default.json",
+    "version": "v28.3.3",
+    "revision": "moby-default-seccomp-v28.3.3"
+  },
+  "license": {
+    "spdx_id": "Apache-2.0",
+    "source_file": "licenses/MOBY-APACHE-2.0.txt",
+    "resource_file": "MOBY-APACHE-2.0.txt"
+  },
+  "retrieved_date": "2026-07-16",
+  "changes": [
+    "The upstream default policy is vendored as package data without syscall reductions.",
+    "The package-owned profile name and provenance sidecar are added; policy semantics are unchanged."
+  ],
+  "profile_sha256": "7cb8f61c6f90a7f0491194c5e3e3ac41f0d4e65e9494a0afca1575cbb43b86a2"
+}

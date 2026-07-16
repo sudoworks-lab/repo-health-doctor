@@ -47,6 +47,9 @@ Documentation = "https://github.com/sudoworks-lab/repo-health-doctor/tree/main/d
 [project.scripts]
 repo-health-doctor = "repo_health_doctor.cli:main"
 
+[tool.setuptools.package-data]
+"repo_health_doctor.sandbox.resources" = ["*.json", "*.txt"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 norecursedirs = ["tests/fixtures"]
