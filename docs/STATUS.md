@@ -79,3 +79,11 @@
 - 判断と理由: report生成側の既存256 KiB budgetを入力側でも再利用し、ageは24時間、未来時刻の許容skewは5分に限定した。truncated evidenceは成功扱いせず、dedupe済みreasonを返してfail-closedにした。draft schemaと既存`rule_id`は変更していない。
 - 既知の問題: fileの実byte sizeはJSON parse前にcallerが測定して`source_size_bytes`へ渡す必要がある。F006は静的validatorだけであり、file loader、risk mapping、gate decision、CLI接続は実装していない。
 - follow-up候補: F007でvalidated suite findingと既存risk mapperを接続し、success evidenceでverdictを改善しない単調性を検証する。F006以外のfeatureは今回扱っていない。
+
+## 2026-07-16 JST — F007 external suite risk mappingとverdict単調性
+
+- 今回やったこと: validated external suite reportをgate evaluatorへ渡す入力境界を追加し、completed entryの`normalized_result`を既存の`validate_external_scanner_result`と`map_external_scanner_risk`へ接続した。completed/no-findingはverdict候補を追加せず、suite validation失敗、未完了entry、unverified scannerはunknown方向へ、既存risk ruleのfindingはwarn、quarantine、blockの悪化方向へだけ反映する。raw `entries`と`normalized_result`はgate decisionへ埋め込まない。`secret_like_value`が既存RISK001を発火してlive executionをblockする横断testも追加した。
+- 検証結果: `env PYTHONPATH=src python3 -m unittest tests.test_external_suite_gate_mapping tests.test_external_scanner_risk_mapper -v`は11件pass・0件failで、5段階の既存verdictに対するcompleted/no-finding不変、invalid、unavailable、unverified、vulnerability findingの単調性、`secret_like_value`のRISK001経由BLOCKを確認した。全unit suiteは708件pass・3件skip・0件failだった。PLANの`find`、`wc`、CLI help/version、public-safety scan、policy validation、default JSON report生成・parse、`py_compile`、`git diff --check`も成功した。
+- 判断と理由: suite validationが成功したentryだけを既存risk mapperへ渡し、問題signalは`strongest_verdict`の候補追加だけで合流させることで、既存verdictを改善できない構造にした。invalidまたは未完了entryのraw内容は解釈せずunknownへ固定し、validated findingでもraw scanner内容はgate decisionへ転記せず、固定IDと既存RISK rule IDだけをreasonとして残す。
+- 既知の問題: 指定test commandの直接表記とJSON parserの`>/dev/null`付き表記は実行環境のapproval policyによりprocess生成前に拒否された。同じcommandを`env PYTHONPATH=src`で実行し、JSON parserは出力抑制を外して実行したところ、いずれもexit 0で成功した。これは環境差分であり、testまたはparseの失敗ではない。
+- follow-up候補: F008でCLIからexternal suite evidenceをboundedに受け取り、gate decisionにはraw reportではなく`evidence_refs`だけを記録する。F008以降のfeatureは今回扱っていない。

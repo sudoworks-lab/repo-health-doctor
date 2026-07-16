@@ -11,7 +11,13 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from repo_health_doctor.evidence.validation import validate_evidence
+from repo_health_doctor.external_scanner.risk_mapper import (
+    ExternalScannerRiskMappingResult,
+    map_external_scanner_risk,
+)
+from repo_health_doctor.external_scanner.result_validator import validate_external_scanner_result
 
+from .external_evidence import ExternalSuiteEvidenceValidationResult
 from .limitation_policy import highest_limitation_severity
 from .policy import load_pre_execution_gate_policy
 from .validation import DECISION_KIND, GATE_DECISION_SCHEMA_VERSION, validate_gate_decision
@@ -70,11 +76,29 @@ class GateEvaluationResult:
         }
 
 
+@dataclass(frozen=True)
+class ExternalSuiteGateEvidence:
+    """One suite report paired with its bounded validation result."""
+
+    report: Mapping[str, Any]
+    validation: ExternalSuiteEvidenceValidationResult
+
+
+@dataclass(frozen=True)
+class _ExternalSuiteGateSignals:
+    verdict_candidates: tuple[str, ...]
+    verdict_reasons: tuple[str, ...]
+    blocking_evidence: tuple[str, ...]
+    warning_evidence: tuple[str, ...]
+    findings_count: int
+
+
 def evaluate_gate_decision(
     evidence: Sequence[Mapping[str, Any]],
     *,
     subject: Mapping[str, Any] | None = None,
     policy: Mapping[str, Any] | None = None,
+    external_suite_evidence: Sequence[ExternalSuiteGateEvidence] = (),
 ) -> GateEvaluationResult:
     active_policy = policy or load_pre_execution_gate_policy()
     evidence_items = list(evidence)
@@ -197,6 +221,16 @@ def evaluate_gate_decision(
                 verdict_reasons.append(f"medium_limitation:{limitation}")
                 warning_evidence.append(evidence_id)
 
+    external_signals = _external_suite_gate_signals(external_suite_evidence)
+    verdict_candidates.extend(external_signals.verdict_candidates)
+    verdict_reasons.extend(external_signals.verdict_reasons)
+    blocking_evidence.extend(external_signals.blocking_evidence)
+    warning_evidence.extend(external_signals.warning_evidence)
+    findings_count += external_signals.findings_count
+    if external_suite_evidence:
+        limitations.append("external_scanner_suite_is_not_safety_proof")
+        residual_risks.append("external_scanner_scope_and_binary_trust_remain_bounded")
+
     if all_low_trust and evidence_items and not any_runtime_observation and not verdict_candidates:
         verdict_candidates.append("unknown")
         verdict_reasons.append("all_evidence_low_trust_without_runtime_observation")
@@ -290,6 +324,110 @@ def evaluate_gate_decision(
         warnings=tuple(_dedupe(list(gate_validation.warnings))),
         verdict_reasons=tuple(_dedupe(verdict_reasons)),
     )
+
+
+def _external_suite_gate_signals(
+    suites: Sequence[ExternalSuiteGateEvidence],
+) -> _ExternalSuiteGateSignals:
+    candidates: list[str] = []
+    reasons: list[str] = []
+    blocking: list[str] = []
+    warning: list[str] = []
+    findings_count = 0
+
+    for suite_index, suite in enumerate(suites, start=1):
+        suite_id = f"external_suite:{suite_index}"
+        if not suite.validation.valid:
+            candidates.append("unknown")
+            reasons.append(f"external_suite_validation_failed:{suite_id}")
+            warning.append(suite_id)
+            continue
+
+        entries = suite.report.get("entries")
+        if not isinstance(entries, list):
+            candidates.append("unknown")
+            reasons.append(f"external_suite_entries_invalid:{suite_id}")
+            warning.append(suite_id)
+            continue
+
+        for entry_index, entry in enumerate(entries, start=1):
+            entry_id = f"{suite_id}:entry:{entry_index}"
+            if not isinstance(entry, Mapping):
+                candidates.append("unknown")
+                reasons.append(f"external_suite_entry_invalid:{entry_id}")
+                warning.append(entry_id)
+                continue
+            if entry.get("valid") is not True or entry.get("status") != "completed":
+                candidates.append("unknown")
+                reasons.append(f"external_suite_entry_not_completed:{entry_id}")
+                warning.append(entry_id)
+                continue
+
+            normalized = entry.get("normalized_result")
+            if not isinstance(normalized, Mapping):
+                candidates.append("unknown")
+                reasons.append(f"external_scanner_result_invalid:{entry_id}")
+                warning.append(entry_id)
+                continue
+
+            scanner_validation = validate_external_scanner_result(normalized)
+            mapping = map_external_scanner_risk(
+                normalized,
+                validation_result=scanner_validation,
+            )
+            entry_candidate = _external_mapping_verdict(mapping)
+            entry_finding_count = entry.get("finding_count")
+            if (
+                isinstance(entry_finding_count, int)
+                and not isinstance(entry_finding_count, bool)
+                and entry_finding_count >= 0
+            ):
+                findings_count += entry_finding_count
+
+            scanner = _mapping(normalized.get("scanner"))
+            if scanner.get("trusted_binary_status") == "unverified":
+                candidates.append("unknown")
+                reasons.append(f"external_scanner_binary_unverified:{entry_id}")
+                warning.append(entry_id)
+
+            if not scanner_validation.valid:
+                reasons.append(f"external_scanner_result_invalid:{entry_id}")
+            for rule in mapping.fired_rules:
+                reasons.append(f"external_scanner_rule:{rule.rule_id}")
+
+            if entry_candidate is not None:
+                candidates.append(entry_candidate)
+                reasons.append(f"external_scanner_risk_mapped:{entry_id}")
+                if entry_candidate == "block":
+                    blocking.append(entry_id)
+                else:
+                    warning.append(entry_id)
+            elif entry_finding_count:
+                candidates.append("warn")
+                reasons.append(f"external_scanner_finding_requires_review:{entry_id}")
+                warning.append(entry_id)
+            else:
+                reasons.append(f"external_scanner_no_finding_not_safety_proof:{entry_id}")
+
+    return _ExternalSuiteGateSignals(
+        verdict_candidates=tuple(candidates),
+        verdict_reasons=tuple(reasons),
+        blocking_evidence=tuple(blocking),
+        warning_evidence=tuple(warning),
+        findings_count=findings_count,
+    )
+
+
+def _external_mapping_verdict(mapping: ExternalScannerRiskMappingResult) -> str | None:
+    if mapping.quarantine or mapping.requires_dedicated_vm:
+        return "quarantine"
+    if mapping.blocks_live_execution:
+        return "block"
+    if mapping.requires_human_review:
+        return "quarantine"
+    if mapping.highest_risk_tier_effect != "none" or "raises_risk" in mapping.gate_effects:
+        return "warn"
+    return None
 
 
 def _limitation_verdict(limitation: str, policy: Mapping[str, Any]) -> str:

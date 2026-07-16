@@ -83,6 +83,26 @@ class ExternalScannerRiskMapperTests(unittest.TestCase):
         self.assertFalse(result.blocks_live_execution)
         self.assertIn("RISK020", fired_rule_ids(result))
 
+    def test_secret_like_value_fires_risk001_and_blocks_live_execution(self) -> None:
+        result = map_external_scanner_risk(
+            build_external_scanner_risk_result(
+                {
+                    "findings": [
+                        {
+                            "primary_category": "secret",
+                            "secondary_category": "secret_like_value",
+                        }
+                    ]
+                }
+            )
+        )
+
+        self.assertIn("RISK001", fired_rule_ids(result))
+        self.assertEqual(result.highest_risk_tier_effect, "raise_to_T5")
+        self.assertIn("blocks_live_execution", result.gate_effects)
+        self.assertTrue(result.blocks_live_execution)
+        self.assertTrue(result.cannot_lower_risk)
+
     def test_mapper_tracks_rules_limitations_residual_risks_and_evidence_summary(self) -> None:
         result = map_external_scanner_risk(build_external_scanner_risk_result(_scenario("RISK004_credential_network_chain.json")))
         self.assertIn("RISK004", fired_rule_ids(result))

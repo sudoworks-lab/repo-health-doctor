@@ -99,8 +99,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_external_suite_gate_mapping tests.test_external_scanner_risk_mapper -v を実行する",
         "test出力でno finding/completedのverdict不変、問題signalの同値または悪化、secret_like_valueのfail-closedを確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T13:00:33+09:00",
       "blocked": false
     },
     {
