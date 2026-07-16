@@ -339,8 +339,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_real_docker_workflow_contract -v を実行する",
         "test出力でworkflow_dispatch以外のtrigger不在、digest pin、独立acquisition、sandbox --pull=never、Docker version/OS/architecture summaryを確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T22:53:48+09:00",
       "blocked": false
     },
     {

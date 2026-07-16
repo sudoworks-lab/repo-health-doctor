@@ -258,3 +258,12 @@
 - 既知の問題: cases 8〜10は実Dockerで0件実行であり、同梱profileのruntime適用、実local image ID binding、installed wheel resourceによるlive run、original repo不変、cleanup、schema-validなreal evidenceは未確認である。opt-in gate、test discovery、構文、local手順は確認したがreal Docker greenの代替証拠ではない。
 - follow-up候補: HumanがPython 3を実行できるdigest-pinned imageをlocal daemonへ事前に用意し、そのexact referenceを`RHD_REAL_DOCKER_IMAGE`へ設定してF026の指定testを再実行する。3件すべてがpassした場合だけF026のblockedを解除し、passesとverified_atを更新する。F026以外のfeatureは今回扱っていない。
 - 終了時検証追記: `bash scripts/init.sh`は806件実行・793件pass・13件skip・0件failで、CLI help/version、public-safety、policy validation、JSON report生成・parseまで成功した。PLANのdocs/fixture一覧、`wc -l AGENTS.md`、指定docs `rg`、`git diff --check`も成功した。
+
+## 2026-07-16 JST — F027 workflow_dispatch real Docker検証契約
+
+- 今回やったこと: `workflow_dispatch`だけで起動する`real-docker-verification.yml`を追加した。Humanが指定するdigest-pinned image referenceを独立したacquisition stepで形式検証してpullし、後続の固定test stepはsandboxの`--pull=never`契約とreal Docker cases 1〜10だけを実行する。成否にかかわらずDocker server version、runner OS、architectureをstep summaryへ記録する。static contract test、real Docker検証手順、image compatibilityのpre-verification境界、CHANGELOGを同期した。
+- 検証結果: 指定された先頭`PYTHONPATH=src`形式はprocess生成前に実行環境ポリシーから拒否されたため、同値の`env PYTHONPATH=src python3 -m unittest tests.test_real_docker_workflow_contract -v`を実行し4件pass・0件failだった。test出力でworkflow_dispatch以外のtrigger不在、digest形式検証、独立acquisition、固定cases、sandbox `--pull=never`、Docker version、OS、architecture summaryを確認した。YAML parserによる構文確認も成功した。終了時`bash scripts/init.sh`は810件実行・797件pass・13件skip・0件failで、CLI help/version、public-safety、policy validation、JSON report生成・parseまで成功した。`git diff --check`も成功した。
+- 判断と理由: workflow inputはimage referenceだけに限定し、command inputを追加しなかった。image取得とtest実行をstepで分離し、test stepからpullまたはbuildを行えないことをstaticに固定した。Hosted workflowを実行せずに受入条件を検証できたため、F027を`passes:true`、`blocked:false`としてJSTの検証日時を記録した。
+- 既知の問題: Hosted workflowはこのprocessでは起動しておらず、実image、Docker runtime、OS、architectureの組合せによるgreen runと互換性は未確認である。green runも一般的な安全性や完全な隔離の証明にはならない。固定名`/tmp/repo-health-doctor-result.json`への直接出力はsandbox policyでprocess生成前に拒否されたが、`scripts/init.sh`の一時JSON生成とparseは成功した。
+- follow-up候補: HumanがPython 3を実行できるdigest-pinned image referenceを指定してworkflow_dispatchを実行し、対象commit、run metadata、Docker version、OS、architectureを確認する。F027以外のfeatureには着手していない。
+- 記録の補足: 上記の「test stepからpullまたはbuildを行えない」は、image pullまたはDocker image buildを行わないという意味である。case 10が行うoffline wheel buildは固定testの一部として維持している。

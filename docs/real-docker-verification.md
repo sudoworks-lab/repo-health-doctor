@@ -23,3 +23,22 @@ PYTHONPATH=src python3 -m unittest \
 - case 10はrepositoryをofflineでwheel化し、`--no-index`で一時directoryへinstalled packageを作る。そのinstalled package resourceから同じseccomp profileを解決し、local imageを`--pull=never`で実行できることを確認する。
 
 全caseの結果は、その時点のlocal Docker runtime、OS、architecture、digest-pinned imageにだけ適用される。成功はrepositoryやimageの一般的な安全性を証明せず、image取得、Hosted run、Human approvalの代替にもならない。
+
+## Human-triggered Hosted verification
+
+`.github/workflows/real-docker-verification.yml`は`workflow_dispatch`だけで起動できる。
+Humanは`image` inputへ`<registry>/<image>@sha256:<64 lowercase hex>`形式のreferenceを
+指定する。workflowは次の順序を固定する。
+
+1. `Acquire digest-pinned test image` stepがreference形式を検証し、imageをpullしてlocalに
+   存在することを確認する。このstepだけがimage acquisitionを行う。
+2. 固定test stepがsandboxの`--pull=never`契約とreal Docker cases 1〜10を実行する。
+   command inputやrepo由来commandは受け取らず、test module内の固定された無害な
+   `python3 -c` commandだけを使う。
+3. 成否にかかわらずsummary stepがDocker server version、runner OS、architectureを
+   `$GITHUB_STEP_SUMMARY`へ記録する。
+
+Hosted workflowの実行はHuman操作であり、local Goal Loopからは起動しない。workflowの
+green resultも一般的な安全性や完全な隔離の証明ではなく、対象commit、image digest、
+Docker version、OS、architecture、実行日時に限定された検証結果である。正式な互換性記録は
+Humanがrun metadataを確認した後にだけ追加する。

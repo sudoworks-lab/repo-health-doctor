@@ -43,3 +43,9 @@ Human-triggered real Docker検証でfirst greenを得た場合だけ、次のbou
 
 その記録は対象image、Docker version、OS、architecture、実行日に限定される。sandbox成功、
 finding 0件、rootless markerの有無はいずれも一般的な安全性や完全な隔離を証明しない。
+
+Hosted検証は`.github/workflows/real-docker-verification.yml`をHumanが`workflow_dispatch`から
+起動する。必須の`image` inputはdigest-pinned registry referenceに限定され、独立した
+acquisition stepで取得した後、固定testは`--pull=never`で同じlocal imageを使う。summaryには
+Docker version、runner OS、architectureが残るが、green runをこの節の互換性記録へ自動転記
+しない。run metadataと対象commitのHuman確認が完了するまではpre-verification状態を維持する。

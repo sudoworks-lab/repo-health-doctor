@@ -1,0 +1,64 @@
+name: Real Docker verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "Digest-pinned image: <registry>/<image>@sha256:<64 lowercase hex>"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  real-docker-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Prepare fixed test tooling
+        run: |
+          python3 --version
+          python3 -m pip install build==1.3.0
+
+      - name: Acquire digest-pinned test image
+        env:
+          RHD_REAL_DOCKER_IMAGE: ${{ inputs.image }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          image = os.environ["RHD_REAL_DOCKER_IMAGE"]
+          pattern = r"[a-z0-9][a-z0-9./:_-]{0,255}@sha256:[0-9a-f]{64}"
+          if re.fullmatch(pattern, image) is None:
+              raise SystemExit("image must be a digest-pinned registry reference")
+          PY
+          docker pull "$RHD_REAL_DOCKER_IMAGE"
+          docker image inspect "$RHD_REAL_DOCKER_IMAGE" >/dev/null
+
+      - name: Run fixed sandbox --pull=never and real Docker cases 1 to 10
+        env:
+          PYTHONPATH: src
+          RHD_REAL_DOCKER_TEST: "1"
+          RHD_REAL_DOCKER_IMAGE: ${{ inputs.image }}
+        run: |
+          python3 -m unittest \
+            tests.test_sandbox_run_docker_command.SandboxRunDockerCommandTests.test_pull_never_and_network_none_are_required_exactly_once \
+            tests.test_real_docker_verification.RealDockerBoundaryCasesOneToSeven \
+            tests.test_real_docker_verification.RealDockerBoundaryCasesEightToTen \
+            -v
+
+      - name: Record Docker and runner summary
+        if: always()
+        run: |
+          docker_version="$(docker version --format '{{.Server.Version}}')"
+          {
+            echo "## Real Docker verification runtime"
+            echo "- Docker version: ${docker_version}"
+            echo "- OS: ${RUNNER_OS}"
+            echo "- Architecture: ${RUNNER_ARCH}"
+          } >> "$GITHUB_STEP_SUMMARY"

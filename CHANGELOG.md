@@ -20,6 +20,9 @@ change. See [docs/versioning.md](docs/versioning.md).
 
 ### Added
 
+- Human-triggered real Docker verification workflowを追加した。`workflow_dispatch`だけで起動し、
+  digest-pinned image acquisitionを固定testから分離する。testはsandboxの`--pull=never`契約と
+  cases 1〜10を実行し、Docker version、runner OS、architectureをstep summaryへ記録する。
 - Experimental `gate-check --sandbox-evidence`の複数入力、count・file size・
   total bytes・age・duplicate検証を追加した。gate decisionはraw sandbox reportを
   埋め込まず、report fingerprint、run ID、元gate decision fingerprintだけを
