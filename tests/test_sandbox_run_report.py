@@ -7,7 +7,11 @@ from unittest.mock import patch
 
 from repo_health_doctor.sandbox.approval import build_demo_sandbox_run_approval
 from repo_health_doctor.sandbox.docker_runner import FakeDockerRunner
-from repo_health_doctor.sandbox.profiles import get_sandbox_profile
+from repo_health_doctor.sandbox.profiles import (
+    PROFILE_MOBY_DEFAULT,
+    get_sandbox_profile,
+    resolve_seccomp_profile,
+)
 from repo_health_doctor.sandbox.run import run_sandbox_run
 from repo_health_doctor.sandbox.run_workspace import fingerprint_target
 
@@ -184,6 +188,27 @@ def test_timeout_result_is_reported_as_timed_out(tmp_path: Path) -> None:
 
 
 class SandboxRunReportContractTests(unittest.TestCase):
+    def test_seccomp_evidence_is_schema_valid_for_packaged_profile(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = _repo(Path(tmp) / "repo")
+            report = run_sandbox_run(
+                repo,
+                image=IMAGE,
+                profile_name="locked-down",
+                seccomp_profile_name=PROFILE_MOBY_DEFAULT,
+                command_argv=COMMAND,
+                runner=FakeDockerRunner(),
+                dry_run=True,
+            )
+
+        _assert_sandbox_run_schema_valid(report)
+        self.assertEqual(PROFILE_MOBY_DEFAULT, report["seccomp"]["profile"])
+        self.assertEqual(resolve_seccomp_profile().profile_sha256, report["seccomp"]["profile_sha256"])
+        self.assertEqual("package_data", report["seccomp"]["source"])
+        self.assertIn("seccomp=<sandbox-run-root>/rhd-moby-default-v1.json", report["docker"]["argv_redacted"])
+
     def test_v1_report_distinguishes_command_exit_2_from_policy_block(self) -> None:
         import tempfile
 

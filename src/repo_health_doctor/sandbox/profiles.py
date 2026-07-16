@@ -5,6 +5,7 @@ import hashlib
 import json
 from importlib import resources
 import os
+from pathlib import Path
 from typing import Any
 
 
@@ -15,6 +16,10 @@ PROFILE_NO_NETWORK_DEFAULT = "no-network-default"
 PROFILE_NO_NETWORK_READONLY = "no-network-readonly"
 PROFILE_NETWORK_EXPLICIT = "network-explicit"
 PROFILE_MOBY_DEFAULT = "rhd-moby-default-v1"
+SECCOMP_RUNTIME_DEFAULT = "runtime-default"
+SECCOMP_PROFILE_CHOICES = (SECCOMP_RUNTIME_DEFAULT, PROFILE_MOBY_DEFAULT)
+SECCOMP_SOURCE_RUNTIME_DEFAULT = "runtime_default"
+SECCOMP_SOURCE_PACKAGE_DATA = "package_data"
 
 _SECCOMP_RESOURCE_PACKAGE = "repo_health_doctor.sandbox.resources"
 _SECCOMP_PROFILE_RESOURCE = "rhd-moby-default-v1.json"
@@ -117,6 +122,22 @@ class SeccompProfileResource:
     profile_sha256: str
 
 
+@dataclass(frozen=True)
+class SeccompProfileSelection:
+    """One of the two supported sandbox-run seccomp selections."""
+
+    profile: str
+    profile_sha256: str | None
+    source: str
+
+    def to_report(self) -> dict[str, Any]:
+        return {
+            "profile": self.profile,
+            "profile_sha256": self.profile_sha256,
+            "source": self.source,
+        }
+
+
 def _read_seccomp_resource(resource_name: str) -> bytes:
     if resource_name not in {
         _SECCOMP_PROFILE_RESOURCE,
@@ -157,6 +178,37 @@ def load_seccomp_profile(name: str = PROFILE_MOBY_DEFAULT) -> dict[str, Any]:
     """Return parsed package data for the supported profile."""
 
     return resolve_seccomp_profile(name).profile
+
+
+def materialize_seccomp_profile(name: str, destination: Path) -> Path:
+    """Write the exact package-owned profile bytes to a controlled path."""
+
+    resolved = resolve_seccomp_profile(name)
+    profile_bytes = _read_seccomp_resource(_SECCOMP_PROFILE_RESOURCE)
+    if hashlib.sha256(profile_bytes).hexdigest() != resolved.profile_sha256:
+        raise ValueError("packaged seccomp profile changed during resolution")
+    with destination.open("xb") as profile_file:
+        profile_file.write(profile_bytes)
+    return destination
+
+
+def resolve_seccomp_selection(name: str = SECCOMP_RUNTIME_DEFAULT) -> SeccompProfileSelection:
+    """Resolve only the runtime default or the package-owned Moby profile."""
+
+    if name == SECCOMP_RUNTIME_DEFAULT:
+        return SeccompProfileSelection(
+            profile=SECCOMP_RUNTIME_DEFAULT,
+            profile_sha256=None,
+            source=SECCOMP_SOURCE_RUNTIME_DEFAULT,
+        )
+    if name != PROFILE_MOBY_DEFAULT:
+        raise ValueError("unsupported seccomp profile")
+    resource = resolve_seccomp_profile(name)
+    return SeccompProfileSelection(
+        profile=resource.name,
+        profile_sha256=resource.profile_sha256,
+        source=SECCOMP_SOURCE_PACKAGE_DATA,
+    )
 
 
 def default_container_user() -> str:

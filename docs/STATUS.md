@@ -167,3 +167,11 @@
 - Human判断: F015の受入条件はsource checkoutとinstalled wheelから同一hashでresourceを解決できることである。同一build backendによるoffline wheelと専用testで条件を満たしたため、frontendである`python3 -m build`の不在だけを理由に未完了とはしない。
 - 状態更新: F015をpasses:true、blocked:false、verified_at:2026-07-16T17:52:57+09:00へ更新した。
 - 制約: network access、依存取得、CLI/argv接続、Docker実効性の主張、他featureの検証緩和は行っていない。
+
+## 2026-07-16 JST — F016 --seccomp CLIとevidence
+
+- 今回やったこと: `sandbox-run`へ`--seccomp`を追加し、`runtime-default`と`rhd-moby-default-v1`だけを受理するようにした。既定値は`runtime-default`のままとし、同梱profile選択時だけ検証済みpackage bytesを使い捨てrun rootへ上書き不可でmaterializeして、Docker argvへ`--security-opt seccomp=...`を追加する。evidenceにはprofile、SHA-256、sourceを閉じたdraft schemaで記録し、一時pathはredactする。
+- 検証結果: 指定された先頭`PYTHONPATH=src`形式の専用commandは実行環境のprocess生成ポリシーにより開始前に拒否されたため、同値の`env PYTHONPATH=src python3 -m unittest tests.test_seccomp_cli tests.test_sandbox_run_report -v`を実行し7件pass・0件failだった。test出力でruntime-default既定、任意pathと`unconfined`の非表示拒否、同梱profileのDocker argv、profile hash、source、schema validationを確認した。全unit suiteは755件pass・3件skip・0件failで、PLANの基本検証、sandbox-run help、schema JSON parse、対象fileのcompile、`git diff --check`も成功した。
+- 判断と理由: `runtime-default`ではseccomp用Docker optionを追加せず、従来のruntime既定挙動を維持する。同梱profileだけはhash検証済みのpackage dataと同じbytesをDockerへ渡し、evidenceではruntime管理とpackage dataを区別する。任意入力をargparseの既定errorへ渡すと入力pathを表示し得るため、未許可値を含めない固定errorへ変換した。
+- 既知の問題: 実Dockerでのprofile有効性はG009の対象であり、今回のfake runnerとdry-runでは確認していない。全profile組合せのargv goldenとrootless制約はF017の対象であり、今回変更していない。
+- follow-up候補: F017でDocker argv golden、禁止option、rootless検出と制約を指定範囲内で検証する。F016以外のfeatureには着手していない。

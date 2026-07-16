@@ -207,8 +207,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_seccomp_cli tests.test_sandbox_run_report -v を実行する",
         "test出力でruntime-default既定、任意path/unconfined拒否、profile/hash/sourceのschema-valid evidenceを確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T18:22:01+09:00",
       "blocked": false
     },
     {

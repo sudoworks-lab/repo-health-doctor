@@ -42,6 +42,7 @@ from .sandbox import (
     run_sandbox,
     run_sandbox_run,
 )
+from .sandbox.profiles import SECCOMP_PROFILE_CHOICES, SECCOMP_RUNTIME_DEFAULT
 from .gate import (
     build_execution_authorization_draft,
     evaluate_gate_decision_from_v3_report,
@@ -408,6 +409,13 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             help="Sandbox profile. locked-down is the v1 default; dev-permissive and network-explicit fail closed.",
         )
         parser.add_argument(
+            "--seccomp",
+            default=SECCOMP_RUNTIME_DEFAULT,
+            type=_parse_seccomp_profile,
+            metavar="{runtime-default,rhd-moby-default-v1}",
+            help="Seccomp profile. runtime-default preserves the Docker runtime default.",
+        )
+        parser.add_argument(
             "--dry-run",
             action="store_true",
             help="Generate sandbox-run evidence and Docker argv without invoking Docker.",
@@ -643,6 +651,7 @@ def main(argv: list[str] | None = None) -> int:
                 approval_path=Path(args.approval) if args.approval else None,
                 image=args.image,
                 profile_name=args.profile,
+                seccomp_profile_name=args.seccomp,
                 command_argv=sandbox_run_argv,
                 timeout_seconds=args.timeout_seconds,
                 runner=runner,
@@ -1104,6 +1113,12 @@ def _sandbox_run_exit_code(report: Mapping[str, Any]) -> int:
         sys.stderr.write(f"SANDBOX-RUN COMMAND EXIT: command exited {command_exit_code}\n")
         return command_exit_code
     return code
+
+
+def _parse_seccomp_profile(value: str) -> str:
+    if value not in SECCOMP_PROFILE_CHOICES:
+        raise argparse.ArgumentTypeError("must be runtime-default or rhd-moby-default-v1")
+    return value
 
 
 def _mapping(value: object) -> Mapping[str, Any]:

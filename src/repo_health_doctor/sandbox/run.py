@@ -16,7 +16,16 @@ from .docker_runner import (
     build_docker_run_argv,
     docker_report_fields,
 )
-from .profiles import PROFILE_LOCKED_DOWN, PROFILE_INSPECT_ONLY, SandboxProfile, get_sandbox_profile
+from .profiles import (
+    PROFILE_LOCKED_DOWN,
+    PROFILE_INSPECT_ONLY,
+    SECCOMP_RUNTIME_DEFAULT,
+    SandboxProfile,
+    SeccompProfileSelection,
+    get_sandbox_profile,
+    materialize_seccomp_profile,
+    resolve_seccomp_selection,
+)
 from .run_workspace import (
     CopyBudget,
     DEFAULT_MAX_FILE_BYTES,
@@ -80,6 +89,7 @@ def run_sandbox_run(
     approval_path: Path | None = None,
     image: str | None = None,
     profile_name: str = PROFILE_LOCKED_DOWN,
+    seccomp_profile_name: str = SECCOMP_RUNTIME_DEFAULT,
     command_argv: list[str],
     timeout_seconds: int = 30,
     runner: SandboxDockerRunner | None = None,
@@ -96,6 +106,7 @@ def run_sandbox_run(
     command_argv = _normalize_command_argv(command_argv)
     image = image or DEFAULT_SANDBOX_IMAGE
     profile = get_sandbox_profile(profile_name)
+    seccomp = resolve_seccomp_selection(seccomp_profile_name)
     runner = DockerRunner() if runner is None else runner
     limitations: list[str] = []
     next_actions: list[str] = []
@@ -110,6 +121,7 @@ def run_sandbox_run(
         authorization_path=authorization_path,
         image=image,
         profile=profile,
+        seccomp=seccomp,
         command_argv=command_argv,
         runner=runner,
         limitations=limitations,
@@ -228,12 +240,15 @@ def run_sandbox_run(
                 preserve_workspace=preserve_workspace,
             )
         before_snapshot = snapshot_workspace(workspace.workspace)
+        seccomp_profile_path = _materialize_seccomp_profile(seccomp, workspace)
         docker_argv = build_docker_run_argv(
             image=image,
             command_argv=command_argv,
             workspace_host_path=workspace.workspace,
             out_host_path=workspace.out,
             profile=profile,
+            seccomp_profile_name=seccomp.profile,
+            seccomp_profile_path=seccomp_profile_path,
         )
         docker_argv_redacted = [_redact_text(token, target=target, workspace=workspace) for token in docker_argv]
         base_report["docker"] = docker_report_fields(
@@ -376,6 +391,7 @@ def _base_report(
     authorization_path: Path | None,
     image: str,
     profile: SandboxProfile,
+    seccomp: SeccompProfileSelection,
     command_argv: list[str],
     runner: SandboxDockerRunner,
     limitations: list[str],
@@ -433,6 +449,7 @@ def _base_report(
             authorization_validation=authorization_validation,
         ),
         "sandbox_profile": profile.to_report(),
+        "seccomp": seccomp.to_report(),
         "command": {
             "argv_redacted": [_redact_text(token, target=target, workspace=None) for token in command_argv],
             "shell": _command_uses_explicit_shell(command_argv),
@@ -474,6 +491,16 @@ def _base_report(
         "next_actions": next_actions,
         "safety_statement": _safety_statement(),
     }
+
+
+def _materialize_seccomp_profile(
+    seccomp: SeccompProfileSelection,
+    workspace: DisposableWorkspace,
+) -> Path | None:
+    if seccomp.profile == SECCOMP_RUNTIME_DEFAULT:
+        return None
+    destination = workspace.root / f"{seccomp.profile}.json"
+    return materialize_seccomp_profile(seccomp.profile, destination)
 
 
 def _policy_blocked_report(

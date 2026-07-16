@@ -8,7 +8,13 @@ import time
 from typing import Any, Protocol
 
 from .docker import is_digest_pinned
-from .profiles import OUTDIR, SandboxProfile, WORKDIR
+from .profiles import (
+    OUTDIR,
+    PROFILE_MOBY_DEFAULT,
+    SECCOMP_RUNTIME_DEFAULT,
+    SandboxProfile,
+    WORKDIR,
+)
 
 
 PULL_POLICY = "never"
@@ -52,9 +58,19 @@ def build_docker_run_argv(
     workspace_host_path: Path,
     profile: SandboxProfile,
     out_host_path: Path | None = None,
+    seccomp_profile_name: str = SECCOMP_RUNTIME_DEFAULT,
+    seccomp_profile_path: Path | None = None,
 ) -> list[str]:
     if not command_argv:
         raise ValueError("command argv must not be empty")
+    if seccomp_profile_name == SECCOMP_RUNTIME_DEFAULT:
+        if seccomp_profile_path is not None:
+            raise ValueError("runtime-default must not use a seccomp profile path")
+    elif seccomp_profile_name == PROFILE_MOBY_DEFAULT:
+        if seccomp_profile_path is None:
+            raise ValueError("packaged seccomp profile path is required")
+    else:
+        raise ValueError("unsupported seccomp profile")
     out_host_path = workspace_host_path.parent / "out" if out_host_path is None else out_host_path
     argv = [
         "docker",
@@ -69,15 +85,21 @@ def build_docker_run_argv(
         "ALL",
         "--security-opt",
         "no-new-privileges",
-        "--memory",
-        profile.memory,
-        "--cpus",
-        profile.cpus,
-        "--pids-limit",
-        str(profile.pids_limit),
-        "--user",
-        profile.user,
     ]
+    if seccomp_profile_path is not None:
+        argv.extend(["--security-opt", f"seccomp={seccomp_profile_path}"])
+    argv.extend(
+        [
+            "--memory",
+            profile.memory,
+            "--cpus",
+            profile.cpus,
+            "--pids-limit",
+            str(profile.pids_limit),
+            "--user",
+            profile.user,
+        ]
+    )
     for key, value in profile.env.items():
         argv.extend(["--env", f"{key}={value}"])
     if profile.read_only_rootfs:
