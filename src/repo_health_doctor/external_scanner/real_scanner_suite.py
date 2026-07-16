@@ -40,7 +40,8 @@ REAL_SCANNER_SUITE_LIMITATIONS = (
 )
 
 _NETWORK_SCANNERS = frozenset({"osv-scanner", "trivy"})
-_DEFAULT_TIMEOUT_SECONDS = 120
+REAL_SCANNER_DEFAULT_TIMEOUT_SECONDS = 120
+_DEFAULT_TIMEOUT_SECONDS = REAL_SCANNER_DEFAULT_TIMEOUT_SECONDS
 _RunResult = GitleaksRunResult | OsvScannerRunResult | TrivyRunResult
 _ScannerRunner = Callable[[Sequence[str], int], object]
 _ScannerFunction = Callable[..., _RunResult]

@@ -47,6 +47,12 @@ from .gate import (
     format_gate_summary,
     validate_execution_authorization,
 )
+from .external_scanner import (
+    REAL_SCANNER_ADAPTER_NAMES,
+    REAL_SCANNER_DEFAULT_TIMEOUT_SECONDS,
+    run_real_scanner_suite_sequential,
+)
+from .formatters import format_real_scanner_suite
 
 
 GATE_FAIL_MODES: Mapping[str, frozenset[str]] = {
@@ -70,6 +76,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
     authorization_draft_mode = command == "authorization-draft"
     authorization_validate_mode = command == "authorization-validate"
     gate_check_mode = command == "gate-check"
+    real_scan_mode = command == "real-scan"
     parser = argparse.ArgumentParser(
         prog=(
             "repo-health-doctor sandbox"
@@ -91,6 +98,8 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             if authorization_validate_mode
             else "repo-health-doctor gate-check"
             if gate_check_mode
+            else "repo-health-doctor real-scan"
+            if real_scan_mode
             else
             "repo-health-doctor validate-policy"
             if validate_mode
@@ -118,6 +127,8 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             if authorization_validate_mode
             else "Run the experimental gate decision and authorization check as one fail-closed command."
             if gate_check_mode
+            else "Run selected real scanner adapters and emit a bounded report."
+            if real_scan_mode
             else
             "Validate policy configuration without scanning repository contents."
             if validate_mode
@@ -145,6 +156,8 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             if authorization_validate_mode
             else "Gate-check mode: repo-health-doctor gate-check <path> --authorization authorization.json --argv-json argv.json [--fail-on-gate unknown]"
             if gate_check_mode
+            else "Real-scan mode: repo-health-doctor real-scan <path> [--scanner NAME ...] [--offline] [--format text|json|markdown]"
+            if real_scan_mode
             else "Policy-only mode: repo-health-doctor validate-policy <path> [--format json|markdown]"
             if validate_mode
             else "Allow inventory mode: repo-health-doctor list-allows <path> [--format json|markdown]"
@@ -182,7 +195,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
         action="version",
         version=f"repo-health-doctor {TOOL_VERSION}",
     )
-    if not validate_mode and not list_allows_mode and not diff_reports_mode and not sandbox_mode and not sandbox_run_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode and not gate_check_mode:
+    if not validate_mode and not list_allows_mode and not diff_reports_mode and not sandbox_mode and not sandbox_run_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode and not gate_check_mode and not real_scan_mode:
         parser.add_argument(
             "--fail-on",
             choices=("block", "warn"),
@@ -194,7 +207,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             action="store_true",
             help="Alias for --fail-on warn.",
         )
-    if not validate_mode and not list_allows_mode and not diff_reports_mode and not sandbox_mode and not sandbox_run_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode:
+    if not validate_mode and not list_allows_mode and not diff_reports_mode and not sandbox_mode and not sandbox_run_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode and not real_scan_mode:
         parser.add_argument(
             "--large-file-threshold-mb",
             type=int,
@@ -207,7 +220,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             default=[],
             help="Ignore a path prefix during secrets scanning. Can be passed multiple times.",
         )
-    if not validate_mode and not list_allows_mode and not diff_reports_mode and not release_check_mode and not sandbox_mode and not sandbox_run_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode:
+    if not validate_mode and not list_allows_mode and not diff_reports_mode and not release_check_mode and not sandbox_mode and not sandbox_run_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode and not real_scan_mode:
         parser.add_argument(
             "--public-safety",
             action="store_true",
@@ -246,6 +259,27 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
     if gate_check_mode:
         parser.add_argument("--authorization", help="Execution authorization artifact JSON to validate.")
         parser.add_argument("--argv-json", help="JSON array containing the exact argv to validate.")
+    if real_scan_mode:
+        parser.add_argument(
+            "--scanner",
+            action="append",
+            choices=REAL_SCANNER_ADAPTER_NAMES,
+            dest="scanners",
+            help="Select a scanner. Repeat the option to select multiple scanners; defaults to all scanners.",
+        )
+        parser.add_argument(
+            "--offline",
+            action="store_true",
+            help="Skip scanners that can use the network.",
+        )
+        parser.add_argument(
+            "--timeout-seconds",
+            "--timeout",
+            dest="timeout_seconds",
+            type=int,
+            default=REAL_SCANNER_DEFAULT_TIMEOUT_SECONDS,
+            help="Timeout in seconds for each scanner command.",
+        )
     if sandbox_mode:
         parser.add_argument(
             "--plan",
@@ -372,7 +406,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             choices=(POLICY_ALLOW_STATUS_EXPIRED, POLICY_ALLOW_STATUS_EXPIRING_SOON),
             help="Exit with code 1 when stale allow entries meet this threshold.",
         )
-    if not diff_reports_mode and not sandbox_mode and not sandbox_run_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode:
+    if not diff_reports_mode and not sandbox_mode and not sandbox_run_mode and not sandbox_profile_mode and not sandbox_approval_draft_mode and not authorization_draft_mode and not authorization_validate_mode and not real_scan_mode:
         parser.add_argument(
             "--config",
             help="Read policy from this file. Defaults to repo-health-doctor.yml when present.",
@@ -427,6 +461,9 @@ def main(argv: list[str] | None = None) -> int:
     elif raw_args and raw_args[0] == "gate-check":
         command = "gate-check"
         raw_args = raw_args[1:]
+    elif raw_args and raw_args[0] == "real-scan":
+        command = "real-scan"
+        raw_args = raw_args[1:]
 
     if command == "sandbox-run" and "--" in raw_args:
         separator_index = raw_args.index("--")
@@ -466,8 +503,23 @@ def main(argv: list[str] | None = None) -> int:
     else:
         target = Path(args.path)
         if not target.exists():
+            if command == "real-scan":
+                parser.error("path does not exist")
             parser.error(f"path does not exist: {target}")
-        if command == "sandbox":
+        if command == "real-scan":
+            if args.timeout_seconds <= 0:
+                parser.error("--timeout-seconds must be greater than 0")
+            try:
+                report = run_real_scanner_suite_sequential(
+                    target,
+                    timeout_seconds=args.timeout_seconds,
+                    offline=args.offline,
+                    scanners=tuple(args.scanners or REAL_SCANNER_ADAPTER_NAMES),
+                )
+            except ValueError as exc:
+                parser.error(str(exc))
+            fail_on = None
+        elif command == "sandbox":
             if args.preflight_timeout_seconds <= 0:
                 parser.error("--preflight-timeout-seconds must be greater than 0")
             if args.phase1_timeout_seconds <= 0:
@@ -672,6 +724,8 @@ def main(argv: list[str] | None = None) -> int:
             output = format_unknown_repo_approval_draft_markdown(report)
         else:
             output = format_unknown_repo_approval_draft_text(report)
+    elif command == "real-scan":
+        output = format_real_scanner_suite(report, args.format)
     else:
         if args.format == "json":
             output = format_json(report)
@@ -689,9 +743,15 @@ def main(argv: list[str] | None = None) -> int:
     sandbox_output_path = getattr(args, "evidence_output", None) if command == "sandbox-run" else None
     if args.output or sandbox_output_path:
         output_path = Path(sandbox_output_path or args.output)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
         file_output = format_sandbox_run_json(report) if command == "sandbox-run" else output
-        output_path.write_text(file_output, encoding="utf-8")
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(file_output, encoding="utf-8")
+        except OSError:
+            if command == "real-scan":
+                sys.stderr.write("REAL-SCAN OUTPUT ERROR: unable to write report.\n")
+                return 2
+            raise
     if command == "gate-check":
         gate_decision = _mapping(report.get("gate_decision"))
     if command in {"scan", "gate-check"} and getattr(args, "gate_decision_output", None) and gate_decision is not None:
@@ -703,6 +763,8 @@ def main(argv: list[str] | None = None) -> int:
     sys.stdout.write(output)
     if command == "sandbox-profile":
         return 1 if report["overall_status"] == "block" else 0
+    if command == "real-scan":
+        return 0
     if command == "sandbox-approval-draft":
         return 1 if report["source_risk_tier"] in {"T4", "T5"} else 0
     if command == "sandbox-run":
