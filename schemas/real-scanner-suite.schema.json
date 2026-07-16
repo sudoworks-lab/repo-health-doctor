@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repo-health-doctor://schemas/real-scanner-suite.schema.json",
+  "title": "repo-health-doctor real scanner suite report",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "report_kind",
+    "suite_status",
+    "entries",
+    "limitations",
+    "execution_authorized",
+    "report_fingerprint",
+    "generated_at",
+    "subject"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["0.1-draft"]},
+    "report_kind": {"type": "string", "enum": ["real_scanner_suite"]},
+    "suite_status": {"type": "string", "enum": ["completed", "degraded"]},
+    "entries": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/entry"}
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "execution_authorized": {"type": "boolean", "const": false},
+    "report_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "subject": {"$ref": "#/$defs/subject"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": [
+        "scanner_name",
+        "executed",
+        "valid",
+        "status",
+        "blocking_errors",
+        "warnings",
+        "risk_summary",
+        "normalized_result",
+        "finding_count",
+        "omitted_finding_count",
+        "truncated"
+      ],
+      "properties": {
+        "scanner_name": {"type": "string", "minLength": 1},
+        "executed": {"type": "boolean"},
+        "valid": {"type": "boolean"},
+        "status": {"type": "string", "enum": ["completed", "unknown", "skipped_offline"]},
+        "blocking_errors": {"type": "array", "items": {"type": "string"}},
+        "warnings": {"type": "array", "items": {"type": "string"}},
+        "risk_summary": {"$ref": "#/$defs/risk_summary"},
+        "normalized_result": {"type": "object"},
+        "finding_count": {"type": "integer", "minimum": 0},
+        "omitted_finding_count": {"type": "integer", "minimum": 0},
+        "truncated": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "risk_summary": {
+      "type": "object",
+      "required": [
+        "outcome",
+        "highest_risk_tier_effect",
+        "risk_tier_effect",
+        "gate_effects",
+        "risk_lowering_allowed"
+      ],
+      "properties": {
+        "outcome": {"type": "string"},
+        "highest_risk_tier_effect": {"type": "string"},
+        "risk_tier_effect": {"type": "string"},
+        "gate_effects": {"type": "array", "items": {"type": "string"}},
+        "risk_lowering_allowed": {"type": "boolean", "const": false}
+      },
+      "additionalProperties": false
+    },
+    "subject": {
+      "type": "object",
+      "required": ["repo_commit", "dirty_state"],
+      "properties": {
+        "repo_commit": {"type": ["string", "null"]},
+        "dirty_state": {"type": "string", "enum": ["clean", "dirty", "unknown", "not_applicable"]}
+      },
+      "additionalProperties": false
+    }
+  }
+}

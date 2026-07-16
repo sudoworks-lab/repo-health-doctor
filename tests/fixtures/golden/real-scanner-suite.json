@@ -1,0 +1,140 @@
+{
+  "schema_version": "0.1-draft",
+  "report_kind": "real_scanner_suite",
+  "suite_status": "degraded",
+  "entries": [
+    {
+      "scanner_name": "gitleaks",
+      "executed": false,
+      "valid": false,
+      "status": "unknown",
+      "blocking_errors": [
+        "scanner_unavailable"
+      ],
+      "warnings": [],
+      "risk_summary": {
+        "outcome": "unknown",
+        "highest_risk_tier_effect": "T5_candidate",
+        "risk_tier_effect": "T5_candidate",
+        "gate_effects": [
+          "quarantine"
+        ],
+        "risk_lowering_allowed": false
+      },
+      "normalized_result": {
+        "schema_version": "0.1-draft",
+        "report_kind": "external_scanner_result",
+        "scanner": {
+          "name": "gitleaks",
+          "version": "unknown"
+        },
+        "summary": {
+          "outcome": "unknown",
+          "unknown_reason": "scanner_unavailable",
+          "finding_count": 0
+        },
+        "execution_context": {
+          "raw_output_available": false,
+          "raw_output_retained": false
+        }
+      },
+      "finding_count": 0,
+      "omitted_finding_count": 0,
+      "truncated": false
+    },
+    {
+      "scanner_name": "osv-scanner",
+      "executed": false,
+      "valid": false,
+      "status": "skipped_offline",
+      "blocking_errors": [],
+      "warnings": [
+        "scanner_skipped_offline"
+      ],
+      "risk_summary": {
+        "outcome": "unknown",
+        "highest_risk_tier_effect": "T5_candidate",
+        "risk_tier_effect": "T5_candidate",
+        "gate_effects": [
+          "quarantine"
+        ],
+        "risk_lowering_allowed": false
+      },
+      "normalized_result": {
+        "schema_version": "0.1-draft",
+        "report_kind": "external_scanner_result",
+        "scanner": {
+          "name": "osv-scanner",
+          "version": "unknown"
+        },
+        "summary": {
+          "outcome": "unknown",
+          "unknown_reason": "skipped_offline",
+          "finding_count": 0
+        },
+        "execution_context": {
+          "raw_output_available": false,
+          "raw_output_retained": false
+        }
+      },
+      "finding_count": 0,
+      "omitted_finding_count": 0,
+      "truncated": false
+    },
+    {
+      "scanner_name": "trivy",
+      "executed": false,
+      "valid": false,
+      "status": "skipped_offline",
+      "blocking_errors": [],
+      "warnings": [
+        "scanner_skipped_offline"
+      ],
+      "risk_summary": {
+        "outcome": "unknown",
+        "highest_risk_tier_effect": "T5_candidate",
+        "risk_tier_effect": "T5_candidate",
+        "gate_effects": [
+          "quarantine"
+        ],
+        "risk_lowering_allowed": false
+      },
+      "normalized_result": {
+        "schema_version": "0.1-draft",
+        "report_kind": "external_scanner_result",
+        "scanner": {
+          "name": "trivy",
+          "version": "unknown"
+        },
+        "summary": {
+          "outcome": "unknown",
+          "unknown_reason": "skipped_offline",
+          "finding_count": 0
+        },
+        "execution_context": {
+          "raw_output_available": false,
+          "raw_output_retained": false
+        }
+      },
+      "finding_count": 0,
+      "omitted_finding_count": 0,
+      "truncated": false
+    }
+  ],
+  "limitations": [
+    "real_scanner_execution_is_explicit_not_default_cli",
+    "scanner_unavailable_is_fail_closed_not_pass",
+    "no_findings_not_safety_proof",
+    "raw_scanner_output_not_retained",
+    "network_cache_and_privacy_limitations_apply",
+    "suite_degraded_requires_review",
+    "offline_network_scanners_skipped"
+  ],
+  "execution_authorized": false,
+  "generated_at": "2026-07-16T00:00:00+00:00",
+  "subject": {
+    "repo_commit": null,
+    "dirty_state": "unknown"
+  },
+  "report_fingerprint": "sha256:7d899c421dd02127ec7854ebdddacc6d6524fcb534a93c3403e9407be88f3136"
+}

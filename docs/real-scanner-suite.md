@@ -72,3 +72,13 @@ Optional live tests are not the default verification path. OSV-Scanner and
 Trivy live tests require explicit environment opt-in because they can use
 network or cache state. The normal unit tests use mock runners and redacted
 fixtures so CI can pass without local scanner binaries.
+
+## レポートschemaと表示形式
+
+suite reportは`schemas/real-scanner-suite.schema.json`の`0.1-draft`契約で表現する。
+JSON、text、Markdownは同じentry、status、finding count、risk effect、limitationを表示し、
+`execution_authorized`は常に`false`である。JSONのgolden sampleは
+`tests/fixtures/golden/real-scanner-suite.json`に置く。
+
+表示前に、raw scanner output、stdout、stderr、secret-like value、token-like value、
+hostの絶対pathをredactする。redaction後の表示もscannerの安全性や実行認可を証明しない。

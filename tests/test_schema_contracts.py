@@ -18,6 +18,7 @@ EXPECTED_SCHEMA_METADATA = {
     "policy-config.schema.json": (None, None),
     "pre-execution-gate-policy.schema.json": ("0.1-draft", None),
     "public-safety-report.schema.json": ("1.1", None),
+    "real-scanner-suite.schema.json": ("0.1-draft", "real_scanner_suite"),
     "release-check-report.schema.json": ("1.1", "release_check"),
     "report-diff.schema.json": ("1.1", "report_diff"),
     "sandbox-approval-draft.schema.json": ("0.1-draft", "sandbox_approval_draft"),
@@ -66,6 +67,9 @@ NON_EXECUTING_FALSE_FIELDS = {
         "execution_authorized",
     ),
     "external-scanner-result.schema.json": (
+        "execution_authorized",
+    ),
+    "real-scanner-suite.schema.json": (
         "execution_authorized",
     ),
     "gate-decision.schema.json": (
