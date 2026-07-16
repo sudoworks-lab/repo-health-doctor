@@ -51,6 +51,9 @@ examples that are not public contract.
 - Compatibility regeneration helper scripts
 - `docs/authorization-discovery.md` and the experimental authorization
   artifact discovery integration
+- The [AI Agent Canonical Contract](agent-contract.md) and the tool-specific
+  [Codex](integration-codex.md), [Claude Code](integration-claude-code.md), and
+  [Cursor](integration-cursor.md) binding guides
 
 The default v3 report remains the compatibility-stable output.
 The evidence schema, gate decision sidecar, `--gate-summary`, human-readable
@@ -92,6 +95,39 @@ The lstat/open/fstat/bounded-read checks reduce observable replacement and
 growth races, but local-writer TOCTOU remains a residual risk. Discovery does
 not prove safety, bind an execution subject by itself, or set
 `execution_authorized`.
+
+### Experimental AI Agent Contract
+
+The [AI Agent Canonical Contract](agent-contract.md) defines one operational
+flow for repository-derived commands:
+
+1. `real-scan --fail-on-degraded`
+2. `gate-check --external-evidence`
+3. Human review and Human-controlled authorization
+4. `sandbox-run --authorization`
+5. `gate-check --sandbox-evidence`
+
+Only exit 0 permits the next defined stage. The agent interpretation is:
+
+| Exit | Agent action |
+| --- | --- |
+| exit 0 | Proceed only to the next stage defined by the canonical flow. |
+| exit 1 | STOP and return the redacted failure evidence for review. |
+| exit 2 | STOP and return the gate, policy, authorization, usage, or target-command result for review. |
+| unknown | STOP when the exit code is unrecognized, signal-based, or unavailable. |
+
+Exit 1, exit 2, or any unknown exit code means STOP. This orchestration table
+does not replace each command's detailed exit semantics below. In particular,
+`sandbox-run` can return a started target command's exit code, and every
+nonzero target exit also stops the canonical flow. A gate decision remains
+separate from execution authorization.
+
+The [Codex](integration-codex.md),
+[Claude Code](integration-claude-code.md), and
+[Cursor](integration-cursor.md) guides bind this flow only to the extent
+confirmed by their Human-provided official-source packet. They do not install
+agent configuration, and an instruction-based binding is not a technical
+enforcement guarantee.
 
 ### Experimental Gate Exit Contract
 

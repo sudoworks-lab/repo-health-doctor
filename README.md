@@ -46,9 +46,15 @@ Expected result: the synthetic fixture reaches `QUARANTINE`, prints
 `Target command executed: false`. No global Claude Code, Codex, Cursor, MCP, or
 hook configuration is changed.
 
-See [docs/ai-agent-preflight.md](docs/ai-agent-preflight.md) for the full
-safe demo and [docs/integration-claude-code.md](docs/integration-claude-code.md)
-for future project-local hook integration notes.
+See [docs/ai-agent-preflight.md](docs/ai-agent-preflight.md) for the full safe
+demo. The [AI Agent Canonical Contract](docs/agent-contract.md) defines the
+real-scan, gate, Human-controlled authorization, sandbox, and evidence-return
+flow: exit 0 alone permits the next defined stage; exit 1, exit 2, and unknown
+exit codes stop the agent. Tool-specific bindings are documented for
+[Codex](docs/integration-codex.md),
+[Claude Code](docs/integration-claude-code.md), and
+[Cursor](docs/integration-cursor.md). These guides do not install hooks or
+change global agent configuration.
 
 ## Why This Exists
 

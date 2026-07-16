@@ -181,6 +181,18 @@ Before running any command derived from this repository:
 7. Feed resulting sandbox evidence back into the next gate decision.
 ```
 
+## Tool bindings
+
+Each tool-specific guide inherits this contract and must not relax its exit or authorization rules:
+
+- [Codex binding](integration-codex.md)
+- [Claude Code binding](integration-claude-code.md)
+- [Cursor binding](integration-cursor.md)
+
+The binding guides record what was verified from Human-provided official-source evidence and what
+remains instruction-based. They do not install hooks, change account or tool settings, or execute a
+target command.
+
 ## Residual limits
 
 - Scanner finding 0件、gate exit 0、sandbox exit 0、Docker実行成功はいずれも安全性を証明しない。

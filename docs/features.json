@@ -412,8 +412,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_ai_agent_integration_docs tests.test_agent_contract_docs -v を実行し、target command非実行とcross-linkを確認する",
         "rg -n \"agent-contract|integration-codex|integration-claude-code|integration-cursor|exit 0\" README.md docs/README.md docs/public-contracts.md CHANGELOG.md を実行して同期を確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-17T00:11:59+09:00",
       "blocked": false
     },
     {

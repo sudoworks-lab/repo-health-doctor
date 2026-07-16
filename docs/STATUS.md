@@ -307,3 +307,11 @@
 - 判断と理由: source packetで確認されていない強制機構やexit semanticsは推測せず、CodexとCursorはinstruction-based limitationとして明示した。Claude Codeの`PreToolUse`は強制surface候補としたが、この作業では設定をinstallせず、Human review前の有効化済み表現を避けた。専用検証と基本検証がすべてgreenになったため、F032を`passes:true`、`blocked:false`としてJSTの検証日時を記録した。
 - 既知の問題: verified-as-of以後の公式仕様変更には自動追随しない。Codexのcommand実行前の強制hook、Claude Codeの対象環境での設定状態と完全な設定schema、Cursorのhook event名、decision schema、exit code block契約、project ruleおよびnon-interactive CLIの強制契約は未確認である。
 - follow-up候補: F033の別processでREADME、docs index、public contract、CHANGELOGとのcross-linkと表示commandの非実行smokeを同期する。F032以外のfeatureには着手していない。
+
+## 2026-07-17 JST — F033 agent contract文書統合
+
+- 今回やったこと: README、docs index、public contracts、CHANGELOGをAI Agent Canonical ContractとCodex、Claude Code、Cursorの3 bindingへ接続した。public contractsへreal-scan、gate、Human-controlled authorization、sandbox、evidence還流の正準flowとexit表を同期し、agent contractから各bindingへ戻るcross-linkを追加した。専用testへ対象文書のlocal link解決、中央文書とbindingの相互参照、plan-only demoが表示対象commandを実行しないsmoke、public contractsと正準flow・exit表の同期検査を追加した。製品code、agent設定、target commandは変更または実行していない。
+- 検証結果: 指定testと同値の`env PYTHONPATH=src python3 -m unittest tests.test_ai_agent_integration_docs tests.test_agent_contract_docs -v`は13件pass・0件failだった。smokeでは表示対象の一時commandが作成するmarkerが存在しないこと、`Target command executed: false`、exit 2を確認した。指定の`rg -n "agent-contract|integration-codex|integration-claude-code|integration-cursor|exit 0" README.md docs/README.md docs/public-contracts.md CHANGELOG.md`は4文書すべての同期を確認した。終了時full suiteは840件実行・826件pass・14件skip・0件failだった。PLANのdocs/fixture一覧、AGENTS.md 77行、`git diff --check`、CLI help/version、public-safety、policy validation、default JSON report生成とparseも成功した。
+- 判断と理由: tool別bindingの確認済み強制範囲はF032のまま変更せず、正準契約と中央文書の導線・exit解釈だけをF033で同期した。agent orchestrationのexit表は各CLI固有のexit semanticsを置き換えず、exit 0だけが次の定義済み段階へ進み、exit 1、exit 2、unknown、target commandのnonzeroは停止する境界を維持した。全local link解決と非実行smokeを専用testで固定できたため、F033を`passes:true`、`blocked:false`としてJSTの検証日時を記録した。
+- 既知の問題: 指定testの先頭`PYTHONPATH=src`形式は実行環境ポリシーによりprocess生成前に拒否されたため、同値の`env PYTHONPATH=src`形式で実行した。JSON parseの`>/dev/null`付き形式も同様に拒否されたため、出力抑制なしで同じfileをparseした。verified-as-of以後のtool仕様変更と各bindingの未確認強制機構はF032記録どおり残る。
+- follow-up候補: F034以降のfeatureは今回扱っていない。次featureの選択と新process起動はhost runnerに委ねる。

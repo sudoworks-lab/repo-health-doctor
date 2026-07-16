@@ -20,6 +20,12 @@ change. See [docs/versioning.md](docs/versioning.md).
 
 ### Added
 
+- [AI Agent Canonical Contract](docs/agent-contract.md)を追加し、real-scan、gate、
+  Human-controlled authorization、sandbox、evidence還流をexit 0だけで進む正準flowとして
+  固定した。[Codex](docs/integration-codex.md)、
+  [Claude Code](docs/integration-claude-code.md)、
+  [Cursor](docs/integration-cursor.md)のbindingは、確認済みの公式sourceと
+  instruction-based limitationを分離し、agent設定やtarget commandを自動実行しない。
 - Human-triggered real Docker verification workflowを追加した。`workflow_dispatch`だけで起動し、
   digest-pinned image acquisitionを固定testから分離する。testはsandboxの`--pull=never`契約と
   cases 1〜10を実行し、Docker version、runner OS、architectureをstep summaryへ記録する。

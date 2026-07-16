@@ -14,7 +14,10 @@ This directory contains the public documentation set for `repo-health-doctor`.
 - `demo-runbook.md`: safe synthetic demo walkthrough
 - `maintainer-guide.md`: maintainer workflow and review boundaries
 - `agent-development-guide.md`: coding-agent workflow and guardrails for this repo
-- `integration-claude-code.md`: Claude Code pre-execution gate integration
+- `agent-contract.md`: canonical exit-0-only agent flow from real scan through sandbox evidence return
+- `integration-codex.md`: Codex instruction binding and its confirmed limitations
+- `integration-claude-code.md`: Claude Code `PreToolUse` binding and exit behavior
+- `integration-cursor.md`: Cursor instruction binding and its unconfirmed enforcement details
 - `architecture.md`: product scope and design boundaries
 - `security-model.md`: redaction rules, limits, and sandbox boundary
 - `evaluation-model.md`: tests, fixtures, and regression expectations

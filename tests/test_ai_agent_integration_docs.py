@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import re
+import stat
+import subprocess
+import sys
+import tempfile
 import unittest
 
 
@@ -9,13 +15,26 @@ README = ROOT / "README.md"
 DOCS_INDEX = ROOT / "docs" / "README.md"
 QUICKSTART = ROOT / "docs" / "quickstart.md"
 AI_AGENT_DOC = ROOT / "docs" / "ai-agent-preflight.md"
+AGENT_CONTRACT = ROOT / "docs" / "agent-contract.md"
+CODEX_DOC = ROOT / "docs" / "integration-codex.md"
 CLAUDE_DOC = ROOT / "docs" / "integration-claude-code.md"
+CURSOR_DOC = ROOT / "docs" / "integration-cursor.md"
+PUBLIC_CONTRACTS = ROOT / "docs" / "public-contracts.md"
+CHANGELOG = ROOT / "CHANGELOG.md"
 DEMO_RUNBOOK = ROOT / "docs" / "demo-runbook.md"
 SANDBOX_RUN = ROOT / "docs" / "sandbox-run.md"
 SANDBOX_ROADMAP = ROOT / "docs" / "sandbox-roadmap.md"
+DEMO_SCRIPT = ROOT / "scripts" / "demo_agent_preflight.py"
+DEMO_SUPPLY_CHAIN = ROOT / "examples" / "demo-synthetic-supply-chain"
+MARKDOWN_LINK = re.compile(r"\[[^]]+\]\(([^)]+)\)")
 
 
 class AiAgentIntegrationDocsTests(unittest.TestCase):
+    def _env(self) -> dict[str, str]:
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(ROOT / "src")
+        return env
+
     def test_readme_quickstart_and_docs_index_route_to_ai_agent_preflight(self) -> None:
         for path in (README, DOCS_INDEX, QUICKSTART, DEMO_RUNBOOK):
             with self.subTest(path=path.relative_to(ROOT)):
@@ -98,6 +117,65 @@ class AiAgentIntegrationDocsTests(unittest.TestCase):
         for pattern in forbidden:
             with self.subTest(pattern=pattern):
                 self.assertNotIn(pattern, combined)
+
+    def test_contract_docs_cross_link_and_all_local_links_resolve(self) -> None:
+        central_docs = (README, DOCS_INDEX, PUBLIC_CONTRACTS, CHANGELOG)
+        contract_names = (
+            "agent-contract.md",
+            "integration-codex.md",
+            "integration-claude-code.md",
+            "integration-cursor.md",
+        )
+        for path in central_docs:
+            content = path.read_text(encoding="utf-8")
+            for name in contract_names:
+                with self.subTest(path=path.relative_to(ROOT), link=name):
+                    self.assertIn(name, content)
+
+        contract_content = AGENT_CONTRACT.read_text(encoding="utf-8")
+        for binding in (CODEX_DOC, CLAUDE_DOC, CURSOR_DOC):
+            with self.subTest(binding=binding.relative_to(ROOT)):
+                self.assertIn(binding.name, contract_content)
+                self.assertIn("agent-contract.md", binding.read_text(encoding="utf-8"))
+
+        checked_docs = central_docs + (AGENT_CONTRACT, CODEX_DOC, CLAUDE_DOC, CURSOR_DOC)
+        for path in checked_docs:
+            for target in MARKDOWN_LINK.findall(path.read_text(encoding="utf-8")):
+                if target.startswith(("http://", "https://", "mailto:", "#")):
+                    continue
+                local_target = target.split("#", 1)[0]
+                if not local_target:
+                    continue
+                with self.subTest(path=path.relative_to(ROOT), target=target):
+                    self.assertTrue((path.parent / local_target).resolve().is_file())
+
+    def test_documented_plan_only_smoke_does_not_execute_target_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            marker = tmp_path / "target-command-ran.txt"
+            target = tmp_path / "display-only-target"
+            target.write_text(f"#!/bin/sh\nprintf ran > {marker}\n", encoding="utf-8")
+            target.chmod(target.stat().st_mode | stat.S_IXUSR)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(DEMO_SCRIPT),
+                    str(DEMO_SUPPLY_CHAIN),
+                    "--",
+                    str(target),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=self._env(),
+            )
+            marker_exists = marker.exists()
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Intended target command (display only): <path>", result.stdout)
+        self.assertIn("Target command executed: false", result.stdout)
+        self.assertFalse(marker_exists)
 
 
 if __name__ == "__main__":
