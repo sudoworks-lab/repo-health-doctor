@@ -87,8 +87,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_external_suite_evidence -v を実行する",
         "test出力でvalid、invalid、stale、subject mismatch、over-budget、duplicate、truncatedのmachine-readable reasonを確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T12:46:37+09:00",
       "blocked": false
     },
     {
