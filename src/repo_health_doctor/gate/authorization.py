@@ -52,6 +52,10 @@ TOP_LEVEL_FIELDS = TOP_LEVEL_FIELDS_BY_VERSION[AUTHORIZATION_SCHEMA_VERSION]
 BASED_ON_FIELDS = {"decision_kind", "schema_version", "verdict", "fingerprint"}
 SUBJECT_FIELDS = {"repo", "commit", "tree_hash"}
 DISALLOWED_GATE_VERDICTS = {"block", "quarantine", "unknown"}
+AUTHORIZATION_WORKTREE_BINDING_MISMATCH_REASON = "authorization_worktree_binding_mismatch"
+AUTHORIZATION_WORKTREE_BINDING_UNRESOLVED_REASON = "authorization_worktree_binding_unresolved"
+AUTHORIZATION_WORKTREE_NOT_GIT_REASON = "authorization_worktree_not_git"
+AUTHORIZATION_WORKTREE_DIRTY_REASON = "authorization_worktree_dirty"
 AUTHORIZATION_REFUSAL_REASONS = frozenset(
     {
         "authorization_must_be_object",
@@ -86,6 +90,10 @@ AUTHORIZATION_REFUSAL_REASONS = frozenset(
         "approved_image_digest_unpinned",
         "runtime_image_id_unresolved",
         "approved_image_id_mismatch",
+        AUTHORIZATION_WORKTREE_BINDING_MISMATCH_REASON,
+        AUTHORIZATION_WORKTREE_BINDING_UNRESOLVED_REASON,
+        AUTHORIZATION_WORKTREE_NOT_GIT_REASON,
+        AUTHORIZATION_WORKTREE_DIRTY_REASON,
     }
 )
 FORBIDDEN_PATTERNS = (
@@ -113,6 +121,129 @@ AUTHORIZATION_RESERVATION_SUFFIX = ".reserved"
 AUTHORIZATION_RESERVATION_KIND = "single_use_execution_authorization_reservation"
 AUTHORIZATION_RESERVATION_EXISTS_REASON = "authorization_single_use_reservation_exists"
 AUTHORIZATION_RESERVATION_WRITE_FAILURE_REASON = "authorization_single_use_reservation_write_failed"
+WORKTREE_BINDING_MATCHED = "matched"
+WORKTREE_BINDING_MISMATCH = "mismatch"
+WORKTREE_BINDING_UNRESOLVED = "unresolved"
+WORKTREE_BINDING_DIRTY = "dirty"
+
+
+@dataclass(frozen=True)
+class ExecutionAuthorizationWorktreeBinding:
+    status: str
+    repo_matches: bool
+    commit_matches: bool
+    tree_matches: bool
+    dirty_state: str
+    refusal_reasons: tuple[str, ...]
+
+    @property
+    def matched(self) -> bool:
+        return self.status == WORKTREE_BINDING_MATCHED
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "checked": True,
+            "status": self.status,
+            "matched": self.matched,
+            "repo_matches": self.repo_matches,
+            "commit_matches": self.commit_matches,
+            "tree_matches": self.tree_matches,
+            "dirty_state": self.dirty_state,
+            "refusal_reasons": list(self.refusal_reasons),
+            "observed_values_recorded": False,
+        }
+
+
+def validate_execution_authorization_worktree_binding(
+    authorization: Mapping[str, Any],
+    observed: Mapping[str, Any],
+) -> ExecutionAuthorizationWorktreeBinding:
+    """Compare direct Git observations with the approved authorization subject."""
+    subject = authorization.get("subject")
+    scope = authorization.get("approved_scope")
+    if not isinstance(subject, Mapping) or not isinstance(scope, Mapping):
+        return ExecutionAuthorizationWorktreeBinding(
+            status=WORKTREE_BINDING_UNRESOLVED,
+            repo_matches=False,
+            commit_matches=False,
+            tree_matches=False,
+            dirty_state="unknown",
+            refusal_reasons=(AUTHORIZATION_WORKTREE_BINDING_UNRESOLVED_REASON,),
+        )
+    if scope.get("binding_kind") not in {"commit_bound", "tree_bound"}:
+        return ExecutionAuthorizationWorktreeBinding(
+            status=WORKTREE_BINDING_UNRESOLVED,
+            repo_matches=False,
+            commit_matches=False,
+            tree_matches=False,
+            dirty_state="unknown",
+            refusal_reasons=(AUTHORIZATION_WORKTREE_BINDING_UNRESOLVED_REASON,),
+        )
+
+    repo_root_matches_target = observed.get("repo_root_matches_target") is True
+    observed_repo = observed.get("repo_identity")
+    expected_repo = subject.get("repo")
+    if expected_repo == "<repo>":
+        repo_matches = repo_root_matches_target
+    else:
+        repo_matches = (
+            isinstance(expected_repo, str)
+            and isinstance(observed_repo, str)
+            and expected_repo == observed_repo
+            and repo_root_matches_target
+        )
+
+    observed_commit = observed.get("commit")
+    expected_commit = subject.get("commit")
+    commit_matches = (
+        isinstance(expected_commit, str)
+        and isinstance(observed_commit, str)
+        and expected_commit == observed_commit
+    )
+    observed_tree = observed.get("tree_hash")
+    tree_matches = _tree_hash_matches(subject.get("tree_hash"), observed_tree)
+    dirty_state = observed.get("dirty_state")
+    if dirty_state not in {"clean", "dirty", "unknown"}:
+        dirty_state = "unknown"
+
+    reasons: list[str] = []
+    if observed.get("git_available") is not True:
+        reasons.extend(
+            (
+                AUTHORIZATION_WORKTREE_NOT_GIT_REASON,
+                AUTHORIZATION_WORKTREE_BINDING_UNRESOLVED_REASON,
+            )
+        )
+        status = WORKTREE_BINDING_UNRESOLVED
+    elif observed_commit is None or observed_tree is None:
+        reasons.append(AUTHORIZATION_WORKTREE_BINDING_UNRESOLVED_REASON)
+        status = WORKTREE_BINDING_UNRESOLVED
+    elif dirty_state == "unknown":
+        reasons.append(AUTHORIZATION_WORKTREE_BINDING_UNRESOLVED_REASON)
+        status = WORKTREE_BINDING_UNRESOLVED
+    elif dirty_state == "dirty":
+        reasons.append(AUTHORIZATION_WORKTREE_DIRTY_REASON)
+        status = WORKTREE_BINDING_DIRTY
+    elif not (repo_matches and commit_matches and tree_matches):
+        reasons.append(AUTHORIZATION_WORKTREE_BINDING_MISMATCH_REASON)
+        status = WORKTREE_BINDING_MISMATCH
+    else:
+        status = WORKTREE_BINDING_MATCHED
+
+    return ExecutionAuthorizationWorktreeBinding(
+        status=status,
+        repo_matches=repo_matches,
+        commit_matches=commit_matches,
+        tree_matches=tree_matches,
+        dirty_state=dirty_state,
+        refusal_reasons=tuple(dict.fromkeys(reasons)),
+    )
+
+
+def _tree_hash_matches(expected: object, observed: object) -> bool:
+    if not isinstance(expected, str) or not isinstance(observed, str):
+        return False
+    return expected == observed or expected == f"sha256:{observed}"
 
 
 @dataclass(frozen=True)

@@ -14,11 +14,13 @@ from repo_health_doctor.gate.authorization import (
     AUTHORIZATION_RESERVATION_EXISTS_REASON,
     AUTHORIZATION_RESERVATION_WRITE_FAILURE_REASON,
     authorization_reservation_path,
+    build_execution_authorization_draft,
     reserve_execution_authorization,
     validate_execution_authorization,
 )
 from repo_health_doctor.sandbox.docker_runner import FakeDockerRunner
 from repo_health_doctor.sandbox.run import run_sandbox_run
+from repo_health_doctor.sandbox.run_workspace import inspect_git_worktree
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,12 +46,25 @@ class ExecutionAuthorizationSingleUseTests(unittest.TestCase):
     def _repo(self, root: Path) -> Path:
         repo = root / "repo"
         repo.mkdir()
+        subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.invalid"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "config", "user.name", "test"], check=True, capture_output=True)
         (repo / "README.md").write_text("demo\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo), "add", "README.md"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "-qm", "initial"], check=True, capture_output=True)
         return repo
 
-    def _authorization(self, root: Path) -> tuple[Path, dict[str, object], dict[str, object]]:
-        gate = _fixture("gate-allow-limited.json")
-        authorization = _fixture("approved-exact.json")
+    def _authorization(self, root: Path, repo: Path) -> tuple[Path, dict[str, object], dict[str, object]]:
+        gate = deepcopy(_fixture("gate-allow-limited.json"))
+        observed = inspect_git_worktree(repo)
+        subject = dict(gate["subject"])  # type: ignore[arg-type]
+        subject["commit"] = observed["commit"]
+        subject["tree_hash"] = observed["tree_hash"]
+        gate["subject"] = subject
+        authorization = dict(build_execution_authorization_draft(gate, COMMAND, expires_at="2099-01-01T00:00:00Z"))
+        authorization["approved"] = True
+        authorization["approved_by"] = "redacted@example.invalid"
+        authorization["approved_at"] = "2026-07-01T00:00:00Z"
         path = root / "authorization.json"
         path.write_text(json.dumps(authorization) + "\n", encoding="utf-8")
         return path, gate, authorization
@@ -105,7 +120,7 @@ class ExecutionAuthorizationSingleUseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             repo = self._repo(root)
-            authorization_path, gate, authorization = self._authorization(root)
+            authorization_path, gate, authorization = self._authorization(root, repo)
             validation = self._validation(gate, authorization)
             runner = CountingFakeDockerRunner()
 
@@ -127,7 +142,7 @@ class ExecutionAuthorizationSingleUseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             repo = self._repo(root)
-            authorization_path, gate, authorization = self._authorization(root)
+            authorization_path, gate, authorization = self._authorization(root, repo)
             validation = self._validation(gate, authorization)
             failing_runner = CountingFakeDockerRunner(
                 mode="failure",
@@ -153,7 +168,7 @@ class ExecutionAuthorizationSingleUseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             repo = self._repo(root)
-            authorization_path, gate, authorization = self._authorization(root)
+            authorization_path, gate, authorization = self._authorization(root, repo)
             validation = self._validation(gate, authorization)
             runner = CountingFakeDockerRunner()
 

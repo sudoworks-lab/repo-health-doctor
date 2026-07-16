@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -7,7 +8,10 @@ from typing import Any, Mapping
 from uuid import uuid4
 
 from ..doctor import TOOL_VERSION
-from ..gate.authorization import reserve_execution_authorization
+from ..gate.authorization import (
+    reserve_execution_authorization,
+    validate_execution_authorization_worktree_binding,
+)
 from .approval import load_sandbox_run_approval, validate_sandbox_run_approval
 from .docker import is_digest_pinned
 from .docker_runner import (
@@ -37,6 +41,7 @@ from .run_workspace import (
     InventoryResult,
     create_disposable_workspace,
     fingerprint_target,
+    inspect_git_worktree,
     snapshot_workspace,
     summarize_workspace_diff,
     target_identity,
@@ -170,6 +175,35 @@ def run_sandbox_run(
             policy_reasons.extend(approval_validation.refusal_reasons)
             limitations.extend(approval_validation.limitations)
             limitations.extend(approval_validation.warnings)
+
+    if authorization_path is not None and authorization_authorized and not dry_run:
+        authorization_document = _load_authorization_document(authorization_path)
+        observed_worktree = inspect_git_worktree(target)
+        if authorization_document is None:
+            observed_worktree = {
+                "git_available": False,
+                "repo_identity": None,
+                "repo_root_matches_target": False,
+                "commit": None,
+                "tree_hash": None,
+                "dirty_state": "unknown",
+            }
+        worktree_binding = validate_execution_authorization_worktree_binding(
+            authorization_document or {},
+            observed_worktree,
+        )
+        base_report["authorization"]["worktree_binding"] = worktree_binding.to_dict()
+        if not worktree_binding.matched:
+            policy_reasons.extend(worktree_binding.refusal_reasons)
+            base_report["authorization"]["execution_authorized"] = False
+            base_report["authorization"]["blocking_errors"] = list(
+                dict.fromkeys(
+                    [
+                        *base_report["authorization"].get("blocking_errors", []),
+                        *worktree_binding.refusal_reasons,
+                    ]
+                )
+            )
 
     if policy_reasons:
         return _policy_blocked_report(
@@ -671,6 +705,17 @@ def _authorization_report(
         "execution_authorized": _authorization_execution_authorized(authorization_validation),
         "blocking_errors": _authorization_blocking_reasons(authorization_validation),
         "warnings": _string_items(payload.get("warnings") if isinstance(payload, Mapping) else None),
+        "worktree_binding": {
+            "checked": False,
+            "status": "not_attempted",
+            "matched": False,
+            "repo_matches": False,
+            "commit_matches": False,
+            "tree_matches": False,
+            "dirty_state": "not_checked",
+            "refusal_reasons": [],
+            "observed_values_recorded": False,
+        },
         "single_use_reservation": {
             "status": "not_attempted",
             "consumed": False,
@@ -702,6 +747,14 @@ def _authorization_blocking_reasons(authorization_validation: Any | None) -> lis
     payload = authorization_validation.to_dict()
     reasons = _string_items(payload.get("blocking_errors") if isinstance(payload, Mapping) else None)
     return reasons or ["authorization_invalid"]
+
+
+def _load_authorization_document(path: Path) -> Mapping[str, Any] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    return payload if isinstance(payload, Mapping) else None
 
 
 def _command_uses_explicit_shell(command_argv: list[str]) -> bool:

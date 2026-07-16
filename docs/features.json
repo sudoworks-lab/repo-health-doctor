@@ -267,8 +267,8 @@
         "PYTHONPATH=src python3 -m unittest tests.test_execution_authorization_worktree_binding tests.test_sandbox_run_approval -v を実行する",
         "test出力でmatch、mismatch、unresolved、dirtyのcommand開始前判定と緩和flag不在を確認する"
       ],
-      "passes": false,
-      "verified_at": null,
+      "passes": true,
+      "verified_at": "2026-07-16T19:42:43+09:00",
       "blocked": false
     },
     {

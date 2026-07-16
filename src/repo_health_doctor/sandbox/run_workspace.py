@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import stat
+import subprocess
 import tempfile
 from typing import Any
 
@@ -130,6 +131,64 @@ class DisposableWorkspace:
 def target_identity(path: Path) -> str:
     resolved = path.resolve()
     return f"path:{resolved.name}"
+
+
+def inspect_git_worktree(path: Path) -> dict[str, object]:
+    """Read the live Git subject immediately before a workspace copy.
+
+    This probe intentionally does not use the file inventory. Its values are
+    returned in memory only; callers must not persist raw paths or Git output.
+    """
+    target = path.resolve()
+    repo_root_output = _git_output(target, ("rev-parse", "--show-toplevel"))
+    if repo_root_output is None:
+        return {
+            "git_available": False,
+            "repo_identity": None,
+            "repo_root_matches_target": False,
+            "commit": None,
+            "tree_hash": None,
+            "dirty_state": "unknown",
+        }
+
+    repo_root = Path(repo_root_output).resolve()
+    commit = _git_object_id(target, ("rev-parse", "HEAD"))
+    tree_hash = _git_object_id(target, ("rev-parse", "HEAD^{tree}"))
+    status_output = _git_output(target, ("status", "--porcelain=v1", "--untracked-files=all"))
+    dirty_state = "unknown" if status_output is None else "dirty" if status_output else "clean"
+    return {
+        "git_available": True,
+        "repo_identity": target_identity(repo_root),
+        "repo_root_matches_target": repo_root == target,
+        "commit": commit,
+        "tree_hash": tree_hash,
+        "dirty_state": dirty_state,
+    }
+
+
+def _git_output(path: Path, arguments: tuple[str, ...]) -> str | None:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(path), *arguments],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.strip()
+
+
+def _git_object_id(path: Path, arguments: tuple[str, ...]) -> str | None:
+    value = _git_output(path, arguments)
+    if value is None or len(value) not in {40, 64}:
+        return None
+    if any(character not in "0123456789abcdef" for character in value):
+        return None
+    return value
 
 
 def fingerprint_target(path: Path) -> InventoryResult:
