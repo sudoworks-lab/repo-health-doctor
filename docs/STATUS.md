@@ -151,3 +151,11 @@
 - 判断と理由: profile hashはJSONの再シリアライズ結果ではなく、source/wheel双方のpackage data bytesから計算し、provenance sidecarのhashと解決時に照合する設計にした。F015の許可範囲ではCLI/argv接続と実Docker有効性の主張を行わず、`locked-down`を新しいseccomp profile名として追加していない。profileの実Docker有効性とcandidateのHuman approvalは後続featureの範囲である。
 - 既知の問題: 指定された`python3 -m build --wheel --no-isolation`は環境に`build` moduleがなく、`/usr/bin/python3: No module named build.__main__; 'build' is a package and cannot be directly executed`で終了コード1となった。`/tmp`からの同コマンドも`No module named build`で実行できなかった。依存取得やnetwork accessは行わず、同じpyproject backendでの`pip wheel`代替検証と専用wheel resource testを実行した。このため`docs/features.json`のF015は`passes:false`、`verified_at:null`、`blocked:false`のままにした。Moby runtimeでの実効性も今回未確認である。
 - follow-up候補: `build` packageを備えた検証環境で指定の`python3 -m build --wheel --no-isolation`を再実行し、F015の状態を更新する。F016以降のfeatureは今回扱っていない。
+
+## 2026-07-16 JST — F015再検証 attempt 2
+
+- 今回やったこと: F015の既存package data実装を変更せず、指定された専用testとwheel検証を再実行した。source checkoutと一時wheel installの`importlib.resources`解決、provenance、Apache-2.0 license、profile hashの一致を再確認し、boundedな証拠をrunner指定のiteration evidenceへ記録した。
+- 検証結果: `scripts/init.sh`はexit 0で、Python 3.12.3、751件pass・3件skip・0件failだった。`env PYTHONPATH=src python3 -m unittest tests.test_seccomp_package_resource -v`は3件pass・0件failだった。`python3 -m pip wheel . --no-deps --no-build-isolation --wheel-dir /tmp/rhd-f015-attempt2-wheel`はexit 0だった。
+- 判断と理由: 指定の`python3 -m build --wheel --no-isolation`は再実行しても、activeな`/usr/bin/python3`に実行可能な`build.__main__`がないためexit 1となった。network accessや依存取得は行わず、実装側の専用testと同じsetuptools backendによるoffline代替buildの成功だけを確認した。このためF015は`passes:false`、`blocked:false`、`verified_at:null`のままとした。
+- 既知の問題: `python3 -m build`を実行するPyPA `build` packageが検証環境にない。指定された直接の`PYTHONPATH=src ...`表記もprocess生成ポリシーにより拒否され、同値の`env PYTHONPATH=src ...`で実行した。Moby runtimeでの実効性はF015の対象外で未確認である。
+- follow-up候補: `build` packageを備えた検証環境で指定buildを再実行し、成功した場合にのみF015の状態を更新する。F016以降のfeatureは今回扱っていない。
