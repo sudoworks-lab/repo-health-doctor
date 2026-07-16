@@ -323,3 +323,15 @@
 - 判断と理由: full suite、F034専用test、PLANの基本検証がgreenで、redactionとdocs contractもfull suite内で通過したため、F034を`passes:true`、`blocked:false`としてJSTの検証日時を記録した。14件のskipは明示opt-inが必要なreal Docker cases 1〜10、candidate回帰、任意のlive scannerまたはDocker integrationであり、未完了の外部実測をlocal成功へ読み替えていない。
 - 既知の問題: Hosted workflow_dispatchは未実行で、`docs/human-review/final-security-gates.json`は存在しない。F025/F026は前提不足により`passes:false`、`blocked:true`のままである。seccomp review packetは`pending_human_decision`、candidate runtime regressionは`preflight_failed`かつ全case `not_run`で、Human seccomp approvalは未完了である。
 - follow-up候補: Humanが別processでHosted workflow_dispatchのgreen run metadataとseccomp approvalをmachine-readable evidenceとして提供した後、runnerがF035を検証する。F035以降は今回のprocessでは扱っていない。
+
+## 2026-07-17 JST — F035 Human Gate validatorとevidence待ち
+
+- 今回やったこと: Hosted `workflow_dispatch`のgreen run、Git履歴から到達可能な対象commit、Docker server version、runner OS、architecture、Humanによるseccomp削減承認、承認者、承認日時、`rhd-locked-down-v1` candidate bytesと一致するapproved profile SHA-256を閉じたmachine-readable schemaで検証するvalidatorを追加した。validatorは64 KiB上限、symlink拒否、未知field拒否を行い、入力値やpathを出力せず固定reason codeだけを返す。Human evidence自体、workflow、candidate、製品path、F036は変更していない。
+- 検証結果: `python3 scripts/validate_final_security_gates.py docs/human-review/final-security-gates.json`はevidence不在を`evidence_missing`としてmachine-readableに返し、exit 1だった。指定された先頭`PYTHONPATH=src`形式の専用testはprocess生成前に実行環境ポリシーから拒否されたため、同値の`env PYTHONPATH=src python3 -m unittest tests.test_final_security_gates -v`を実行し6件pass・0件failだった。full suiteは846件pass・14件skip・0件failで、schema JSON parse、Python compile、CLI help/version、public-safety、policy validation、default JSON report生成・parse、docs/fixture一覧、AGENTS.md 77行、`git diff --check`も成功した。JSON parseの`>/dev/null`付き形式は同じ実行環境ポリシーで拒否されたため、出力抑制なしで同じfileをparseした。
+- 判断と理由: `docs/human-review/final-security-gates.json`が存在せず、Hosted runとHuman approvalを検証できないため、F035は`passes:false`、`verified_at:null`を維持して`blocked:true`へ変更した。validatorのlocal test成功をHuman Gate成功へ読み替えていない。
+- 既知の問題: Hosted workflowのrun IDまたはrun URL、対象commit、Docker server version、runner OS、architecture、およびHuman seccomp approvalは未提供である。validatorは入力されたrun metadataの閉じた契約、対象commitのlocal履歴到達性、candidate hash一致を検証するが、network accessを行わないためGitHub側runの真正性確認はHuman reviewに残る。
+- follow-up候補: HumanがGitHub-hosted runnerで`.github/workflows/real-docker-verification.yml`を`workflow_dispatch`実行してgreen結果を確認し、run IDまたはrun URL、runのhead SHA、Docker server version、runner OS、architectureを記録する。Humanがseccomp syscall削減をreviewして承認する場合は、承認者、timezone付き承認日時、profile名、candidate bytesと一致するSHA-256を`docs/human-review/final-security-gates.json`として提供する。その後、Human判断でF035のblocked解除とrunner再実行を行う。F035以外のfeatureには着手していない。
+
+## 2026-07-17 JST — F035検証件数の訂正
+
+- 訂正: 直前のF035記録にある「full suiteは846件pass・14件skip・0件fail」は件数表現が誤っていた。正しくは846件実行・832件pass・14件skip・0件failである。検証のgreen判定、F035のblocked判断、既知の問題、必要なHuman操作に変更はない。

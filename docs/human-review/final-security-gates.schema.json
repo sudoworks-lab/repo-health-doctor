@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/repo-health-doctor/final-security-gates.schema.json",
+  "title": "Final Security Gates Human Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evidence_kind",
+    "hosted_workflow",
+    "seccomp_approval"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1-draft"
+    },
+    "evidence_kind": {
+      "const": "final_security_gates"
+    },
+    "hosted_workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "runner_environment",
+        "workflow_path",
+        "event",
+        "conclusion",
+        "head_sha",
+        "docker_server_version",
+        "runner_os",
+        "runner_architecture"
+      ],
+      "anyOf": [
+        {
+          "required": ["run_id"]
+        },
+        {
+          "required": ["run_url"]
+        }
+      ],
+      "properties": {
+        "provider": {
+          "const": "github_actions"
+        },
+        "runner_environment": {
+          "const": "github_hosted"
+        },
+        "workflow_path": {
+          "const": ".github/workflows/real-docker-verification.yml"
+        },
+        "event": {
+          "const": "workflow_dispatch"
+        },
+        "conclusion": {
+          "const": "success"
+        },
+        "run_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "run_url": {
+          "type": "string",
+          "pattern": "^https://github\\.com/[^/\\s]+/[^/\\s]+/actions/runs/[0-9]+(?:/attempts/[0-9]+)?$",
+          "maxLength": 512
+        },
+        "head_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "docker_server_version": {
+          "$ref": "#/$defs/safeMetadata"
+        },
+        "runner_os": {
+          "$ref": "#/$defs/safeMetadata"
+        },
+        "runner_architecture": {
+          "$ref": "#/$defs/safeMetadata"
+        }
+      }
+    },
+    "seccomp_approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approval_kind",
+        "decision",
+        "syscall_reduction_approved",
+        "profile_name",
+        "approved_profile_sha256",
+        "approved_by",
+        "approved_at"
+      ],
+      "properties": {
+        "approval_kind": {
+          "const": "human"
+        },
+        "decision": {
+          "const": "approved"
+        },
+        "syscall_reduction_approved": {
+          "const": true
+        },
+        "profile_name": {
+          "const": "rhd-locked-down-v1"
+        },
+        "approved_profile_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "approved_by": {
+          "$ref": "#/$defs/safeMetadata"
+        },
+        "approved_at": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 64
+        }
+      }
+    }
+  },
+  "$defs": {
+    "safeMetadata": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._+()/@:-]{0,127}$",
+      "minLength": 1,
+      "maxLength": 128
+    }
+  }
+}
