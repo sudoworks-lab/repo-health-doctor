@@ -1,8 +1,9 @@
 # Seccomp profile contract
 
-Mobyのdefault seccomp policyは`rhd-moby-default-v1`という固定名のpackage dataとして
-同梱する。これは`locked-down`を意味しない。`sandbox-run --seccomp`で明示選択できるが、
-defaultは従来どおり`runtime-default`である。
+Mobyのdefault seccomp policyをbaselineとし、local compatibility deltaとして`statx`だけを
+追加したprofileを`rhd-moby-default-v1`という固定名のpackage dataとして同梱する。
+これは`locked-down`を意味しない。`sandbox-run --seccomp`で明示選択できるが、defaultは
+従来どおり`runtime-default`である。
 
 ## Resource contract
 
@@ -17,7 +18,10 @@ provenance sidecarには次を記録する。
 - source version/revision
 - Apache-2.0と同梱license resource
 - 取得日
-- syscall削減をしていないこと、およびpackage-owned nameとsidecarだけを追加したこと
+- syscall削減をしていないこと、Moby baselineからのlocal compatibility deltaが`statx`だけで
+  あること、およびallowlistが277 syscallであること
+- 2026-07-17 JSTのHuman実測環境、対象image digest、一時profileでのboundedな成功結果、
+  および一般的なruntime互換性や安全性を示さないという制限
 - profile resource bytesのSHA-256
 
 hashはJSONを再シリアライズした値ではなく、package dataのUTF-8 bytesそのものに対する
@@ -75,3 +79,16 @@ python3 -m build --wheel --no-isolation
 seccompが有効であること、syscall削減の妥当性、production-readyであることを示さない。
 imageごとの互換性は[image compatibility](image-compatibility.md)に記録し、実Dockerでの確認は
 G009、candidate profileのHuman approvalは別の後続gateで扱う。
+
+## 2026-07-17 statx compatibility evidence
+
+Human shellではDocker Engine 29.5.3、runc 1.3.6、linux/amd64、
+`python@sha256:d764629ce0ddd8c71fd371e9901efb324a95789d2315a47db7e4d27e78f1b0e9`
+の組合せで、修正前profileがcontainer init時の`statx`拒否によりreal cases 8/10を開始できない
+ことを確認した。修正前profileの一時copyへ`statx`だけを追加すると、minimal runとread-only、
+tmpfs、non-root、capability drop、no-new-privilegesを含むsandbox boundary runが成功した。
+
+repositoryのprofileには同じcompatibility deltaをcanonicalな並びで追加した。repository bytesを
+使うreal Docker cases 8/10と、再生成したHuman未承認candidateのF030回帰は、このCodex
+processでは実行しておらずHuman shellでの再検証待ちである。この実測は上記のruntime、image、
+OS、architectureに限定され、一般的なruntime互換性や安全性を示さない。

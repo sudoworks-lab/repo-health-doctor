@@ -12,9 +12,13 @@
     "resource_file": "MOBY-APACHE-2.0.txt"
   },
   "retrieved_date": "2026-07-16",
+  "allowlisted_syscall_count": 277,
   "changes": [
-    "The upstream default policy is vendored as package data without syscall reductions.",
-    "The package-owned profile name and provenance sidecar are added; policy semantics are unchanged."
+    "The Moby v28.3.3 baseline is vendored as package data without syscall reductions.",
+    "A local compatibility delta adds only statx to the SCMP_ACT_ALLOW group, producing a 277-syscall allowlist.",
+    "Human measurement on 2026-07-17 JST found that runc container init required statx with Docker Engine 29.5.3 and runc 1.3.6 for python@sha256:d764629ce0ddd8c71fd371e9901efb324a95789d2315a47db7e4d27e78f1b0e9.",
+    "A temporary profile containing only the statx compatibility delta passed both the minimal run and the read-only, tmpfs, non-root, capability-drop, no-new-privileges sandbox boundary run.",
+    "This bounded local observation does not establish compatibility across all runtimes, images, operating systems, architectures, or kernels, and does not establish general safety."
   ],
-  "profile_sha256": "7cb8f61c6f90a7f0491194c5e3e3ac41f0d4e65e9494a0afca1575cbb43b86a2"
+  "profile_sha256": "cd7d83a312f51451d6942e5fdbfdd651a1cbebdff6debb8ff85a352a3be439d6"
 }

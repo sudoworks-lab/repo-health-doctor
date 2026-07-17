@@ -63,15 +63,17 @@ class SeccompReviewPacketTests(unittest.TestCase):
         self.assertEqual(self.provenance["source"]["revision"], baseline["source_revision"])
         self.assertEqual(self.baseline["defaultAction"], baseline["default_action"])
         self.assertEqual(1, baseline["allow_group_count"])
-        self.assertEqual(276, baseline["allowlisted_syscall_count"])
-        self.assertEqual(276, len(allowed_names))
-        self.assertEqual(276, len(set(allowed_names)))
+        self.assertEqual(277, baseline["allowlisted_syscall_count"])
+        self.assertEqual(277, len(allowed_names))
+        self.assertEqual(277, len(set(allowed_names)))
+        self.assertEqual(1, allowed_names.count("statx"))
         self.assertEqual(0, baseline["syscall_reductions_from_source"])
+        self.assertEqual(["statx"], baseline["local_compatibility_additions"])
 
     def test_comparison_records_distinct_moby_and_sandbox_purposes(self) -> None:
         comparison = self.packet["comparison"]
         self.assertIn("upstream default", comparison["moby_default"]["role"])
-        self.assertIn("276 syscall", comparison["moby_default"]["policy_shape"])
+        self.assertIn("277 syscall", comparison["moby_default"]["policy_shape"])
         self.assertIn("network none", comparison["sandbox_use"]["role"])
         self.assertIn("capability drop", comparison["sandbox_use"]["role"])
         self.assertEqual(
@@ -158,6 +160,7 @@ class SeccompReviewPacketTests(unittest.TestCase):
                 "RR-PLATFORM-SCOPE",
                 "RR-SECCOMP-LIMIT",
                 "RR-HUMAN-DECISION",
+                "RR-POSIX-MQ-NAME-COVERAGE",
             },
             risk_ids,
         )
@@ -166,12 +169,39 @@ class SeccompReviewPacketTests(unittest.TestCase):
         )
         self.assertGreaterEqual(
             len(self.packet["human_review"]["required_checks"]),
-            4,
+            5,
         )
         self.assertIn(
             "製品path接続",
             self.packet["human_review"]["decision_effect"],
         )
+
+    def test_statx_compatibility_evidence_is_bounded_and_pending_reverification(self) -> None:
+        repair = self.packet["statx_compatibility_repair"]
+
+        self.assertEqual("2026-07-17 JST", repair["human_measured_at"])
+        self.assertEqual("29.5.3", repair["environment"]["docker_engine_version"])
+        self.assertEqual("1.3.6", repair["environment"]["runc_version"])
+        self.assertEqual("linux/amd64", repair["environment"]["os_architecture"])
+        self.assertEqual(
+            "python@sha256:d764629ce0ddd8c71fd371e9901efb324a95789d2315a47db7e4d27e78f1b0e9",
+            repair["environment"]["image_digest"],
+        )
+        self.assertEqual(
+            "failed_at_container_init",
+            repair["pre_repair_baseline"]["package_real_cases_8_and_10"],
+        )
+        self.assertEqual(["statx"], repair["temporary_profile"]["local_compatibility_additions"])
+        self.assertEqual("passed", repair["temporary_profile"]["minimal_run"])
+        self.assertEqual("passed", repair["temporary_profile"]["sandbox_boundary_run"])
+        self.assertEqual(
+            "pending_human_reverification",
+            repair["repository_repair"]["post_repair_real_docker_state"],
+        )
+        self.assertTrue(
+            any("does not establish compatibility" in item for item in repair["limitations"])
+        )
+        self.assertIn("Human shellでの再検証待ち", self.markdown)
 
     def test_markdown_corresponds_to_machine_readable_packet(self) -> None:
         self.assertIn(self.packet["baseline"]["profile_sha256"], self.markdown)

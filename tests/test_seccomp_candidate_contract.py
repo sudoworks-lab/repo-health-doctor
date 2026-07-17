@@ -10,7 +10,9 @@ import unittest
 from repo_health_doctor.cli import _parse_seccomp_profile
 from repo_health_doctor.sandbox.docker_runner import build_docker_run_argv
 from repo_health_doctor.sandbox.profiles import (
+    PROFILE_MOBY_DEFAULT,
     SECCOMP_PROFILE_CHOICES,
+    SECCOMP_RUNTIME_DEFAULT,
     get_sandbox_profile,
     resolve_seccomp_profile,
     resolve_seccomp_selection,
@@ -32,6 +34,19 @@ BASELINE_PATH = (
     / "resources"
     / "rhd-moby-default-v1.json"
 )
+EXPECTED_REMOVED_SYSCALLS = [
+    "chroot",
+    "mknod",
+    "mknodat",
+    "fanotify_mark",
+    "io_uring_setup",
+    "io_uring_enter",
+    "io_uring_register",
+    "mq_open",
+    "mq_notify",
+    "mq_send",
+    "mq_unlink",
+]
 
 
 class SeccompCandidateContractTests(unittest.TestCase):
@@ -78,15 +93,29 @@ class SeccompCandidateContractTests(unittest.TestCase):
             for name in group["names"]
         ]
         self.assertEqual(expected, self.candidate)
-        self.assertEqual(265, len(allowed_names))
-        self.assertEqual(265, len(set(allowed_names)))
+        self.assertEqual(266, len(allowed_names))
+        self.assertEqual(266, len(set(allowed_names)))
+        self.assertEqual(1, allowed_names.count("statx"))
+        self.assertEqual(EXPECTED_REMOVED_SYSCALLS, removed_from_candidates)
         self.assertEqual(artifact["removed_syscalls"], removed_from_candidates)
         self.assertEqual(
             artifact["removed_candidate_ids"],
             [candidate["candidate_id"] for candidate in packet_candidates],
         )
-        self.assertEqual(265, artifact["allowlisted_syscall_count"])
+        self.assertEqual(266, artifact["allowlisted_syscall_count"])
         self.assertEqual(1, artifact["allow_group_count"])
+        baseline_names = {
+            name
+            for group in self.baseline["syscalls"]
+            if group["action"] == "SCMP_ACT_ALLOW"
+            for name in group["names"]
+        }
+        self.assertEqual(set(EXPECTED_REMOVED_SYSCALLS), baseline_names - set(allowed_names))
+        self.assertFalse(set(allowed_names) - baseline_names)
+        self.assertEqual(
+            hashlib.sha256(BASELINE_PATH.read_bytes()).hexdigest(),
+            artifact["baseline_profile_sha256"],
+        )
 
     def test_candidate_remains_human_unapproved_and_unrun(self) -> None:
         artifact = self.packet["candidate_artifact"]
@@ -115,6 +144,11 @@ class SeccompCandidateContractTests(unittest.TestCase):
         self.assertNotIn("production_ready", candidate_materials)
 
     def test_candidate_is_unreachable_from_package_schema_and_cli(self) -> None:
+        self.assertEqual(
+            (SECCOMP_RUNTIME_DEFAULT, PROFILE_MOBY_DEFAULT),
+            SECCOMP_PROFILE_CHOICES,
+        )
+        self.assertEqual(SECCOMP_RUNTIME_DEFAULT, resolve_seccomp_selection().profile)
         self.assertNotIn(CANDIDATE_NAME, SECCOMP_PROFILE_CHOICES)
         self.assertFalse(
             resources.files("repo_health_doctor.sandbox.resources")

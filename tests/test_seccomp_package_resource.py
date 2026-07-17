@@ -27,6 +27,15 @@ class SeccompPackageResourceTests(unittest.TestCase):
         self.assertEqual("SCMP_ACT_ERRNO", resolved.profile["defaultAction"])
         self.assertTrue(resolved.profile["architectures"])
         self.assertTrue(resolved.profile["syscalls"])
+        allowed_names = [
+            name
+            for group in resolved.profile["syscalls"]
+            if group["action"] == "SCMP_ACT_ALLOW"
+            for name in group["names"]
+        ]
+        self.assertEqual(277, len(allowed_names))
+        self.assertEqual(277, len(set(allowed_names)))
+        self.assertEqual(1, allowed_names.count("statx"))
         self.assertEqual(hashlib.sha256(profile_bytes).hexdigest(), resolved.profile_sha256)
         self.assertEqual(resolved.profile_sha256, provenance["profile_sha256"])
         self.assertEqual(PROFILE_MOBY_DEFAULT, provenance["profile_name"])
@@ -35,7 +44,20 @@ class SeccompPackageResourceTests(unittest.TestCase):
         self.assertTrue(provenance["source"]["revision"])
         self.assertEqual("Apache-2.0", provenance["license"]["spdx_id"])
         self.assertTrue(provenance["retrieved_date"])
+        self.assertEqual(277, provenance["allowlisted_syscall_count"])
         self.assertTrue(provenance["changes"])
+        changes = "\n".join(provenance["changes"])
+        for expected in (
+            "statx",
+            "Docker Engine 29.5.3",
+            "runc 1.3.6",
+            "2026-07-17 JST",
+            "python@sha256:d764629ce0ddd8c71fd371e9901efb324a95789d2315a47db7e4d27e78f1b0e9",
+            "minimal run",
+            "sandbox boundary run",
+            "does not establish compatibility across all runtimes",
+        ):
+            self.assertIn(expected, changes)
         self.assertIn("Apache License", resolved.license_text)
 
     def test_arbitrary_profile_names_are_not_filesystem_resource_lookup(self) -> None:
@@ -101,7 +123,9 @@ class SeccompPackageResourceTests(unittest.TestCase):
                     "from repo_health_doctor.sandbox.profiles import resolve_seccomp_profile; "
                     "r = resolve_seccomp_profile(); "
                     "print(r.name); print(r.profile_sha256); print(r.provenance['source']['version']); "
-                    "print(r.provenance['license']['spdx_id']); print(bool(r.license_text))",
+                    "print(r.provenance['license']['spdx_id']); "
+                    "names = [n for g in r.profile['syscalls'] if g['action'] == 'SCMP_ACT_ALLOW' for n in g['names']]; "
+                    "print(len(names)); print(names.count('statx')); print(bool(r.license_text))",
                 ],
                 check=False,
                 capture_output=True,
@@ -116,6 +140,8 @@ class SeccompPackageResourceTests(unittest.TestCase):
                     source.profile_sha256,
                     source.provenance["source"]["version"],
                     source.provenance["license"]["spdx_id"],
+                    "277",
+                    "1",
                     "True",
                 ],
                 probe.stdout.splitlines(),
