@@ -189,45 +189,37 @@ Human approvalのいずれも成立しない。
 <!-- F030_CANDIDATE_REGRESSION_START -->
 ## F030 candidate専用local real Docker regression
 
-観測日時は`2026-07-17T12:31:55+09:00`、実行状態は`pending_human_reverification`である。
+観測日時は`2026-07-17T04:19:08+00:00`、実行状態は`completed`である。
 candidate bytesのSHA-256は`92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543`である。
 このtest pathはreview専用であり、candidateをpackage data、schema、CLI、
 Docker argvの製品選択肢またはdefaultへ接続しない。Human判断は引き続きpendingである。
-statxを含むcandidate artifactの再生成後、このCodex processではruntime caseを実行していない。
 
 環境:
 
-- Docker server: `unknown`
-- Docker OS / architecture: `unknown` / `unknown`
-- Kernel: `unknown`
-- Rootless / userns-remap: `unknown` / `unknown`
-- Existing local image digest: `unknown`
-- Existing local image ID: `unknown`
-- Image selection source: `human_reverification_pending`
+- Docker server: `29.5.3`
+- Docker OS / architecture: `Docker Desktop` / `x86_64`
+- Kernel: `6.6.87.2-microsoft-standard-WSL2`
+- Rootless / userns-remap: `false` / `false`
+- Existing local image digest: `sha256:d764629ce0ddd8c71fd371e9901efb324a95789d2315a47db7e4d27e78f1b0e9`
+- Existing local image ID: `sha256:d764629ce0ddd8c71fd371e9901efb324a95789d2315a47db7e4d27e78f1b0e9`
+- Image selection source: `environment`
 
 case別結果:
 
 | case | status | expected | exit code | timeout | failure codes |
 |---:|---|---|---:|---|---|
-| 1 | `not_run` | `completed_exit_0` | null | `false` | `human_reverification_required` |
-| 2 | `not_run` | `completed_exit_0` | null | `false` | `human_reverification_required` |
-| 3 | `not_run` | `completed_exit_0` | null | `false` | `human_reverification_required` |
-| 4 | `not_run` | `completed_exit_0` | null | `false` | `human_reverification_required` |
-| 5 | `not_run` | `completed_exit_0` | null | `false` | `human_reverification_required` |
-| 6 | `not_run` | `timed_out` | null | `false` | `human_reverification_required` |
-| 8 | `not_run` | `completed_exit_0` | null | `false` | `human_reverification_required` |
-| 10 | `not_run` | `completed_exit_0` | null | `false` | `human_reverification_required` |
+| 1 | `pass` | `completed_exit_0` | 0 | `false` | `none` |
+| 2 | `pass` | `completed_exit_0` | 0 | `false` | `none` |
+| 3 | `pass` | `completed_exit_0` | 0 | `false` | `none` |
+| 4 | `pass` | `completed_exit_0` | 0 | `false` | `none` |
+| 5 | `pass` | `completed_exit_0` | 0 | `false` | `none` |
+| 6 | `pass` | `timed_out` | null | `true` | `none` |
+| 8 | `pass` | `completed_exit_0` | 0 | `false` | `none` |
+| 10 | `pass` | `completed_exit_0` | 0 | `false` | `none` |
 
 全failure:
 
-- case 1: `human_reverification_required`
-- case 2: `human_reverification_required`
-- case 3: `human_reverification_required`
-- case 4: `human_reverification_required`
-- case 5: `human_reverification_required`
-- case 6: `human_reverification_required`
-- case 8: `human_reverification_required`
-- case 10: `human_reverification_required`
+- なし。
 
 結果は記録されたlocal Docker環境とimage digestにだけ限定され、一般的な互換性、
 安全性、完全な隔離、Human approvalを示さない。raw stdout/stderr、host path、

@@ -464,8 +464,8 @@
   },
   "candidate_local_regression": {
     "recorded_by_feature_id": "F030",
-    "observed_at": "2026-07-17T12:31:55+09:00",
-    "execution_state": "pending_human_reverification",
+    "observed_at": "2026-07-17T04:19:08+00:00",
+    "execution_state": "completed",
     "profile": "rhd-locked-down-v1",
     "profile_sha256": "92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543",
     "approval_state": "human_unapproved",
@@ -473,15 +473,15 @@
     "pull_policy": "never",
     "network_mode": "none",
     "environment": {
-      "docker_server_version": "unknown",
-      "docker_os": "unknown",
-      "docker_architecture": "unknown",
-      "kernel_version": "unknown",
-      "rootless": "unknown",
-      "userns_remap": "unknown",
-      "image_selection_source": "human_reverification_pending",
-      "image_digest": "unknown",
-      "local_image_id": "unknown"
+      "docker_server_version": "29.5.3",
+      "docker_os": "Docker Desktop",
+      "docker_architecture": "x86_64",
+      "kernel_version": "6.6.87.2-microsoft-standard-WSL2",
+      "rootless": "false",
+      "userns_remap": "false",
+      "image_selection_source": "environment",
+      "image_digest": "sha256:d764629ce0ddd8c71fd371e9901efb324a95789d2315a47db7e4d27e78f1b0e9",
+      "local_image_id": "sha256:d764629ce0ddd8c71fd371e9901efb324a95789d2315a47db7e4d27e78f1b0e9"
     },
     "required_case_ids": [
       1,
@@ -493,159 +493,100 @@
       8,
       10
     ],
-    "attempted_case_count": 0,
-    "passed_case_count": 0,
+    "attempted_case_count": 8,
+    "passed_case_count": 8,
     "failed_case_count": 0,
-    "not_run_case_count": 8,
+    "not_run_case_count": 0,
     "all_required_cases_recorded": true,
     "cases": [
       {
         "case_id": 1,
         "description": "workspace write under the candidate profile",
         "expected_outcome": "completed_exit_0",
-        "status": "not_run",
-        "exit_code": null,
+        "status": "pass",
+        "exit_code": 0,
         "timed_out": false,
-        "duration_ms": 0,
-        "failure_codes": [
-          "human_reverification_required"
-        ]
+        "duration_ms": 298,
+        "failure_codes": []
       },
       {
         "case_id": 2,
         "description": "network namespace remains limited to loopback",
         "expected_outcome": "completed_exit_0",
-        "status": "not_run",
-        "exit_code": null,
+        "status": "pass",
+        "exit_code": 0,
         "timed_out": false,
-        "duration_ms": 0,
-        "failure_codes": [
-          "human_reverification_required"
-        ]
+        "duration_ms": 291,
+        "failure_codes": []
       },
       {
         "case_id": 3,
         "description": "container root filesystem remains read-only",
         "expected_outcome": "completed_exit_0",
-        "status": "not_run",
-        "exit_code": null,
+        "status": "pass",
+        "exit_code": 0,
         "timed_out": false,
-        "duration_ms": 0,
-        "failure_codes": [
-          "human_reverification_required"
-        ]
+        "duration_ms": 283,
+        "failure_codes": []
       },
       {
         "case_id": 4,
         "description": "writable tmpfs remains available",
         "expected_outcome": "completed_exit_0",
-        "status": "not_run",
-        "exit_code": null,
+        "status": "pass",
+        "exit_code": 0,
         "timed_out": false,
-        "duration_ms": 0,
-        "failure_codes": [
-          "human_reverification_required"
-        ]
+        "duration_ms": 319,
+        "failure_codes": []
       },
       {
         "case_id": 5,
         "description": "container process remains non-root",
         "expected_outcome": "completed_exit_0",
-        "status": "not_run",
-        "exit_code": null,
+        "status": "pass",
+        "exit_code": 0,
         "timed_out": false,
-        "duration_ms": 0,
-        "failure_codes": [
-          "human_reverification_required"
-        ]
+        "duration_ms": 236,
+        "failure_codes": []
       },
       {
         "case_id": 6,
         "description": "timeout remains bounded and the container is removed",
         "expected_outcome": "timed_out",
-        "status": "not_run",
+        "status": "pass",
         "exit_code": null,
-        "timed_out": false,
-        "duration_ms": 0,
-        "failure_codes": [
-          "human_reverification_required"
-        ]
+        "timed_out": true,
+        "duration_ms": 1107,
+        "failure_codes": []
       },
       {
         "case_id": 8,
         "description": "candidate profile can start the packaged-profile equivalent command",
         "expected_outcome": "completed_exit_0",
-        "status": "not_run",
-        "exit_code": null,
+        "status": "pass",
+        "exit_code": 0,
         "timed_out": false,
-        "duration_ms": 0,
-        "failure_codes": [
-          "human_reverification_required"
-        ]
+        "duration_ms": 257,
+        "failure_codes": []
       },
       {
         "case_id": 10,
         "description": "candidate profile can start the installed-package equivalent command",
         "expected_outcome": "completed_exit_0",
-        "status": "not_run",
-        "exit_code": null,
+        "status": "pass",
+        "exit_code": 0,
         "timed_out": false,
-        "duration_ms": 0,
-        "failure_codes": [
-          "human_reverification_required"
-        ]
+        "duration_ms": 290,
+        "failure_codes": []
       }
     ],
-    "failures": [
-      {
-        "scope": "case",
-        "case_id": 1,
-        "failure_code": "human_reverification_required"
-      },
-      {
-        "scope": "case",
-        "case_id": 2,
-        "failure_code": "human_reverification_required"
-      },
-      {
-        "scope": "case",
-        "case_id": 3,
-        "failure_code": "human_reverification_required"
-      },
-      {
-        "scope": "case",
-        "case_id": 4,
-        "failure_code": "human_reverification_required"
-      },
-      {
-        "scope": "case",
-        "case_id": 5,
-        "failure_code": "human_reverification_required"
-      },
-      {
-        "scope": "case",
-        "case_id": 6,
-        "failure_code": "human_reverification_required"
-      },
-      {
-        "scope": "case",
-        "case_id": 8,
-        "failure_code": "human_reverification_required"
-      },
-      {
-        "scope": "case",
-        "case_id": 10,
-        "failure_code": "human_reverification_required"
-      }
-    ],
+    "failures": [],
     "raw_process_output_recorded": false,
     "limitations": [
       "result_scope_is_recorded_local_environment_only",
       "successful_cases_do_not_establish_general_compatibility_or_safety",
       "human_decision_remains_pending",
-      "candidate_remains_disconnected_from_product_and_default_paths",
-      "candidate_artifact_was_regenerated_with_statx_and_requires_human_runtime_reverification",
-      "no_candidate_runtime_case_was_executed_by_this_codex_process"
+      "candidate_remains_disconnected_from_product_and_default_paths"
     ]
   }
 }

@@ -355,3 +355,16 @@
 - feature状態と外部操作: `docs/features.json`を変更せず、F025/F026/F035/F036の`passes:false`、`blocked:true`を維持した。F029/F030/F034の既存pass状態も変更していない。Goal Loop、push、tag、Release、Human seccomp approvalの代行は実行していない。
 - 次のHuman操作: F025、F026、F030をhost-side real Dockerで再検証し、修正後package baseline cases 8/10と再生成candidateの全case結果を別のHuman-directed stepで反映する。
 - full verification: `bash scripts/init.sh`と独立full suiteはいずれも847件実行・833件pass・14件skip・0件failだった。CLI help/version、public-safety 12件pass・0件warn・0件block、policy validation、default JSON report生成・parse、docs/fixture一覧、AGENTS.md 77行、`git diff --check`も成功した。14件skipは明示opt-inのreal Dockerまたはlive integrationであり、修正後runtime成功へ読み替えていない。
+
+## 2026-07-17 JST — Human実機Docker再検証完了
+
+- 実行対象HEAD: `835f6ef066294b5a618abd19ef69d618bb590263`。
+- 実行環境: Docker Desktop 4.79.0、Docker Engine 29.5.3、runc 1.3.6、linux/amd64。
+- local image: `python@sha256:d764629ce0ddd8c71fd371e9901efb324a95789d2315a47db7e4d27e78f1b0e9`。image取得は行わず、`--pull=never`契約を維持した。
+- F025結果: real Docker cases 1〜7を7件実行し、7件pass、0件failだった。normal execution、network none、read-only rootfs、writable tmpfs、non-root、bounded timeout、copy budgetの境界を確認した。
+- F026結果: real Docker cases 8〜10を3件実行し、3件pass、0件failだった。修正後の`rhd-moby-default-v1`適用、local image identity binding、installed wheel resourceによる実行を確認した。
+- F030再検証: candidate専用cases 1〜6、8、10を8件実行し、8件pass、failure 0だった。review packetへ実測環境とcase別結果を記録した。
+- 状態更新: F025とF026を`passes:true`、`blocked:false`、`verified_at:2026-07-17T16:18:09+09:00`へ更新した。
+- 維持した境界: candidateは`human_unapproved`かつ製品経路から`disconnected`のままである。成功結果は一般的な互換性、安全性、完全な隔離を示さない。
+- 未完了: POSIX message queue削除集合の名称とcoverageに関するHuman review、Hosted workflow、F035、F036、candidateの最終Human判断。
+- 外部操作: push、tag、Release、image pullは行っていない。

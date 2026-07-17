@@ -315,9 +315,9 @@
         "RHD_REAL_DOCKER_TEST=1 PYTHONPATH=src python3 -m unittest tests.test_real_docker_verification.RealDockerBoundaryCasesOneToSeven -v を実行する",
         "test出力で固定の無害なcommand、--pull=never、original repo不変、cleanup、schema-valid evidenceを確認する"
       ],
-      "passes": false,
-      "verified_at": null,
-      "blocked": true
+      "passes": true,
+      "verified_at": "2026-07-17T16:18:09+09:00",
+      "blocked": false
     },
     {
       "id": "F026",
@@ -327,9 +327,9 @@
         "RHD_REAL_DOCKER_TEST=1 PYTHONPATH=src python3 -m unittest tests.test_real_docker_verification.RealDockerBoundaryCasesEightToTen -v を実行する",
         "rg -n \"case 8|case 9|case 10|local image|--pull=never|installed\" docs/real-docker-verification.md を実行し、local実行前提を確認する"
       ],
-      "passes": false,
-      "verified_at": null,
-      "blocked": true
+      "passes": true,
+      "verified_at": "2026-07-17T16:18:09+09:00",
+      "blocked": false
     },
     {
       "id": "F027",
