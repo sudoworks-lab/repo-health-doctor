@@ -123,7 +123,7 @@ class SeccompCandidateContractTests(unittest.TestCase):
             artifact["baseline_profile_sha256"],
         )
 
-    def test_candidate_remains_human_unapproved_and_pending_reverification(self) -> None:
+    def test_candidate_remains_human_unapproved_after_completed_reverification(self) -> None:
         artifact = self.packet["candidate_artifact"]
 
         self.assertEqual("human_unapproved", artifact["approval_state"])
@@ -135,11 +135,25 @@ class SeccompCandidateContractTests(unittest.TestCase):
         self.assertFalse(self.packet["review_scope"]["candidate_product_connected"])
         self.assertEqual([], self.packet["candidate_runtime_results"])
         regression = self.packet["candidate_local_regression"]
-        self.assertEqual("pending_human_reverification", regression["execution_state"])
-        self.assertEqual(0, regression["attempted_case_count"])
-        self.assertEqual(0, regression["passed_case_count"])
-        self.assertEqual(8, regression["not_run_case_count"])
-        self.assertEqual({"not_run"}, {case["status"] for case in regression["cases"]})
+        self.assertEqual("completed", regression["execution_state"])
+        self.assertEqual("human_unapproved", regression["approval_state"])
+        self.assertEqual("disconnected", regression["product_connection_state"])
+        self.assertEqual(8, regression["attempted_case_count"])
+        self.assertEqual(8, regression["passed_case_count"])
+        self.assertEqual(0, regression["failed_case_count"])
+        self.assertEqual(0, regression["not_run_case_count"])
+        self.assertTrue(regression["all_required_cases_recorded"])
+        self.assertEqual([], regression["failures"])
+        self.assertEqual(8, len(regression["cases"]))
+        self.assertEqual({"pass"}, {case["status"] for case in regression["cases"]})
+        self.assertTrue(
+            all(case["failure_codes"] == [] for case in regression["cases"])
+        )
+        self.assertIn("human_decision_remains_pending", regression["limitations"])
+        self.assertIn(
+            "candidate_remains_disconnected_from_product_and_default_paths",
+            regression["limitations"],
+        )
         previous = self.packet["previous_candidate_local_regression"]
         self.assertEqual("completed", previous["execution_state"])
         self.assertEqual(8, previous["passed_case_count"])
