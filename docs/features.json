@@ -328,7 +328,7 @@
         "rg -n \"case 8|case 9|case 10|local image|--pull=never|installed\" docs/real-docker-verification.md を実行し、local実行前提を確認する"
       ],
       "passes": true,
-      "verified_at": "2026-07-17T16:18:09+09:00",
+      "verified_at": "2026-07-19T15:51:05+09:00",
       "blocked": false
     },
     {
@@ -376,7 +376,7 @@
         "python3 -m json.tool docs/human-review/seccomp-review-packet.json >/dev/null を実行し、local実測結果またはfailureが省略なく記録され、production/default選択肢へ接続されていないことを確認する"
       ],
       "passes": true,
-      "verified_at": "2026-07-16T23:41:27+09:00",
+      "verified_at": "2026-07-19T15:51:05+09:00",
       "blocked": false
     },
     {

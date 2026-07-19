@@ -63,17 +63,34 @@ class SeccompReviewPacketTests(unittest.TestCase):
         self.assertEqual(self.provenance["source"]["revision"], baseline["source_revision"])
         self.assertEqual(self.baseline["defaultAction"], baseline["default_action"])
         self.assertEqual(1, baseline["allow_group_count"])
-        self.assertEqual(277, baseline["allowlisted_syscall_count"])
-        self.assertEqual(277, len(allowed_names))
-        self.assertEqual(277, len(set(allowed_names)))
+        expected_mqueue = {
+            "mq_getsetattr",
+            "mq_notify",
+            "mq_open",
+            "mq_timedreceive",
+            "mq_timedreceive_time64",
+            "mq_timedsend",
+            "mq_timedsend_time64",
+            "mq_unlink",
+        }
+        self.assertEqual(281, baseline["allowlisted_syscall_count"])
+        self.assertEqual(281, len(allowed_names))
+        self.assertEqual(281, len(set(allowed_names)))
         self.assertEqual(1, allowed_names.count("statx"))
+        self.assertEqual(expected_mqueue, {name for name in allowed_names if name.startswith("mq_")})
+        self.assertEqual(0, allowed_names.count("mq_send"))
         self.assertEqual(0, baseline["syscall_reductions_from_source"])
-        self.assertEqual(["statx"], baseline["local_compatibility_additions"])
+        self.assertEqual([], baseline["local_compatibility_additions"])
+        normalization = baseline["upstream_contract_normalization"]
+        self.assertTrue(normalization["statx_present"])
+        self.assertEqual(expected_mqueue, set(normalization["posix_message_queue_syscalls"]))
+        self.assertEqual(["mq_send"], normalization["removed_library_interface_names"])
+        self.assertEqual("upstream_contract_normalization", normalization["repair_kind"])
 
     def test_comparison_records_distinct_moby_and_sandbox_purposes(self) -> None:
         comparison = self.packet["comparison"]
         self.assertIn("upstream default", comparison["moby_default"]["role"])
-        self.assertIn("277 syscall", comparison["moby_default"]["policy_shape"])
+        self.assertIn("281 syscall", comparison["moby_default"]["policy_shape"])
         self.assertIn("network none", comparison["sandbox_use"]["role"])
         self.assertIn("capability drop", comparison["sandbox_use"]["role"])
         self.assertEqual(
@@ -107,13 +124,29 @@ class SeccompReviewPacketTests(unittest.TestCase):
             with self.subTest(candidate=candidate["candidate_id"]):
                 syscalls = candidate["syscalls"]
                 self.assertGreaterEqual(len(syscalls), 1)
-                self.assertLessEqual(len(syscalls), 4)
+                self.assertLessEqual(len(syscalls), 8)
                 self.assertTrue(set(syscalls) <= allowed_names)
                 self.assertFalse(set(syscalls) & seen_syscalls)
                 seen_syscalls.update(syscalls)
                 self.assertGreaterEqual(len(candidate["rationale"]), 40)
                 self.assertTrue(candidate["evidence_ids"])
                 self.assertTrue(set(candidate["evidence_ids"]) <= evidence_ids)
+
+        sc005 = next(candidate for candidate in candidates if candidate["candidate_id"] == "SC-005")
+        self.assertEqual(
+            [
+                "mq_getsetattr",
+                "mq_notify",
+                "mq_open",
+                "mq_timedreceive",
+                "mq_timedreceive_time64",
+                "mq_timedsend",
+                "mq_timedsend_time64",
+                "mq_unlink",
+            ],
+            sc005["syscalls"],
+        )
+        self.assertIn("mq_sendとmq_receiveはlibrary interface", sc005["rationale"])
 
     def test_each_candidate_maps_runtime_cases_and_rejection_conditions(self) -> None:
         for candidate in self.packet["reduction_candidates"]:
@@ -160,7 +193,7 @@ class SeccompReviewPacketTests(unittest.TestCase):
                 "RR-PLATFORM-SCOPE",
                 "RR-SECCOMP-LIMIT",
                 "RR-HUMAN-DECISION",
-                "RR-POSIX-MQ-NAME-COVERAGE",
+                "RR-POSIX-MQ-RUNTIME-COVERAGE",
             },
             risk_ids,
         )
@@ -176,7 +209,7 @@ class SeccompReviewPacketTests(unittest.TestCase):
             self.packet["human_review"]["decision_effect"],
         )
 
-    def test_statx_compatibility_evidence_is_bounded_and_pending_reverification(self) -> None:
+    def test_statx_history_and_mqueue_repair_are_bounded_and_pending_reverification(self) -> None:
         repair = self.packet["statx_compatibility_repair"]
 
         self.assertEqual("2026-07-17 JST", repair["human_measured_at"])
@@ -195,12 +228,32 @@ class SeccompReviewPacketTests(unittest.TestCase):
         self.assertEqual("passed", repair["temporary_profile"]["minimal_run"])
         self.assertEqual("passed", repair["temporary_profile"]["sandbox_boundary_run"])
         self.assertEqual(
-            "pending_human_reverification",
+            "completed_before_mqueue_contract_normalization",
             repair["repository_repair"]["post_repair_real_docker_state"],
         )
         self.assertTrue(
             any("does not establish compatibility" in item for item in repair["limitations"])
         )
+        mqueue_repair = self.packet["posix_message_queue_contract_repair"]
+        repository_repair = mqueue_repair["repository_repair"]
+        self.assertTrue(mqueue_repair["human_contract_confirmed"])
+        self.assertTrue(mqueue_repair["official_baseline_contract"]["statx_present"])
+        self.assertEqual(
+            {
+                "mq_getsetattr",
+                "mq_notify",
+                "mq_open",
+                "mq_timedreceive",
+                "mq_timedreceive_time64",
+                "mq_timedsend",
+                "mq_timedsend_time64",
+                "mq_unlink",
+            },
+            set(mqueue_repair["official_baseline_contract"]["posix_message_queue_syscalls"]),
+        )
+        self.assertEqual("upstream_contract_normalization", repository_repair["repair_kind"])
+        self.assertEqual("pending_human_reverification", repository_repair["real_docker_state"])
+        self.assertFalse(repository_repair["candidate_bytes_changed"])
         self.assertIn("Human shellでの再検証待ち", self.markdown)
 
     def test_markdown_corresponds_to_machine_readable_packet(self) -> None:

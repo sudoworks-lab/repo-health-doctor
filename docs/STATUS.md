@@ -368,3 +368,32 @@
 - 維持した境界: candidateは`human_unapproved`かつ製品経路から`disconnected`のままである。成功結果は一般的な互換性、安全性、完全な隔離を示さない。
 - 未完了: POSIX message queue削除集合の名称とcoverageに関するHuman review、Hosted workflow、F035、F036、candidateの最終Human判断。
 - 外部操作: push、tag、Release、image pullは行っていない。
+
+## 2026-07-17 JST — POSIX message queue syscall contract repair
+
+- 発見した不整合: 修正前baselineは`mq_send`を含む一方、実kernel syscallの`mq_getsetattr`、`mq_timedreceive`、`mq_timedreceive_time64`、`mq_timedsend`、`mq_timedsend_time64`を欠いていた。`mq_send`と`mq_receive`はLinuxのlibrary interfaceであり、system callの対応先は`mq_timedsend`と`mq_timedreceive`である。
+- upstream contract: Human確認済みのMoby v28.3.3公式profileにある`mq_getsetattr`、`mq_notify`、`mq_open`、`mq_timedreceive`、`mq_timedreceive_time64`、`mq_timedsend`、`mq_timedsend_time64`、`mq_unlink`の8 syscallへbaselineを正規化した。`statx`も同じupstream profileに存在しており、local固有の追加ではない。
+- baseline差分: `mq_send`だけを削除し、欠けていた5 syscallだけをcanonicalな位置へ追加した。defaultAction、architecture contract、上記以外のsyscall集合は変更していない。allowlistは277から281 syscallとなり、SHA-256は`cd7d83a312f51451d6942e5fdbfdd651a1cbebdff6debb8ff85a352a3be439d6`から`83e021f30d3fbbdabcc4db55bb760d5947e135491ef214d241d9eda5b0f8f2e8`へ変わった。
+- candidate再生成: baselineから`chroot`、`fanotify_mark`、`io_uring_enter`、`io_uring_register`、`io_uring_setup`、`mknod`、`mknodat`と8件のmqueue syscall、合計15 syscallを除外した。candidateは266 syscall、`statx`は1件、mqueue syscallは0件、baseline外syscallは0件である。
+- candidate hash: 全8件のmqueue syscallを除外すると再生成後のallowlist bytesは旧candidateと同一になるため、old/new SHA-256はいずれも`92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543`である。hashが同じでも、旧candidateのreal Docker 8/8結果は旧baseline provenanceと旧SC-005 contractの履歴に限定し、今回の成功証拠へ流用しない。
+- provenanceとreview packet: baseline 281、candidate 266、新baseline hash、再計算したcandidate hash、upstream contractへの正規化、library interfaceとsystem call名の差、Docker Engine 29.5.3 / runc 1.3.6の既存実測、一般的な互換性や安全性を示さない制限を同期した。SC-005はtime64 variantsを含む8件をprofileのarchitecture contractで一貫して除外する。
+- runtime evidence: `candidate_local_regression`を`pending_human_reverification`へ戻し、cases 1〜6、8、10をすべて`not_run`とした。candidateは`human_unapproved`、product connectionは`disconnected`のままである。
+- feature状態: F025は`passes:true`、`blocked:false`、既存`verified_at`を維持した。artifact contract変更によりF026とF030を`passes:false`、`blocked:true`、`verified_at:null`へ戻した。F035/F036は`passes:false`、`blocked:true`、`verified_at:null`のままで、全体は32 passed / 4 blocked / 0 pendingである。
+- 検証結果: JSON 5件はparse成功、seccomp package/review/candidate専用testは18件pass・0件fail、opt-inなしのreal Docker 2 moduleはcontract 2件pass・実Docker11件skip・0件failだった。`bash scripts/init.sh`と独立full suiteはいずれも847件実行・833件pass・14件skip・0件failだった。public-safetyは12件pass・0件warn・0件block、policy validation、機械的なsyscall/hash/count/feature照合、`git diff --check`も成功した。
+- 次のHuman操作: 既存local digest-pinned imageと`--pull=never`契約のまま、F026の`RealDockerBoundaryCasesEightToTen`とF030の`CandidateSeccompRealDockerTests`をHuman shellで再実行し、新しいcase別結果をpacketへ記録する。
+- 外部操作: Goal Loop、Human approvalの代行、candidateの製品接続、default変更、push、tag、Releaseは行っていない。
+
+## 2026-07-17 JST — mqueue契約修正後のHuman実機再検証
+
+- 実行対象HEAD: `6c638833d230735e6c8d0aeac4b240cfdcabd9aa`。
+- 実行環境: Docker Desktop 4.79.0、Docker Engine 29.5.3、runc 1.3.6、linux/amd64。
+- local image: `python@sha256:d764629ce0ddd8c71fd371e9901efb324a95789d2315a47db7e4d27e78f1b0e9`。image取得は行わず、`--pull=never`を維持した。
+- baseline contract: 281 syscall。POSIX message queueの実system call 8件を含み、`mq_send`は含まない。
+- candidate contract: 266 syscall。baselineから指定15 syscallを除外し、`mq_` syscallを含まない。candidate SHA-256は`92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543`である。
+- F026結果: real Docker cases 8〜10を3件実行し、3件pass、0件failだった。
+- F030結果: candidate専用cases 1〜6、8、10を8件実行し、8件pass、failure 0だった。review packetへ実測環境とcase別結果を記録した。
+- 状態更新: F026とF030を`passes:true`、`blocked:false`、`verified_at:2026-07-19T15:51:05+09:00`へ更新した。
+- F025維持: 既存の`passes:true`、`blocked:false`、`verified_at:2026-07-17T16:18:09+09:00`を変更していない。
+- 維持した境界: candidateは`human_unapproved`かつ製品経路から`disconnected`のままである。実測結果は記録されたruntime、image、OS、architectureに限定され、一般的な互換性や安全性を示さない。
+- 未完了: Hosted workflow、F035、F036、candidateの最終Human判断。
+- 外部操作: push、tag、Release、image pullは行っていない。

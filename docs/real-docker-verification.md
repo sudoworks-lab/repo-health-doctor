@@ -16,6 +16,21 @@ PYTHONPATH=src python3 -m unittest \
   tests.test_real_docker_verification.RealDockerBoundaryCasesEightToTen -v
 ```
 
+Human未承認candidateのF030再検証は、同じ既存local image前提で次を別に実行する。
+
+```bash
+RHD_REAL_DOCKER_TEST=1 \
+RHD_REAL_DOCKER_IMAGE='<registry>/<image>@sha256:<digest>' \
+PYTHONPATH=src python3 -m unittest \
+  tests.test_candidate_seccomp_real_docker.CandidateSeccompRealDockerTests -v
+```
+
+POSIX message queue syscall contract repair前には、Docker Engine 29.5.3、runc 1.3.6でF026と
+candidate 8/8が成功していた。しかし、その証拠は旧baseline hashと旧SC-005 contractに限定し、
+正規化後baseline/candidateの成功証拠へ流用しない。新baselineのF026とHuman未承認candidateの
+F030は`pending_human_reverification`で、case別結果はすべて`not_run`である。candidateは
+`human_unapproved`かつ製品経路から`disconnected`のままである。
+
 ## Cases 8 to 10
 
 - case 8はpackage dataの`rhd-moby-default-v1`を使い捨てrun rootへmaterializeし、local imageへ実際に適用する。完了、original repo不変、cleanup、schema-valid evidence、`--pull=never`を確認する。

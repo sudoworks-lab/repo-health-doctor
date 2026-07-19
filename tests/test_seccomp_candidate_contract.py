@@ -42,9 +42,13 @@ EXPECTED_REMOVED_SYSCALLS = [
     "io_uring_setup",
     "io_uring_enter",
     "io_uring_register",
-    "mq_open",
+    "mq_getsetattr",
     "mq_notify",
-    "mq_send",
+    "mq_open",
+    "mq_timedreceive",
+    "mq_timedreceive_time64",
+    "mq_timedsend",
+    "mq_timedsend_time64",
     "mq_unlink",
 ]
 
@@ -96,6 +100,8 @@ class SeccompCandidateContractTests(unittest.TestCase):
         self.assertEqual(266, len(allowed_names))
         self.assertEqual(266, len(set(allowed_names)))
         self.assertEqual(1, allowed_names.count("statx"))
+        self.assertEqual([], [name for name in allowed_names if name.startswith("mq_")])
+        self.assertEqual(0, allowed_names.count("mq_send"))
         self.assertEqual(EXPECTED_REMOVED_SYSCALLS, removed_from_candidates)
         self.assertEqual(artifact["removed_syscalls"], removed_from_candidates)
         self.assertEqual(
@@ -117,17 +123,27 @@ class SeccompCandidateContractTests(unittest.TestCase):
             artifact["baseline_profile_sha256"],
         )
 
-    def test_candidate_remains_human_unapproved_and_unrun(self) -> None:
+    def test_candidate_remains_human_unapproved_and_pending_reverification(self) -> None:
         artifact = self.packet["candidate_artifact"]
 
         self.assertEqual("human_unapproved", artifact["approval_state"])
-        self.assertEqual("not_run", artifact["runtime_regression_state"])
+        self.assertEqual("pending_human_reverification", artifact["runtime_regression_state"])
         self.assertEqual("disconnected", artifact["product_connection_state"])
         self.assertEqual("pending_human_decision", self.packet["review_state"])
         self.assertEqual("pending", self.packet["human_review"]["decision"])
         self.assertFalse(self.packet["review_scope"]["human_approval_recorded"])
         self.assertFalse(self.packet["review_scope"]["candidate_product_connected"])
         self.assertEqual([], self.packet["candidate_runtime_results"])
+        regression = self.packet["candidate_local_regression"]
+        self.assertEqual("pending_human_reverification", regression["execution_state"])
+        self.assertEqual(0, regression["attempted_case_count"])
+        self.assertEqual(0, regression["passed_case_count"])
+        self.assertEqual(8, regression["not_run_case_count"])
+        self.assertEqual({"not_run"}, {case["status"] for case in regression["cases"]})
+        previous = self.packet["previous_candidate_local_regression"]
+        self.assertEqual("completed", previous["execution_state"])
+        self.assertEqual(8, previous["passed_case_count"])
+        self.assertEqual("not_reused", previous["current_reuse_state"])
         self.assertIn("Human未承認candidate artifact", self.markdown)
 
     def test_candidate_materials_do_not_use_verified_or_production_ready_wording(self) -> None:
