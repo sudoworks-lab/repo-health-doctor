@@ -27,9 +27,12 @@ PYTHONPATH=src python3 -m unittest \
 
 POSIX message queue syscall contract repair前には、Docker Engine 29.5.3、runc 1.3.6でF026と
 candidate 8/8が成功していた。しかし、その証拠は旧baseline hashと旧SC-005 contractに限定し、
-正規化後baseline/candidateの成功証拠へ流用しない。新baselineのF026とHuman未承認candidateの
-F030は`pending_human_reverification`で、case別結果はすべて`not_run`である。candidateは
-`human_unapproved`かつ製品経路から`disconnected`のままである。
+正規化後baseline/candidateの成功証拠へ流用しなかった。その後、正規化後contractをHuman shellで
+改めて実行し、F026 cases 8〜10は3/3 pass、F030 candidate cases 1〜6、8、10は8/8 pass、
+failure 0で完了した。candidate local regressionは`completed`だが、candidateは
+`human_unapproved`かつ製品経路から`disconnected`のままである。成功結果は記録されたlocal
+runtime、image、OS、architecture、kernelに限定され、一般的な互換性、安全性、完全な隔離を
+証明しない。Hosted workflowは未実行で、Human final decisionはpendingである。
 
 ## Cases 8 to 10
 

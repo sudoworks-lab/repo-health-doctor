@@ -209,7 +209,7 @@ class SeccompReviewPacketTests(unittest.TestCase):
             self.packet["human_review"]["decision_effect"],
         )
 
-    def test_statx_history_and_mqueue_repair_are_bounded_and_pending_reverification(self) -> None:
+    def test_statx_history_and_mqueue_repair_are_bounded_and_reverified(self) -> None:
         repair = self.packet["statx_compatibility_repair"]
 
         self.assertEqual("2026-07-17 JST", repair["human_measured_at"])
@@ -252,9 +252,13 @@ class SeccompReviewPacketTests(unittest.TestCase):
             set(mqueue_repair["official_baseline_contract"]["posix_message_queue_syscalls"]),
         )
         self.assertEqual("upstream_contract_normalization", repository_repair["repair_kind"])
-        self.assertEqual("pending_human_reverification", repository_repair["real_docker_state"])
+        self.assertEqual("completed", repository_repair["real_docker_state"])
         self.assertFalse(repository_repair["candidate_bytes_changed"])
-        self.assertIn("Human shellでの再検証待ち", self.markdown)
+        self.assertIn("正規化後contractに対するHuman shell再検証は完了", self.markdown)
+        self.assertIn("F026 cases 8〜10は3/3 pass", self.markdown)
+        self.assertIn("F030 candidate cases 1〜6、8、10は8/8 pass", self.markdown)
+        self.assertIn("Human approvalはpending", self.markdown)
+        self.assertIn("Hosted workflowも未完了", self.markdown)
 
     def test_markdown_corresponds_to_machine_readable_packet(self) -> None:
         self.assertIn(self.packet["baseline"]["profile_sha256"], self.markdown)

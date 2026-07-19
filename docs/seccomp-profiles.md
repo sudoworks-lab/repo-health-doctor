@@ -25,8 +25,8 @@ provenance sidecarには次を記録する。
 - 元のlocal artifactが`statx`と5件の実mqueue syscallを欠き、Linux seccomp syscall名では
   ない`mq_send`を含んでいたこと、および今回がupstream contractへの正規化repairであること
 - 2026-07-17 JSTのHuman実測環境、対象image digest、一時profileでのboundedな成功結果、
-  修正後artifactのHuman shell再検証待ち、および一般的なruntime互換性や安全性を示さない
-  という制限
+  正規化後artifactに対するF026 3/3とcandidate F030 8/8のHuman shell再検証完了、および
+  記録されたlocal環境に限定され一般的なruntime互換性や安全性を示さないという制限
 - profile resource bytesのSHA-256
 
 hashはJSONを再シリアライズした値ではなく、package dataのUTF-8 bytesそのものに対する
@@ -108,6 +108,9 @@ time64 variantsを含む8件をprofileのarchitecture contractで一貫したbas
 
 正規化後baselineは281 syscall、Human未承認candidateは8件すべてを除外した266 syscallで
 ある。candidateは全mqueue syscallを除外するためartifact bytesとSHA-256は旧candidateから
-変わらないが、旧8/8結果を新しいF030成功証拠へ流用しない。新baselineのF026とcandidateの
-F030はHuman shellでの再検証待ちである。この実測と今後の再検証は、記録されたruntime、
-image、OS、architectureに限定され、一般的なruntime互換性や安全性を示さない。
+変わらないが、旧8/8結果を新しいF030成功証拠へ流用しなかった。その後、正規化後contractを
+Human shellで改めて実行し、F026 cases 8〜10は3/3 pass、F030 candidate cases 1〜6、8、10は
+8/8 pass、failure 0で完了した。candidate local regressionは`completed`だが、candidateは
+`human_unapproved`かつ製品経路から`disconnected`のままである。結果は記録されたlocal runtime、
+image、OS、architecture、kernelに限定され、一般的なruntime互換性、安全性、完全な隔離を
+証明しない。Hosted workflowは未実行で、Human final decisionはpendingである。

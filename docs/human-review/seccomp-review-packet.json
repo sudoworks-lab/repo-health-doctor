@@ -39,7 +39,7 @@
     {
       "evidence_id": "E-RUNTIME-STATUS",
       "path": "docs/STATUS.md",
-      "observation": "statx repair後の旧baselineと旧SC-005 contractに対するF026/F030のHuman shell実測は完了したが、POSIX message queue syscall名を正規化した新baselineのF026と、再生成candidateのF030はHuman shellでの再検証待ちである。"
+      "observation": "旧contractのF026/F030結果を流用せず、POSIX message queue syscall名を正規化したbaselineに対するF026と、再生成candidateに対するF030をHuman shellで再実行した。F026は3/3 pass、F030は8/8 passかつfailure 0で完了した。結果は記録されたlocal環境に限定され、Hosted workflowとHuman final decisionは未完了である。"
     },
     {
       "evidence_id": "E-STATX-COMPATIBILITY",
@@ -87,7 +87,7 @@
     "profile_sha256": "92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543",
     "baseline_profile_sha256": "83e021f30d3fbbdabcc4db55bb760d5947e135491ef214d241d9eda5b0f8f2e8",
     "approval_state": "human_unapproved",
-    "runtime_regression_state": "pending_human_reverification",
+    "runtime_regression_state": "completed",
     "product_connection_state": "disconnected",
     "allow_group_count": 1,
     "allowlisted_syscall_count": 266,
@@ -217,12 +217,13 @@
       "candidate_bytes_unchanged_reason": "The candidate excludes all eight mqueue syscalls, so normalizing the baseline mqueue names does not change its 266-syscall allowlist bytes.",
       "baseline_allowlisted_syscall_count": 281,
       "candidate_allowlisted_syscall_count": 266,
-      "real_docker_state": "pending_human_reverification"
+      "real_docker_state": "completed"
     },
     "limitations": [
       "The prior candidate 8/8 result belongs to the earlier baseline provenance and SC-005 contract and is not reused for this repair record.",
-      "Human-shell F026 and F030 real Docker execution has not run for the normalized baseline contract.",
-      "The repair and any later bounded runtime result do not establish general compatibility or safety."
+      "Human-shell F026 and F030 real Docker execution completed for the normalized baseline contract: F026 passed 3/3 and F030 passed 8/8 with zero failures in the recorded local environment.",
+      "The recorded local results do not establish general compatibility or safety.",
+      "Hosted workflow evidence and the Human final decision remain separately required and incomplete."
     ]
   },
   "reduction_candidates": [

@@ -73,8 +73,11 @@ class SeccompPackageResourceTests(unittest.TestCase):
             "minimal run",
             "sandbox boundary run",
             "upstream-contract normalization",
-            "Human-shell real Docker reverification of this normalized artifact is pending",
-            "does not establish compatibility across all runtimes",
+            "normalized artifact",
+            "Human-shell real Docker reverification",
+            "completed",
+            "recorded local environment",
+            "do not establish general compatibility",
         ):
             self.assertIn(expected, changes)
         self.assertIn("Apache License", resolved.license_text)

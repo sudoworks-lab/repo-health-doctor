@@ -127,7 +127,7 @@ class SeccompCandidateContractTests(unittest.TestCase):
         artifact = self.packet["candidate_artifact"]
 
         self.assertEqual("human_unapproved", artifact["approval_state"])
-        self.assertEqual("pending_human_reverification", artifact["runtime_regression_state"])
+        self.assertEqual("completed", artifact["runtime_regression_state"])
         self.assertEqual("disconnected", artifact["product_connection_state"])
         self.assertEqual("pending_human_decision", self.packet["review_state"])
         self.assertEqual("pending", self.packet["human_review"]["decision"])

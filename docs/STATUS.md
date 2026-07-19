@@ -397,3 +397,12 @@
 - 維持した境界: candidateは`human_unapproved`かつ製品経路から`disconnected`のままである。実測結果は記録されたruntime、image、OS、architectureに限定され、一般的な互換性や安全性を示さない。
 - 未完了: Hosted workflow、F035、F036、candidateの最終Human判断。
 - 外部操作: push、tag、Release、image pullは行っていない。
+
+## 2026-07-19 JST — seccomp Human再検証後のlifecycle同期
+
+- Human shell実測: normalized baselineのF026 cases 8〜10は3/3 pass、candidate F030 cases 1〜6、8、10は8/8 pass、failure 0だった。
+- lifecycle同期: current packet、provenance、active docsに残っていた`pending_human_reverification`のcurrent-state文言を完了済みのbounded evidenceへ同期した。
+- candidate状態: executionは`completed`、approvalは`human_unapproved`、product connectionは`disconnected`である。
+- feature状態: F025、F026、F030は変更していない。F035とF036は`passes:false`、`blocked:true`のままである。
+- 未完了: Hosted workflowとHuman final decisionは未完了であり、candidateを製品へ接続していない。
+- 外部操作: push、tag、Releaseは行っていない。Goal Loopは再開していない。
