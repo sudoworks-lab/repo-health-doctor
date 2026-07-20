@@ -438,9 +438,9 @@
         "PYTHONPATH=src python3 -m unittest tests.test_final_security_gates -v を実行する",
         "evidenceが不在またはinvalidならpasses=falseを維持してF035をblocked=trueにし、必要なHuman操作をdocs/STATUS.mdへ追記する"
       ],
-      "passes": false,
-      "verified_at": null,
-      "blocked": true
+      "passes": true,
+      "verified_at": "2026-07-21T03:16:58+09:00",
+      "blocked": false
     },
     {
       "id": "F036",

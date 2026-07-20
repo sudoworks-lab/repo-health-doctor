@@ -413,3 +413,11 @@
 - 今回やったこと: 正式接続前に、digest-pinned imageを`--pull=never`・`network none`で使うcandidate専用Hosted gateを`.github/workflows/real-docker-verification.yml`へ追加した。candidate hash、Docker metadata、image digest、local image ID、required cases 1、2、3、4、5、6、8、10、packetの8/8結果、approval、product connection、product選択肢非混入をfail-closedに確認し、成功時だけboundedなmachine-readable evidenceをstdoutへ出力する。
 - Human判断: `rhd-locked-down-v1`を最終的に明示選択可能なseccomp profileとして追加し、default化せず既存profileを削除しない方針は承認済みである。ただしcandidateのexact hashが変化した場合はその承認を無効として停止する。
 - 維持した境界: F035/F036はHosted candidate green確認前なので`passes:false`、`blocked:true`を維持した。candidateは`human_unapproved`、product connectionは`disconnected`のままであり、正式なproduct connectionはまだ行っていない。
+
+## 2026-07-21 JST — F035 final security gates Human承認記録
+
+- Human approval: Human maintainerの承認発言を根拠に、`Atsushi Tokumatsu`による`rhd-locked-down-v1`の承認を`docs/human-review/final-security-gates.json`へ記録した。承認対象SHA-256は`92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543`で、candidate bytesの再hashと一致した。email addressは記録していない。
+- Hosted evidence: GitHub Actions run `29764489485`はtarget commit `8a80feb963d92ee76fc0d7d0d924456ecf08dea7`で完了・success、Docker server `28.0.4`、`Ubuntu 24.04.4 LTS`、`x86_64`でcandidate cases 1、2、3、4、5、6、8、10が8/8 pass、failure 0だった。
+- Local evidence: F030の記録済みlocal環境では同じcandidate hashで8/8 pass、failure 0だった。F030実測時点の`human_unapproved` / `disconnected`はhistorical recordとして維持し、top-level current stateだけを`approved` / F036接続前の`disconnected`へ同期した。
+- 検証結果: JSON schemaと`validate_final_security_gates.py`が要求するHosted metadata、Human decision、approver、RFC 3339日時、candidate hashを満たすevidenceを記録した。F035は`passes:true`、`blocked:false`、`verified_at:2026-07-21T03:16:58+09:00`へ更新し、F036は`passes:false`、`blocked:true`のまま維持した。
+- 境界: local/Hosted結果はいずれも記録されたDocker、OS、architecture、kernel、image、固定8 caseに限定される。安全性、完全な隔離、全runtime互換性の証明ではない。F036のpackage、schema、CLI、Docker argv接続はまだ行っていない。

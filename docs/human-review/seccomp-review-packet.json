@@ -2,13 +2,13 @@
   "schema_version": "0.1-draft",
   "packet_kind": "seccomp_human_review",
   "feature_id": "F028",
-  "review_state": "pending_human_decision",
+  "review_state": "human_approved_pending_product_connection",
   "review_scope": {
     "baseline_profile": "rhd-moby-default-v1",
     "candidate_profile_name": "rhd-locked-down-v1",
-    "candidate_artifact_created": false,
+    "candidate_artifact_created": true,
     "candidate_product_connected": false,
-    "human_approval_recorded": false
+    "human_approval_recorded": true
   },
   "evidence_sources": [
     {
@@ -86,7 +86,7 @@
     "path": "docs/human-review/rhd-locked-down-v1.candidate.json",
     "profile_sha256": "92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543",
     "baseline_profile_sha256": "83e021f30d3fbbdabcc4db55bb760d5947e135491ef214d241d9eda5b0f8f2e8",
-    "approval_state": "human_unapproved",
+    "approval_state": "human_approved",
     "runtime_regression_state": "completed",
     "product_connection_state": "disconnected",
     "allow_group_count": 1,
@@ -517,7 +517,7 @@
     },
     {
       "risk_id": "RR-HUMAN-DECISION",
-      "description": "各候補の削減可否と最終profile hashはHuman reviewが完了するまで未決定である。"
+      "description": "Human reviewはSHA-256 92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543のcandidateを承認したが、F036完了までは製品pathへ接続しない。"
     },
     {
       "risk_id": "RR-POSIX-MQ-RUNTIME-COVERAGE",
@@ -525,7 +525,11 @@
     }
   ],
   "human_review": {
-    "decision": "pending",
+    "decision": "approved",
+    "approval_kind": "human",
+    "approved_profile_sha256": "92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543",
+    "approved_by": "Atsushi Tokumatsu",
+    "approved_at": "2026-07-21T03:16:58+09:00",
     "required_checks": [
       "各candidateのsyscall単位と根拠がsandbox用途に対して妥当か確認する。",
       "candidate real Docker regressionの全case結果と全failureを確認する。",
@@ -533,7 +537,7 @@
       "SC-005がmq_send/mq_receiveというlibrary interface名ではなく、time64 variantsを含む8件の実Linux syscallをarchitecture contract全体から除外していることを確認する。",
       "candidateごとにapprove、reject、reviseのいずれかを記録する。"
     ],
-    "decision_effect": "F028 packetは分析資料であり、candidate artifact作成、製品path接続、default変更、Human approvalを行わない。"
+    "decision_effect": "Humanはexact hashのcandidateを任意の非default profileとして承認した。F036完了までは製品path接続を行わず、runtime-defaultも変更しない。"
   },
   "previous_candidate_local_regression": {
     "observed_at": "2026-07-17T04:19:08+00:00",

@@ -1,0 +1,26 @@
+{
+  "schema_version": "0.1-draft",
+  "evidence_kind": "final_security_gates",
+  "hosted_workflow": {
+    "provider": "github_actions",
+    "runner_environment": "github_hosted",
+    "workflow_path": ".github/workflows/real-docker-verification.yml",
+    "event": "workflow_dispatch",
+    "conclusion": "success",
+    "run_id": 29764489485,
+    "run_url": "https://github.com/sudoworks-lab/repo-health-doctor/actions/runs/29764489485",
+    "head_sha": "8a80feb963d92ee76fc0d7d0d924456ecf08dea7",
+    "docker_server_version": "28.0.4",
+    "runner_os": "Ubuntu 24.04.4 LTS",
+    "runner_architecture": "x86_64"
+  },
+  "seccomp_approval": {
+    "approval_kind": "human",
+    "decision": "approved",
+    "syscall_reduction_approved": true,
+    "profile_name": "rhd-locked-down-v1",
+    "approved_profile_sha256": "92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543",
+    "approved_by": "Atsushi Tokumatsu",
+    "approved_at": "2026-07-21T03:16:58+09:00"
+  }
+}

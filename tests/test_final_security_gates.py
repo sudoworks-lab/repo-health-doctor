@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = ROOT / "scripts" / "validate_final_security_gates.py"
 SCHEMA_PATH = ROOT / "docs" / "human-review" / "final-security-gates.schema.json"
 CANDIDATE_PATH = ROOT / "docs" / "human-review" / "rhd-locked-down-v1.candidate.json"
+EVIDENCE_PATH = ROOT / "docs" / "human-review" / "final-security-gates.json"
 
 
 def _load_validator():
@@ -92,6 +93,18 @@ class FinalSecurityGatesTests(unittest.TestCase):
 
         self.assertTrue(valid)
         self.assertEqual([], reasons)
+
+    def test_recorded_final_security_gates_are_valid_and_match_candidate(self) -> None:
+        valid, reasons = VALIDATOR.validate_final_security_gates(EVIDENCE_PATH)
+        evidence = json.loads(EVIDENCE_PATH.read_text(encoding="utf-8"))
+
+        self.assertTrue(valid)
+        self.assertEqual([], reasons)
+        self.assertEqual(29764489485, evidence["hosted_workflow"]["run_id"])
+        self.assertEqual(
+            hashlib.sha256(CANDIDATE_PATH.read_bytes()).hexdigest(),
+            evidence["seccomp_approval"]["approved_profile_sha256"],
+        )
 
     def test_green_run_url_can_supply_the_required_run_reference(self) -> None:
         evidence = _valid_evidence()
