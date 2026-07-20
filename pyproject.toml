@@ -38,6 +38,12 @@ classifiers = [
 ]
 dependencies = []
 
+[project.optional-dependencies]
+test = [
+  "jsonschema>=4.23,<5",
+  "setuptools>=68",
+]
+
 [project.urls]
 Homepage = "https://github.com/sudoworks-lab/repo-health-doctor"
 Repository = "https://github.com/sudoworks-lab/repo-health-doctor"

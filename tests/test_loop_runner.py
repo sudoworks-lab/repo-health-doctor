@@ -218,6 +218,16 @@ class LoopRunnerTests(unittest.TestCase):
         )
         subprocess.run(["git", "init", "-q"], cwd=self.workspace, check=True)
         subprocess.run(
+            ["git", "config", "user.name", "Goal Loop Test"],
+            cwd=self.workspace,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "goal-loop@example.invalid"],
+            cwd=self.workspace,
+            check=True,
+        )
+        subprocess.run(
             ["git", "add", "--", "PROMPT.md", "docs/features.json", ".gitignore"],
             cwd=self.workspace,
             check=True,
@@ -225,10 +235,6 @@ class LoopRunnerTests(unittest.TestCase):
         subprocess.run(
             [
                 "git",
-                "-c",
-                "user.name=Goal Loop Test",
-                "-c",
-                "user.email=goal-loop@example.invalid",
                 "commit",
                 "-qm",
                 "test baseline",
