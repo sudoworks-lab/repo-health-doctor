@@ -70,7 +70,7 @@ jobs:
           PYTHONPATH=src python -m repo_health_doctor real-scan . --offline --format json --output /tmp/repo-health-doctor-real-scan.json
           test -s /tmp/repo-health-doctor-real-scan.json
           python -m json.tool /tmp/repo-health-doctor-real-scan.json >/dev/null
-          rg -n 'execution_authorized|scanner_skipped_offline|truncated|omitted' /tmp/repo-health-doctor-real-scan.json
+          grep -En 'execution_authorized|scanner_skipped_offline|truncated|omitted' /tmp/repo-health-doctor-real-scan.json
 
       - name: Run self-scan gate
         run: |
