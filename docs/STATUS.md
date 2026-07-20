@@ -406,3 +406,10 @@
 - feature状態: F025、F026、F030は変更していない。F035とF036は`passes:false`、`blocked:true`のままである。
 - 未完了: Hosted workflowとHuman final decisionは未完了であり、candidateを製品へ接続していない。
 - 外部操作: push、tag、Releaseは行っていない。Goal Loopは再開していない。
+
+## 2026-07-21 JST — Hosted candidate seccomp gate追加
+
+- 既存Hosted run: `29749652652`はgeneral casesとしてgreenだったが、cases 8/10は`PROFILE_MOBY_DEFAULT`を使用しており、`rhd-locked-down-v1` candidate専用Hosted実測ではなかった。
+- 今回やったこと: 正式接続前に、digest-pinned imageを`--pull=never`・`network none`で使うcandidate専用Hosted gateを`.github/workflows/real-docker-verification.yml`へ追加した。candidate hash、Docker metadata、image digest、local image ID、required cases 1、2、3、4、5、6、8、10、packetの8/8結果、approval、product connection、product選択肢非混入をfail-closedに確認し、成功時だけboundedなmachine-readable evidenceをstdoutへ出力する。
+- Human判断: `rhd-locked-down-v1`を最終的に明示選択可能なseccomp profileとして追加し、default化せず既存profileを削除しない方針は承認済みである。ただしcandidateのexact hashが変化した場合はその承認を無効として停止する。
+- 維持した境界: F035/F036はHosted candidate green確認前なので`passes:false`、`blocked:true`を維持した。candidateは`human_unapproved`、product connectionは`disconnected`のままであり、正式なproduct connectionはまだ行っていない。
