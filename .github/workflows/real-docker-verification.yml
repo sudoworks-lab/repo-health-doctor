@@ -52,140 +52,19 @@ jobs:
             tests.test_real_docker_verification.RealDockerBoundaryCasesEightToTen \
             -v
 
-      - name: Run disconnected locked-down candidate regression
+      - name: Run approved locked-down product profile regression
         env:
           PYTHONPATH: src
           RHD_REAL_DOCKER_TEST: "1"
           RHD_REAL_DOCKER_IMAGE: ${{ inputs.image }}
-          EXPECTED_CANDIDATE_SHA256: "92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543"
+          EXPECTED_LOCKED_DOWN_SHA256: "92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543"
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from hashlib import sha256
-          import os
-          from pathlib import Path
-
-          candidate_path = Path("docs/human-review/rhd-locked-down-v1.candidate.json")
-          expected = os.environ["EXPECTED_CANDIDATE_SHA256"]
-          if sha256(candidate_path.read_bytes()).hexdigest() != expected:
-              raise SystemExit("candidate hash mismatch")
-          PY
-          python3 scripts/run_candidate_seccomp_review.py
-          python3 - <<'PY'
-          from hashlib import sha256
-          import json
-          import os
-          from pathlib import Path
-
-          from repo_health_doctor.sandbox.profiles import SECCOMP_PROFILE_CHOICES
-
-
-          def require(condition: bool) -> None:
-              if not condition:
-                  raise SystemExit("candidate evidence assertion failed")
-
-
-          expected_hash = os.environ["EXPECTED_CANDIDATE_SHA256"]
-          candidate_name = "rhd-locked-down-v1"
-          candidate_path = Path("docs/human-review/rhd-locked-down-v1.candidate.json")
-          packet_path = Path("docs/human-review/seccomp-review-packet.json")
-          require(sha256(candidate_path.read_bytes()).hexdigest() == expected_hash)
-          require(candidate_name not in SECCOMP_PROFILE_CHOICES)
-
-          packet = json.loads(packet_path.read_text(encoding="utf-8"))
-          record = packet.get("candidate_local_regression")
-          require(isinstance(record, dict))
-          environment = record.get("environment")
-          cases = record.get("cases")
-          required_case_ids = [1, 2, 3, 4, 5, 6, 8, 10]
-          require(isinstance(environment, dict))
-          require(isinstance(cases, list))
-          require(record.get("profile") == candidate_name)
-          require(record.get("profile_sha256") == expected_hash)
-          require(record.get("execution_state") == "completed")
-          require(record.get("attempted_case_count") == 8)
-          require(record.get("passed_case_count") == 8)
-          require(record.get("failed_case_count") == 0)
-          require(record.get("not_run_case_count") == 0)
-          require(record.get("all_required_cases_recorded") is True)
-          recorded_required_case_ids = record.get("required_case_ids")
-          require(
-              isinstance(recorded_required_case_ids, list)
-              and len(recorded_required_case_ids) == len(required_case_ids)
-              and set(recorded_required_case_ids) == set(required_case_ids)
-          )
-          require(len(cases) == len(required_case_ids))
-          require({case.get("case_id") for case in cases} == set(required_case_ids))
-          require(all(case.get("status") == "pass" for case in cases))
-          require(all(case.get("failure_codes") == [] for case in cases))
-          require(record.get("failures") == [])
-          require(record.get("approval_state") == "human_unapproved")
-          require(record.get("product_connection_state") == "disconnected")
-          require(record.get("pull_policy") == "never")
-          require(record.get("network_mode") == "none")
-          require(record.get("raw_process_output_recorded") is False)
-          for field in (
-              "docker_server_version",
-              "docker_os",
-              "docker_architecture",
-              "kernel_version",
-              "image_digest",
-              "local_image_id",
-          ):
-              value = environment.get(field)
-              require(isinstance(value, str) and value not in {"", "unknown"})
-          for field in ("rootless", "userns_remap"):
-              require(environment.get(field) in {"true", "false"})
-
-          event = os.environ["GITHUB_EVENT_NAME"]
-          repository = os.environ["GITHUB_REPOSITORY"]
-          run_id = int(os.environ["GITHUB_RUN_ID"])
-          head_sha = os.environ["GITHUB_SHA"]
-          require(event != "")
-          require(repository != "")
-          require(run_id > 0)
-          require(head_sha != "")
-          evidence = {
-              "schema_version": "0.1-draft",
-              "evidence_kind": "hosted_candidate_seccomp_regression",
-              "provider": "github_actions",
-              "runner_environment": "github_hosted",
-              "workflow_path": ".github/workflows/real-docker-verification.yml",
-              "event": event,
-              "run_id": run_id,
-              "run_url": f"https://github.com/{repository}/actions/runs/{run_id}",
-              "head_sha": head_sha,
-              "candidate_profile": record["profile"],
-              "candidate_profile_sha256": record["profile_sha256"],
-              "docker_server_version": environment["docker_server_version"],
-              "docker_os": environment["docker_os"],
-              "docker_architecture": environment["docker_architecture"],
-              "kernel_version": environment["kernel_version"],
-              "rootless": environment["rootless"],
-              "userns_remap": environment["userns_remap"],
-              "image_digest": environment["image_digest"],
-              "local_image_id": environment["local_image_id"],
-              "required_case_ids": required_case_ids,
-              "attempted_case_count": record["attempted_case_count"],
-              "passed_case_count": record["passed_case_count"],
-              "failed_case_count": record["failed_case_count"],
-              "not_run_case_count": record["not_run_case_count"],
-              "conclusion": "success",
-          }
-          evidence_line = "RHD_HOSTED_CANDIDATE_EVIDENCE=" + json.dumps(
-              evidence,
-              ensure_ascii=True,
-              sort_keys=True,
-              separators=(",", ":"),
-          )
-          print(evidence_line)
-          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-          if summary_path:
-              with Path(summary_path).open("a", encoding="utf-8") as summary:
-                  summary.write("## Hosted candidate evidence\n\n```json\n")
-                  summary.write(evidence_line)
-                  summary.write("\n```\n")
-          PY
+          python3 scripts/validate_final_security_gates.py \
+            docs/human-review/final-security-gates.json
+          python3 -m unittest \
+            tests.test_candidate_seccomp_real_docker.ApprovedLockedDownProductRealDockerTests \
+            -v
 
       - name: Record Docker and runner summary
         if: always()

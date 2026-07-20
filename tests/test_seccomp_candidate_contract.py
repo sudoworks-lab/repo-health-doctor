@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-import argparse
 import hashlib
 from importlib import resources
 import json
 from pathlib import Path
+import subprocess
 import unittest
 
 from repo_health_doctor.cli import _parse_seccomp_profile
 from repo_health_doctor.sandbox.docker_runner import build_docker_run_argv
 from repo_health_doctor.sandbox.profiles import (
+    PROFILE_LOCKED_DOWN_SECCOMP,
     PROFILE_MOBY_DEFAULT,
     SECCOMP_PROFILE_CHOICES,
     SECCOMP_RUNTIME_DEFAULT,
@@ -34,6 +35,10 @@ BASELINE_PATH = (
     / "resources"
     / "rhd-moby-default-v1.json"
 )
+PACKAGE_PATH = BASELINE_PATH.with_name("rhd-locked-down-v1.json")
+PROVENANCE_PATH = BASELINE_PATH.with_name("rhd-locked-down-v1.provenance.json")
+FINAL_GATES_PATH = ROOT / "docs" / "human-review" / "final-security-gates.json"
+SCHEMA_PATH = ROOT / "schemas" / "sandbox-run.schema.json"
 EXPECTED_REMOVED_SYSCALLS = [
     "chroot",
     "mknod",
@@ -123,16 +128,16 @@ class SeccompCandidateContractTests(unittest.TestCase):
             artifact["baseline_profile_sha256"],
         )
 
-    def test_candidate_remains_human_unapproved_after_completed_reverification(self) -> None:
+    def test_current_approval_and_connection_preserve_historical_regression(self) -> None:
         artifact = self.packet["candidate_artifact"]
 
-        self.assertEqual("human_unapproved", artifact["approval_state"])
+        self.assertEqual("human_approved", artifact["approval_state"])
         self.assertEqual("completed", artifact["runtime_regression_state"])
-        self.assertEqual("disconnected", artifact["product_connection_state"])
-        self.assertEqual("pending_human_decision", self.packet["review_state"])
-        self.assertEqual("pending", self.packet["human_review"]["decision"])
-        self.assertFalse(self.packet["review_scope"]["human_approval_recorded"])
-        self.assertFalse(self.packet["review_scope"]["candidate_product_connected"])
+        self.assertEqual("connected", artifact["product_connection_state"])
+        self.assertEqual("human_approved_and_product_connected", self.packet["review_state"])
+        self.assertEqual("approved", self.packet["human_review"]["decision"])
+        self.assertTrue(self.packet["review_scope"]["human_approval_recorded"])
+        self.assertTrue(self.packet["review_scope"]["candidate_product_connected"])
         self.assertEqual([], self.packet["candidate_runtime_results"])
         regression = self.packet["candidate_local_regression"]
         self.assertEqual("completed", regression["execution_state"])
@@ -173,43 +178,51 @@ class SeccompCandidateContractTests(unittest.TestCase):
         self.assertNotIn("production-ready", candidate_materials)
         self.assertNotIn("production_ready", candidate_materials)
 
-    def test_candidate_is_unreachable_from_package_schema_and_cli(self) -> None:
+    def test_approved_candidate_is_connected_to_package_schema_and_cli(self) -> None:
         self.assertEqual(
-            (SECCOMP_RUNTIME_DEFAULT, PROFILE_MOBY_DEFAULT),
+            (SECCOMP_RUNTIME_DEFAULT, PROFILE_MOBY_DEFAULT, PROFILE_LOCKED_DOWN_SECCOMP),
             SECCOMP_PROFILE_CHOICES,
         )
         self.assertEqual(SECCOMP_RUNTIME_DEFAULT, resolve_seccomp_selection().profile)
-        self.assertNotIn(CANDIDATE_NAME, SECCOMP_PROFILE_CHOICES)
-        self.assertFalse(
+        self.assertEqual(CANDIDATE_NAME, PROFILE_LOCKED_DOWN_SECCOMP)
+        self.assertIn(CANDIDATE_NAME, SECCOMP_PROFILE_CHOICES)
+        self.assertTrue(
             resources.files("repo_health_doctor.sandbox.resources")
             .joinpath(f"{CANDIDATE_NAME}.json")
             .is_file()
         )
-        with self.assertRaises(ValueError):
-            resolve_seccomp_profile(CANDIDATE_NAME)
-        with self.assertRaises(ValueError):
-            resolve_seccomp_selection(CANDIDATE_NAME)
-        with self.assertRaises(argparse.ArgumentTypeError):
-            _parse_seccomp_profile(CANDIDATE_NAME)
+        resolved = resolve_seccomp_profile(CANDIDATE_NAME)
+        approval = json.loads(FINAL_GATES_PATH.read_text(encoding="utf-8"))["seccomp_approval"]
+        self.assertEqual(self.candidate_bytes, PACKAGE_PATH.read_bytes())
+        self.assertEqual(approval["approved_profile_sha256"], resolved.profile_sha256)
+        self.assertEqual(resolved.profile_sha256, json.loads(PROVENANCE_PATH.read_text())["profile_sha256"])
+        self.assertEqual(CANDIDATE_NAME, resolve_seccomp_selection(CANDIDATE_NAME).profile)
+        self.assertEqual(CANDIDATE_NAME, _parse_seccomp_profile(CANDIDATE_NAME))
+        self.assertIn(CANDIDATE_NAME, SCHEMA_PATH.read_text(encoding="utf-8"))
 
-        for schema_path in (ROOT / "schemas").glob("*.json"):
-            with self.subTest(schema=schema_path.name):
-                self.assertNotIn(
-                    CANDIDATE_NAME,
-                    schema_path.read_text(encoding="utf-8"),
-                )
+        completed = subprocess.run(
+            ["python3", "scripts/validate_final_security_gates.py", str(FINAL_GATES_PATH)],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertTrue(json.loads(completed.stdout)["valid"])
 
-    def test_candidate_is_unreachable_from_docker_argv_builder(self) -> None:
-        with self.assertRaisesRegex(ValueError, "unsupported seccomp profile"):
-            build_docker_run_argv(
-                image="<image>",
-                command_argv=["python3", "-c", "print('candidate contract')"],
-                workspace_host_path=Path("<workspace>"),
-                out_host_path=Path("<out>"),
-                profile=get_sandbox_profile("locked-down"),
-                seccomp_profile_name=CANDIDATE_NAME,
-                seccomp_profile_path=CANDIDATE_PATH,
-            )
+    def test_approved_candidate_is_accepted_by_docker_argv_builder(self) -> None:
+        argv = build_docker_run_argv(
+            image="<image>",
+            command_argv=["python3", "-c", "print('candidate contract')"],
+            workspace_host_path=Path("<workspace>"),
+            out_host_path=Path("<out>"),
+            profile=get_sandbox_profile("locked-down"),
+            seccomp_profile_name=CANDIDATE_NAME,
+            seccomp_profile_path=Path("<sandbox-run-root>/rhd-locked-down-v1.json"),
+        )
+
+        self.assertEqual(1, argv.count("seccomp=<sandbox-run-root>/rhd-locked-down-v1.json"))
+        self.assertFalse(any("docs/human-review" in token for token in argv))
 
 
 if __name__ == "__main__":

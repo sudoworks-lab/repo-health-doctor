@@ -74,6 +74,13 @@ approval compatibility surface, fake runner, profile wording, and contextual
 report wording remain draft contract surfaces. They do not change default CLI
 behavior, default v3 JSON output, or gate decision `execution_authorized=false`
 semantics.
+Its seccomp default remains `runtime-default`. The package-owned
+`rhd-moby-default-v1` and Human-approved `rhd-locked-down-v1` profiles are
+available only through explicit `--seccomp` selection; arbitrary paths and
+`unconfined` remain rejected. The locked-down profile removes 15 syscalls from
+the Moby baseline and is intended to reduce attack surface for unknown-repository
+execution, but bounded local and Hosted 8/8 results do not establish general
+runtime compatibility or safety. Unsupported workloads may fail.
 Contextual explanation wording may change without changing the stable default
 v3 report or default CLI behavior.
 

@@ -7,12 +7,14 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "real-docker-verification.yml"
+PRODUCT_TEST_PATH = ROOT / "tests" / "test_candidate_seccomp_real_docker.py"
 
 
 class RealDockerWorkflowContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+        cls.product_test = PRODUCT_TEST_PATH.read_text(encoding="utf-8")
 
     def _top_level_block(self, key: str) -> str:
         marker = f"{key}:\n"
@@ -73,46 +75,31 @@ class RealDockerWorkflowContractTests(unittest.TestCase):
         self.assertIn('RHD_REAL_DOCKER_TEST: "1"', fixed_tests)
         self.assertNotRegex(fixed_tests, r"(?m)^\s+docker (pull|build)\b")
 
-    def test_candidate_gate_is_direct_hash_pinned_and_fail_closed(self) -> None:
-        candidate = self._step_block("Run disconnected locked-down candidate regression")
+    def test_approved_product_gate_is_hash_pinned_and_fail_closed(self) -> None:
+        product = self._step_block("Run approved locked-down product profile regression")
         expected_hash = "92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543"
-        required_case_ids = "[1, 2, 3, 4, 5, 6, 8, 10]"
 
-        self.assertIn('PYTHONPATH: src', candidate)
-        self.assertIn('RHD_REAL_DOCKER_TEST: "1"', candidate)
-        self.assertIn('RHD_REAL_DOCKER_IMAGE: ${{ inputs.image }}', candidate)
-        self.assertIn(f'EXPECTED_CANDIDATE_SHA256: "{expected_hash}"', candidate)
-        self.assertIn("sha256(candidate_path.read_bytes()).hexdigest()", candidate)
-        self.assertIn("python3 scripts/run_candidate_seccomp_review.py", candidate)
-        self.assertIn("set -euo pipefail", candidate)
-        self.assertIn('packet.get("candidate_local_regression")', candidate)
-        self.assertIn('record.get("profile") == candidate_name', candidate)
-        self.assertIn('record.get("profile_sha256") == expected_hash', candidate)
-        self.assertIn('record.get("execution_state") == "completed"', candidate)
-        self.assertIn('record.get("attempted_case_count") == 8', candidate)
-        self.assertIn('record.get("passed_case_count") == 8', candidate)
-        self.assertIn('record.get("failed_case_count") == 0', candidate)
-        self.assertIn('record.get("not_run_case_count") == 0', candidate)
-        self.assertIn('record.get("all_required_cases_recorded") is True', candidate)
-        self.assertIn(required_case_ids, candidate)
-        self.assertIn('case.get("status") == "pass"', candidate)
-        self.assertIn('record.get("failures") == []', candidate)
-        self.assertIn('record.get("approval_state") == "human_unapproved"', candidate)
-        self.assertIn('record.get("product_connection_state") == "disconnected"', candidate)
-        self.assertIn('record.get("pull_policy") == "never"', candidate)
-        self.assertIn('record.get("network_mode") == "none"', candidate)
-        self.assertIn('record.get("raw_process_output_recorded") is False', candidate)
-        self.assertIn('value not in {"", "unknown"}', candidate)
-        self.assertIn('candidate_name not in SECCOMP_PROFILE_CHOICES', candidate)
-        self.assertIn('"RHD_HOSTED_CANDIDATE_EVIDENCE="', candidate)
-        self.assertIn('"hosted_candidate_seccomp_regression"', candidate)
-        self.assertIn('"github_actions"', candidate)
-        self.assertIn('"github_hosted"', candidate)
-        self.assertIn('".github/workflows/real-docker-verification.yml"', candidate)
+        self.assertIn('PYTHONPATH: src', product)
+        self.assertIn('RHD_REAL_DOCKER_TEST: "1"', product)
+        self.assertIn('RHD_REAL_DOCKER_IMAGE: ${{ inputs.image }}', product)
+        self.assertIn(f'EXPECTED_LOCKED_DOWN_SHA256: "{expected_hash}"', product)
+        self.assertIn("set -euo pipefail", product)
+        self.assertIn("scripts/validate_final_security_gates.py", product)
+        self.assertIn(
+            "tests.test_candidate_seccomp_real_docker.ApprovedLockedDownProductRealDockerTests",
+            product,
+        )
+        self.assertNotIn("scripts/run_candidate_seccomp_review.py", product)
+        self.assertIn("run_sandbox_run(", self.product_test)
+        self.assertIn("seccomp_profile_name=PROFILE_LOCKED_DOWN_SECCOMP", self.product_test)
+        self.assertIn("self.assertEqual(candidate_bytes, package_bytes)", self.product_test)
+        self.assertIn('approval["approved_profile_sha256"]', self.product_test)
+        self.assertIn("seccomp=<sandbox-run-root>/rhd-locked-down-v1.json", self.product_test)
+        self.assertIn('"RHD_HOSTED_LOCKED_DOWN_PRODUCT_EVIDENCE="', self.product_test)
+        self.assertIn('"hosted_locked_down_product_regression"', self.product_test)
         for field in (
             "GITHUB_EVENT_NAME",
             "GITHUB_RUN_ID",
-            "GITHUB_REPOSITORY",
             "GITHUB_SHA",
             "docker_server_version",
             "docker_os",
@@ -127,11 +114,14 @@ class RealDockerWorkflowContractTests(unittest.TestCase):
             "passed_case_count",
             "failed_case_count",
             "not_run_case_count",
-            '"conclusion": "success"',
+            "candidate_docs_path_passed_to_docker",
+            "raw_process_output_recorded",
         ):
-            self.assertIn(field, candidate)
-        self.assertIn("GITHUB_STEP_SUMMARY", candidate)
-        self.assertNotRegex(candidate, r"(?m)^\s+docker (pull|build)\b")
+            self.assertIn(field, self.product_test)
+        self.assertIn("self.assertEqual(8, len(cases))", self.product_test)
+        self.assertIn("self.assertEqual(8, passed_case_count", self.product_test)
+        self.assertIn("self.assertEqual(0, failed_case_count", self.product_test)
+        self.assertNotRegex(product, r"(?m)^\s+docker (pull|build)\b")
 
     def test_summary_always_records_docker_version_os_and_architecture(self) -> None:
         summary = self._step_block("Record Docker and runner summary")

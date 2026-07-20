@@ -20,6 +20,12 @@ change. See [docs/versioning.md](docs/versioning.md).
 
 ### Added
 
+- Human-approved `rhd-locked-down-v1` seccomp profileを非defaultの明示選択肢として追加した。
+  candidate、package resource、installed wheelはSHA-256
+  `92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543`で一致し、Moby
+  baselineから15 syscallを削減する。記録済みlocal環境とGitHub Hosted run `29764489485`は
+  固定8 caseで8/8 passしたが、F036後のproduct-path workflowは未再実行であり、一般的な
+  runtime互換性や安全性を示さない。
 - [AI Agent Canonical Contract](docs/agent-contract.md)を追加し、real-scan、gate、
   Human-controlled authorization、sandbox、evidence還流をexit 0だけで進む正準flowとして
   固定した。[Codex](docs/integration-codex.md)、

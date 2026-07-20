@@ -16,15 +16,28 @@ PROFILE_NO_NETWORK_DEFAULT = "no-network-default"
 PROFILE_NO_NETWORK_READONLY = "no-network-readonly"
 PROFILE_NETWORK_EXPLICIT = "network-explicit"
 PROFILE_MOBY_DEFAULT = "rhd-moby-default-v1"
+PROFILE_LOCKED_DOWN_SECCOMP = "rhd-locked-down-v1"
 SECCOMP_RUNTIME_DEFAULT = "runtime-default"
-SECCOMP_PROFILE_CHOICES = (SECCOMP_RUNTIME_DEFAULT, PROFILE_MOBY_DEFAULT)
+SECCOMP_PROFILE_CHOICES = (
+    SECCOMP_RUNTIME_DEFAULT,
+    PROFILE_MOBY_DEFAULT,
+    PROFILE_LOCKED_DOWN_SECCOMP,
+)
 SECCOMP_SOURCE_RUNTIME_DEFAULT = "runtime_default"
 SECCOMP_SOURCE_PACKAGE_DATA = "package_data"
 
 _SECCOMP_RESOURCE_PACKAGE = "repo_health_doctor.sandbox.resources"
-_SECCOMP_PROFILE_RESOURCE = "rhd-moby-default-v1.json"
-_SECCOMP_PROVENANCE_RESOURCE = "rhd-moby-default-v1.provenance.json"
 _SECCOMP_LICENSE_RESOURCE = "MOBY-APACHE-2.0.txt"
+_SECCOMP_RESOURCE_NAMES = {
+    PROFILE_MOBY_DEFAULT: (
+        "rhd-moby-default-v1.json",
+        "rhd-moby-default-v1.provenance.json",
+    ),
+    PROFILE_LOCKED_DOWN_SECCOMP: (
+        "rhd-locked-down-v1.json",
+        "rhd-locked-down-v1.provenance.json",
+    ),
+}
 
 DEFAULT_MEMORY_LIMIT = "512m"
 DEFAULT_CPU_LIMIT = "1.0"
@@ -124,7 +137,7 @@ class SeccompProfileResource:
 
 @dataclass(frozen=True)
 class SeccompProfileSelection:
-    """One of the two supported sandbox-run seccomp selections."""
+    """One of the supported sandbox-run seccomp selections."""
 
     profile: str
     profile_sha256: str | None
@@ -139,22 +152,24 @@ class SeccompProfileSelection:
 
 
 def _read_seccomp_resource(resource_name: str) -> bytes:
-    if resource_name not in {
-        _SECCOMP_PROFILE_RESOURCE,
-        _SECCOMP_PROVENANCE_RESOURCE,
+    allowed_resources = {
         _SECCOMP_LICENSE_RESOURCE,
-    }:
+        *(resource for names in _SECCOMP_RESOURCE_NAMES.values() for resource in names),
+    }
+    if resource_name not in allowed_resources:
         raise ValueError("unsupported seccomp resource")
     return resources.files(_SECCOMP_RESOURCE_PACKAGE).joinpath(resource_name).read_bytes()
 
 
 def resolve_seccomp_profile(name: str = PROFILE_MOBY_DEFAULT) -> SeccompProfileResource:
-    """Resolve the one package-owned profile without accepting arbitrary paths."""
+    """Resolve a package-owned profile without accepting arbitrary paths."""
 
-    if name != PROFILE_MOBY_DEFAULT:
-        raise ValueError(f"unsupported packaged seccomp profile: {name}")
-    profile_bytes = _read_seccomp_resource(_SECCOMP_PROFILE_RESOURCE)
-    provenance_bytes = _read_seccomp_resource(_SECCOMP_PROVENANCE_RESOURCE)
+    resource_names = _SECCOMP_RESOURCE_NAMES.get(name)
+    if resource_names is None:
+        raise ValueError("unsupported packaged seccomp profile")
+    profile_resource, provenance_resource = resource_names
+    profile_bytes = _read_seccomp_resource(profile_resource)
+    provenance_bytes = _read_seccomp_resource(provenance_resource)
     license_bytes = _read_seccomp_resource(_SECCOMP_LICENSE_RESOURCE)
     profile = json.loads(profile_bytes.decode("utf-8"))
     provenance = json.loads(provenance_bytes.decode("utf-8"))
@@ -184,7 +199,8 @@ def materialize_seccomp_profile(name: str, destination: Path) -> Path:
     """Write the exact package-owned profile bytes to a controlled path."""
 
     resolved = resolve_seccomp_profile(name)
-    profile_bytes = _read_seccomp_resource(_SECCOMP_PROFILE_RESOURCE)
+    profile_resource, _ = _SECCOMP_RESOURCE_NAMES[name]
+    profile_bytes = _read_seccomp_resource(profile_resource)
     if hashlib.sha256(profile_bytes).hexdigest() != resolved.profile_sha256:
         raise ValueError("packaged seccomp profile changed during resolution")
     with destination.open("xb") as profile_file:
@@ -193,7 +209,7 @@ def materialize_seccomp_profile(name: str, destination: Path) -> Path:
 
 
 def resolve_seccomp_selection(name: str = SECCOMP_RUNTIME_DEFAULT) -> SeccompProfileSelection:
-    """Resolve only the runtime default or the package-owned Moby profile."""
+    """Resolve only the runtime default or a package-owned profile."""
 
     if name == SECCOMP_RUNTIME_DEFAULT:
         return SeccompProfileSelection(
@@ -201,7 +217,7 @@ def resolve_seccomp_selection(name: str = SECCOMP_RUNTIME_DEFAULT) -> SeccompPro
             profile_sha256=None,
             source=SECCOMP_SOURCE_RUNTIME_DEFAULT,
         )
-    if name != PROFILE_MOBY_DEFAULT:
+    if name not in _SECCOMP_RESOURCE_NAMES:
         raise ValueError("unsupported seccomp profile")
     resource = resolve_seccomp_profile(name)
     return SeccompProfileSelection(

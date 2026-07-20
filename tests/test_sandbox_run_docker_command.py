@@ -13,6 +13,7 @@ from repo_health_doctor.sandbox.docker_runner import (
     build_docker_run_argv,
 )
 from repo_health_doctor.sandbox.profiles import (
+    PROFILE_LOCKED_DOWN_SECCOMP,
     PROFILE_MOBY_DEFAULT,
     SECCOMP_PROFILE_CHOICES,
     get_sandbox_profile,
@@ -67,7 +68,7 @@ class SandboxRunDockerCommandTests(unittest.TestCase):
             profile = get_sandbox_profile(profile_name)
             seccomp_path = (
                 Path("<seccomp-profile>")
-                if seccomp_name == PROFILE_MOBY_DEFAULT
+                if seccomp_name in {PROFILE_MOBY_DEFAULT, PROFILE_LOCKED_DOWN_SECCOMP}
                 else None
             )
             argv = build_docker_run_argv(

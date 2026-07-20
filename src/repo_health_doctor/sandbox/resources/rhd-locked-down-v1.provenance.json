@@ -1,0 +1,66 @@
+{
+  "profile_name": "rhd-locked-down-v1",
+  "profile_sha256": "92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543",
+  "derived_from": "rhd-moby-default-v1",
+  "baseline_profile_sha256": "83e021f30d3fbbdabcc4db55bb760d5947e135491ef214d241d9eda5b0f8f2e8",
+  "candidate_source_path": "docs/human-review/rhd-locked-down-v1.candidate.json",
+  "allowlisted_syscall_count": 266,
+  "removed_syscalls": [
+    "chroot",
+    "mknod",
+    "mknodat",
+    "fanotify_mark",
+    "io_uring_setup",
+    "io_uring_enter",
+    "io_uring_register",
+    "mq_getsetattr",
+    "mq_notify",
+    "mq_open",
+    "mq_timedreceive",
+    "mq_timedreceive_time64",
+    "mq_timedsend",
+    "mq_timedsend_time64",
+    "mq_unlink"
+  ],
+  "license": {
+    "spdx_id": "Apache-2.0",
+    "source_file": "licenses/MOBY-APACHE-2.0.txt",
+    "resource_file": "MOBY-APACHE-2.0.txt"
+  },
+  "final_security_gates": {
+    "path": "docs/human-review/final-security-gates.json",
+    "human_approval_recorded": true,
+    "decision": "approved",
+    "approved_profile_sha256": "92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543"
+  },
+  "bounded_regressions": {
+    "local": {
+      "required_case_ids": [1, 2, 3, 4, 5, 6, 8, 10],
+      "attempted_case_count": 8,
+      "passed_case_count": 8,
+      "failed_case_count": 0,
+      "not_run_case_count": 0,
+      "docker_server_version": "29.5.3",
+      "docker_os": "Docker Desktop",
+      "docker_architecture": "x86_64"
+    },
+    "hosted": {
+      "provider": "github_actions",
+      "run_id": 29764489485,
+      "required_case_ids": [1, 2, 3, 4, 5, 6, 8, 10],
+      "attempted_case_count": 8,
+      "passed_case_count": 8,
+      "failed_case_count": 0,
+      "not_run_case_count": 0,
+      "docker_server_version": "28.0.4",
+      "docker_os": "Ubuntu 24.04.4 LTS",
+      "docker_architecture": "x86_64"
+    }
+  },
+  "limitations": [
+    "The recorded results are limited to the named Docker versions, operating systems, architectures, image digest, kernel, and fixed cases.",
+    "Successful bounded regression does not establish general runtime or workload compatibility.",
+    "The profile reduces the allowlist by 15 syscalls but does not remove risk from the kernel, container runtime, image, or other sandbox boundaries.",
+    "Unsupported workloads may fail and the profile is enabled only by explicit selection."
+  ]
+}

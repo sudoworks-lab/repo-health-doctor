@@ -10,6 +10,7 @@ from typing import Any, Protocol
 from .docker import is_digest_pinned
 from .profiles import (
     OUTDIR,
+    PROFILE_LOCKED_DOWN_SECCOMP,
     PROFILE_MOBY_DEFAULT,
     SECCOMP_RUNTIME_DEFAULT,
     SandboxProfile,
@@ -67,7 +68,7 @@ def build_docker_run_argv(
     if seccomp_profile_name == SECCOMP_RUNTIME_DEFAULT:
         if seccomp_profile_path is not None:
             raise ValueError("runtime-default must not use a seccomp profile path")
-    elif seccomp_profile_name == PROFILE_MOBY_DEFAULT:
+    elif seccomp_profile_name in {PROFILE_MOBY_DEFAULT, PROFILE_LOCKED_DOWN_SECCOMP}:
         if seccomp_profile_path is None:
             raise ValueError("packaged seccomp profile path is required")
     else:

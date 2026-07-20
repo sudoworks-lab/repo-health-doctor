@@ -440,8 +440,11 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
             "--seccomp",
             default=SECCOMP_RUNTIME_DEFAULT,
             type=_parse_seccomp_profile,
-            metavar="{runtime-default,rhd-moby-default-v1}",
-            help="Seccomp profile. runtime-default preserves the Docker runtime default.",
+            metavar="{runtime-default,rhd-moby-default-v1,rhd-locked-down-v1}",
+            help=(
+                "Seccomp profile. runtime-default remains the default; package-owned profiles "
+                "must be selected explicitly."
+            ),
         )
         parser.add_argument(
             "--dry-run",
@@ -1243,7 +1246,9 @@ def _sandbox_run_exit_code(report: Mapping[str, Any]) -> int:
 
 def _parse_seccomp_profile(value: str) -> str:
     if value not in SECCOMP_PROFILE_CHOICES:
-        raise argparse.ArgumentTypeError("must be runtime-default or rhd-moby-default-v1")
+        raise argparse.ArgumentTypeError(
+            "must be runtime-default, rhd-moby-default-v1, or rhd-locked-down-v1"
+        )
     return value
 
 

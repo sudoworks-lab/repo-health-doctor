@@ -32,12 +32,12 @@ class SeccompReviewPacketTests(unittest.TestCase):
         cls.baseline = json.loads(cls.baseline_bytes)
         cls.provenance = json.loads(PROVENANCE_PATH.read_text(encoding="utf-8"))
 
-    def test_packet_records_current_approval_before_product_connection(self) -> None:
+    def test_packet_records_current_approval_and_product_connection(self) -> None:
         self.assertEqual("0.1-draft", self.packet["schema_version"])
         self.assertEqual("seccomp_human_review", self.packet["packet_kind"])
         self.assertEqual("F028", self.packet["feature_id"])
         self.assertEqual(
-            "human_approved_pending_product_connection",
+            "human_approved_and_product_connected",
             self.packet["review_state"],
         )
 
@@ -45,7 +45,7 @@ class SeccompReviewPacketTests(unittest.TestCase):
         self.assertEqual("rhd-moby-default-v1", scope["baseline_profile"])
         self.assertEqual("rhd-locked-down-v1", scope["candidate_profile_name"])
         self.assertTrue(scope["candidate_artifact_created"])
-        self.assertFalse(scope["candidate_product_connected"])
+        self.assertTrue(scope["candidate_product_connected"])
         self.assertTrue(scope["human_approval_recorded"])
         self.assertEqual("approved", self.packet["human_review"]["decision"])
         self.assertEqual(
@@ -54,7 +54,7 @@ class SeccompReviewPacketTests(unittest.TestCase):
         )
         self.assertEqual("human_approved", self.packet["candidate_artifact"]["approval_state"])
         self.assertEqual(
-            "disconnected",
+            "connected",
             self.packet["candidate_artifact"]["product_connection_state"],
         )
         self.assertEqual([], self.packet["candidate_runtime_results"])

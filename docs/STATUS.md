@@ -421,3 +421,16 @@
 - Local evidence: F030の記録済みlocal環境では同じcandidate hashで8/8 pass、failure 0だった。F030実測時点の`human_unapproved` / `disconnected`はhistorical recordとして維持し、top-level current stateだけを`approved` / F036接続前の`disconnected`へ同期した。
 - 検証結果: JSON schemaと`validate_final_security_gates.py`が要求するHosted metadata、Human decision、approver、RFC 3339日時、candidate hashを満たすevidenceを記録した。F035は`passes:true`、`blocked:false`、`verified_at:2026-07-21T03:16:58+09:00`へ更新し、F036は`passes:false`、`blocked:true`のまま維持した。
 - 境界: local/Hosted結果はいずれも記録されたDocker、OS、architecture、kernel、image、固定8 caseに限定される。安全性、完全な隔離、全runtime互換性の証明ではない。F036のpackage、schema、CLI、Docker argv接続はまだ行っていない。
+
+## 2026-07-21 JST — F036 locked-down seccomp profile正式接続
+
+- 正式接続: Human-approvedな`rhd-locked-down-v1`をpackage resource、provenance、resolver、CLI、draft schema、Docker argvへ非defaultの明示選択肢として接続した。`SECCOMP_PROFILE_CHOICES`は`runtime-default`、`rhd-moby-default-v1`、`rhd-locked-down-v1`で、defaultは`runtime-default`のまま、Moby baselineも引き続き選択できる。
+- artifact整合: candidate、source package resource、installed wheelはSHA-256 `92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543`で一致した。provenanceはbaseline hash、15 syscall削減、266 syscall、Apache-2.0、final security gates、local 8/8、Hosted run `29764489485`の8/8、環境制限を記録する。
+- product contract: explicit選択時だけpackage bytesを使い捨てrun rootの`rhd-locked-down-v1.json`へmaterializeし、Docker argvへ`seccomp=<sandbox-run-root>/rhd-locked-down-v1.json`を正確に1回追加する。candidate docs path、arbitrary path、`unconfined`は受理せず、`--pull=never`、network none、capability drop、no-new-privileges、non-root、resource limits、disposable workspaceを維持した。
+- historical/current分離: F030の`candidate_local_regression`にある`human_unapproved` / `disconnected`は実測時点のhistorical recordとして不変に保ち、review packetのtop-level current stateだけを`human_approved` / `connected`へ更新した。
+- 検証結果: final-security-gates validatorは`valid:true`かつ`reason_codes:[]`だった。指定7 modulesは42件実行・40件pass・2件skip・0件fail、review packetは9件pass、full suiteは852件実行・837件pass・15件skip・0件failだった。開始時基準848件から追加した4件はF035 evidence、locked-down source/provenance、locked-down CLI、approved product real Dockerで、test削除はない。
+- CLI / schema: dry-run evidenceはprofile `rhd-locked-down-v1`、承認hash、source `package_data`、controlled Docker pathを記録した。draft schemaは3 profileのenumとlocked-down用`oneOf`を受理し、CLI help/errorも同じ3 choiceへ同期した。
+- 基本検証: `bash scripts/init.sh`、CLI help/version、public-safety 12件pass・0件warn・0件block、policy validation 1件pass・0件warn・0件block、default JSON report parse、docs/fixture inventory、`wc -l AGENTS.md` 77行、features/final-gates/schema/golden JSON parse、`git diff --check`はすべて成功した。
+- feature状態: F035/F036はともに`passes:true`、`blocked:false`となり、全36 featureはpassed 36、blocked 0、pending 0である。
+- 残risk: local/Hosted evidenceは記録されたruntime、image、OS、architecture、kernel、固定8 caseだけに限定される。全runtime互換性や安全性、完全な隔離を示さず、unsupported workloadは失敗する可能性がある。F036後のHosted product-path workflowはまだ再dispatchしていない。
+- 外部操作: push、PR、Hosted workflow dispatch、tag、Release、Goal Loop再開は行っていない。

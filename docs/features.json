@@ -451,9 +451,9 @@
         "前提未達ならpasses=falseを維持してF036をblocked=trueにし、必要なHuman操作をdocs/STATUS.mdへ追記する",
         "前提達成時だけPYTHONPATH=src python3 -m unittest tests.test_seccomp_cli tests.test_sandbox_run_docker_command -v とPLANの基本検証を実行し、image compatibility、public contracts、CHANGELOGの同期を確認する"
       ],
-      "passes": false,
-      "verified_at": null,
-      "blocked": true
+      "passes": true,
+      "verified_at": "2026-07-21T03:33:35+09:00",
+      "blocked": false
     }
   ]
 }

@@ -62,7 +62,7 @@
       "properties": {
         "profile": {
           "type": "string",
-          "enum": ["runtime-default", "rhd-moby-default-v1"]
+          "enum": ["runtime-default", "rhd-moby-default-v1", "rhd-locked-down-v1"]
         },
         "profile_sha256": {
           "type": ["string", "null"],
@@ -84,6 +84,13 @@
         {
           "properties": {
             "profile": {"const": "rhd-moby-default-v1"},
+            "profile_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "source": {"const": "package_data"}
+          }
+        },
+        {
+          "properties": {
+            "profile": {"const": "rhd-locked-down-v1"},
             "profile_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
             "source": {"const": "package_data"}
           }
