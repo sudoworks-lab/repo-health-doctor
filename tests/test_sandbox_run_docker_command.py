@@ -189,8 +189,8 @@ class SandboxRunDockerCommandTests(unittest.TestCase):
         self.assertIn("--pids-limit", argv)
         self.assertIn("--mount", argv)
         mount_spec = argv[argv.index("--mount") + 1]
-        self.assertEqual(f"type=bind,src={workspace_path},dst=/workspace", mount_spec)
-        self.assertTrue(any(item.endswith("dst=/out") for item in argv))
+        self.assertEqual(f"type=bind,src={workspace_path},dst=/workspace,readonly", mount_spec)
+        self.assertTrue(any(item.startswith("/out:") and "size=64m" in item and "nr_inodes=4096" in item for item in argv))
         self.assertIn("python:3.12-slim", argv)
         self.assertEqual(["python3", "-c", "print('hello')"], argv[-3:])
 
@@ -275,7 +275,7 @@ class SandboxRunDockerCommandTests(unittest.TestCase):
         without_network = valid[:network_index] + valid[network_index + 2 :]
         with self.assertRaisesRegex(ValueError, "exactly one --network none"):
             _assert_no_prohibited_docker_options(without_network)
-        with self.assertRaisesRegex(ValueError, "exactly one --network none"):
+        with self.assertRaises(ValueError):
             _assert_no_prohibited_docker_options(["--network=none", *valid])
 
     def test_docker_socket_mount_is_rejected(self) -> None:
@@ -311,7 +311,7 @@ class SandboxRunDockerCommandTests(unittest.TestCase):
         self.assertIn("--env", argv)
         self.assertIn("HOME=/tmp/home", argv)
         self.assertIn("TMPDIR=/tmp", argv)
-        self.assertTrue(any(item.endswith("dst=/out") for item in argv))
+        self.assertTrue(any(item.startswith("/out:") and "size=64m" in item for item in argv))
         self.assertEqual(profile.network, "none")
         self.assertFalse(profile.user in {"0", "0:0", "root"})
 

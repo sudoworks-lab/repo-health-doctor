@@ -9,6 +9,10 @@ import sys
 import tempfile
 import unittest
 
+from repo_health_doctor.gate.authorization import (
+    build_execution_authorization_draft,
+    validate_execution_authorization,
+)
 from repo_health_doctor.sandbox.docker_runner import DockerRunner
 from repo_health_doctor.sandbox.profiles import SECCOMP_PROFILE_CHOICES
 from repo_health_doctor.sandbox.profiles import (
@@ -16,7 +20,7 @@ from repo_health_doctor.sandbox.profiles import (
     resolve_seccomp_profile,
 )
 from repo_health_doctor.sandbox.run import run_sandbox_run
-from repo_health_doctor.sandbox.run_workspace import fingerprint_target
+from repo_health_doctor.sandbox.run_workspace import fingerprint_target, inspect_git_worktree
 from scripts.run_candidate_seccomp_review import CASES, _build_docker_argv
 from scripts.validate_final_security_gates import validate_final_security_gates
 
@@ -176,6 +180,45 @@ class ApprovedLockedDownProductRealDockerTests(unittest.TestCase):
         self.assertTrue(value)
         return value
 
+    def _authorization(
+        self,
+        root: Path,
+        repo: Path,
+        command: list[str],
+        image: str,
+        local_image_id: str,
+    ) -> tuple[Path, dict[str, object], object]:
+        fixture_root = ROOT / "tests" / "fixtures" / "execution-authorization"
+        gate = json.loads((fixture_root / "gate-allow-limited.json").read_text(encoding="utf-8"))
+        observed = inspect_git_worktree(repo)
+        gate["subject"] = {**gate["subject"], "commit": observed["commit"], "tree_hash": observed["tree_hash"]}
+        authorization = dict(
+            build_execution_authorization_draft(
+                gate,
+                command,
+                expires_at="2099-01-01T00:00:00Z",
+                approved_image={"requested_reference": image, "resolved_image_id": local_image_id},
+            )
+        )
+        authorization.update(
+            {
+                "approved": True,
+                "approved_by": "redacted@example.invalid",
+                "approved_at": "2026-07-01T00:00:00Z",
+            }
+        )
+        authorization_path = root / "authorization.json"
+        authorization_path.write_text(json.dumps(authorization) + "\n", encoding="utf-8")
+        validation = validate_execution_authorization(
+            authorization,
+            gate,
+            command,
+            runtime_image_reference=image,
+            runtime_image_id=local_image_id,
+        )
+        self.assertTrue(validation.execution_authorized, validation.to_dict())
+        return authorization_path, gate, validation
+
     def test_approved_product_profile_cases_are_bounded_and_fully_recorded(self) -> None:
         image = os.environ.get("RHD_REAL_DOCKER_IMAGE", "").strip()
         self.assertRegex(image, r"@sha256:[0-9a-f]{64}\Z")
@@ -221,9 +264,33 @@ class ApprovedLockedDownProductRealDockerTests(unittest.TestCase):
                     "approved locked-down product regression\n",
                     encoding="utf-8",
                 )
+                subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True, capture_output=True)
+                subprocess.run(
+                    ["git", "-C", str(repo), "config", "user.email", "test@example.invalid"],
+                    check=True,
+                    capture_output=True,
+                )
+                subprocess.run(
+                    ["git", "-C", str(repo), "config", "user.name", "synthetic"],
+                    check=True,
+                    capture_output=True,
+                )
+                subprocess.run(["git", "-C", str(repo), "add", "README.md"], check=True, capture_output=True)
+                subprocess.run(["git", "-C", str(repo), "commit", "-qm", "synthetic fixture"], check=True, capture_output=True)
                 original_fingerprint = fingerprint_target(repo).fingerprint
+                authorization_path, gate, validation = self._authorization(
+                    Path(temporary),
+                    repo,
+                    list(case.command),
+                    image,
+                    local_image_id,
+                )
                 report = run_sandbox_run(
                     repo,
+                    authorization_path=authorization_path,
+                    authorization_validation=validation,
+                    gate_decision=gate,
+                    fail_on_gate="unknown",
                     image=image,
                     profile_name="no-network-readonly",
                     seccomp_profile_name=PROFILE_LOCKED_DOWN_SECCOMP,

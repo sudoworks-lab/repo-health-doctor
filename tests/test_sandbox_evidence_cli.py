@@ -97,7 +97,7 @@ class SandboxEvidenceCliTests(unittest.TestCase):
             evidence_ref["gate_decision_fingerprint"],
             self.report["gate"]["decision_fingerprint"],
         )
-        self.assertEqual(evidence_ref["validation_status"], "valid")
+        self.assertEqual(evidence_ref["validation_status"], "valid", evidence_ref["reasons"])
         self.assertEqual(
             set(evidence_ref),
             {
@@ -125,7 +125,7 @@ class SandboxEvidenceCliTests(unittest.TestCase):
 
         duplicate_refs = json.loads(duplicate_result.stdout)["gate_decision"]["evidence_refs"]
         self.assertEqual(len(duplicate_refs), 2)
-        self.assertEqual(duplicate_refs[0]["validation_status"], "valid")
+        self.assertEqual(duplicate_refs[0]["validation_status"], "valid", duplicate_refs[0]["reasons"])
         self.assertEqual(duplicate_refs[1]["validation_status"], "invalid")
         self.assertIn("sandbox_evidence_duplicate", duplicate_refs[1]["reasons"])
         self.assertEqual(count_result.returncode, 2)

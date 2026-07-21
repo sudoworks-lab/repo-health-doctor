@@ -43,7 +43,7 @@ CASES = (
         (
             "python3",
             "-c",
-            "from pathlib import Path; Path('/workspace/case-1.txt').write_text('ok\\n', encoding='utf-8')",
+        "from pathlib import Path; Path('/out/case-1.txt').write_text('ok\\n', encoding='utf-8')",
         ),
     ),
     CandidateCase(
@@ -312,8 +312,8 @@ def _run_case(case: CandidateCase, *, image: str) -> dict[str, object]:
         elif exit_code != 0:
             failure_codes.append(f"docker_exit_code_{exit_code}")
 
-        if case.case_id == 1 and not failure_codes and not (workspace / "case-1.txt").is_file():
-            failure_codes.append("expected_workspace_change_missing")
+        if case.case_id == 1 and not failure_codes and not (out / "case-1.txt").is_file():
+            failure_codes.append("expected_out_change_missing")
         failure_codes.extend(_cleanup_container(container_name))
 
     return {

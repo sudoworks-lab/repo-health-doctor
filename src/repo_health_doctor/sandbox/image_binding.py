@@ -17,6 +17,14 @@ def is_digest_pinned_authorization_reference(value: object) -> bool:
     return isinstance(value, str) and bool(_IMAGE_REFERENCE.fullmatch(value))
 
 
+def is_safe_docker_image_token(value: object) -> bool:
+    """Reject image values that could be parsed as Docker run options."""
+
+    if not isinstance(value, str) or not value or value.startswith("-"):
+        return False
+    return not any(character.isspace() or ord(character) < 0x20 or ord(character) == 0x7F for character in value)
+
+
 def is_full_local_image_id(value: object) -> bool:
     """Return whether a value has the full local Docker image ID shape."""
 

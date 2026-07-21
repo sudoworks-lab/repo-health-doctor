@@ -97,8 +97,8 @@ class SandboxProfile:
     def to_report(self) -> dict[str, Any]:
         filesystem = {
             "workdir": WORKDIR,
-            "workspace_mount": "disposable_bind_mount_rw",
-            "out_mount": "disposable_bind_mount_rw",
+            "workspace_mount": "disposable_bind_mount_read_only",
+            "out_mount": "bounded_tmpfs_64m",
             "original_repo_mounted": False,
             "read_only_rootfs": self.read_only_rootfs,
             "tmpfs": list(self.tmpfs),

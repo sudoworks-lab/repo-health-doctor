@@ -25,10 +25,12 @@
     "result",
     "policy_blocked",
     "command_started",
+    "command_start_state",
     "command_exit_code",
     "sandbox_exit_code",
     "block_reason",
     "output_summary",
+    "runtime_write_budget",
     "env_policy",
     "cleanup_policy",
     "boundary_statement",
@@ -112,7 +114,18 @@
         "failure_class",
         "diagnostic_redacted",
         "stdout_preview_redacted",
-        "stderr_preview_redacted"
+        "stderr_preview_redacted",
+        "container_tracking_enabled",
+        "cleanup_attempted",
+        "cleanup_status",
+        "cleanup_failure_class",
+        "command_start_state",
+        "stdout_bytes",
+        "stderr_bytes",
+        "total_output_bytes",
+        "stdout_truncated",
+        "stderr_truncated",
+        "output_budget_exceeded"
       ],
       "properties": {
         "image": {"type": "string"},
@@ -136,7 +149,18 @@
         "failure_class": {"type": ["string", "null"]},
         "diagnostic_redacted": {"type": ["string", "null"]},
         "stdout_preview_redacted": {"type": "string"},
-        "stderr_preview_redacted": {"type": "string"}
+        "stderr_preview_redacted": {"type": "string"},
+        "container_tracking_enabled": {"type": "boolean"},
+        "cleanup_attempted": {"type": "boolean"},
+        "cleanup_status": {"type": "string", "enum": ["not_attempted", "ok", "failed"]},
+        "cleanup_failure_class": {"type": ["string", "null"]},
+        "command_start_state": {"type": "string", "enum": ["not_started", "confirmed", "unknown"]},
+        "stdout_bytes": {"type": "integer", "minimum": 0},
+        "stderr_bytes": {"type": "integer", "minimum": 0},
+        "total_output_bytes": {"type": "integer", "minimum": 0},
+        "stdout_truncated": {"type": "boolean"},
+        "stderr_truncated": {"type": "boolean"},
+        "output_budget_exceeded": {"type": "boolean"}
       },
       "additionalProperties": true
     },
@@ -154,6 +178,7 @@
             "failed",
             "dry_run",
             "timed_out",
+            "output_budget_exceeded",
             "observer_degraded",
             "cleanup_uncertain",
             "redaction_failed"
@@ -167,6 +192,7 @@
     },
     "policy_blocked": {"type": "boolean"},
     "command_started": {"type": "boolean"},
+    "command_start_state": {"type": "string", "enum": ["not_started", "confirmed", "unknown"]},
     "command_exit_code": {"type": ["integer", "null"]},
     "sandbox_exit_code": {"type": "integer"},
     "block_reason": {"type": ["string", "null"]},
@@ -177,6 +203,17 @@
         "stderr_preview_redacted",
         "stdout_truncated",
         "stderr_truncated",
+        "stdout_bytes",
+        "stderr_bytes",
+        "total_output_bytes",
+        "stdout_byte_budget",
+        "stderr_byte_budget",
+        "total_byte_budget",
+        "preview_char_budget",
+        "read_chunk_bytes",
+        "output_budget_exceeded",
+        "stdout_budget_exceeded",
+        "stderr_budget_exceeded",
         "redaction_applied",
         "redaction_failure",
         "raw_stdout_stderr_persisted"
@@ -186,9 +223,41 @@
         "stderr_preview_redacted": {"type": "string"},
         "stdout_truncated": {"type": "boolean"},
         "stderr_truncated": {"type": "boolean"},
+        "stdout_bytes": {"type": "integer", "minimum": 0},
+        "stderr_bytes": {"type": "integer", "minimum": 0},
+        "total_output_bytes": {"type": "integer", "minimum": 0},
+        "stdout_byte_budget": {"type": "integer", "minimum": 1},
+        "stderr_byte_budget": {"type": "integer", "minimum": 1},
+        "total_byte_budget": {"type": "integer", "minimum": 1},
+        "preview_char_budget": {"type": "integer", "minimum": 1},
+        "read_chunk_bytes": {"type": "integer", "minimum": 1},
+        "output_budget_exceeded": {"type": "boolean"},
+        "stdout_budget_exceeded": {"type": "boolean"},
+        "stderr_budget_exceeded": {"type": "boolean"},
         "redaction_applied": {"type": "boolean"},
         "redaction_failure": {"type": ["string", "null"]},
         "raw_stdout_stderr_persisted": {"type": "boolean", "const": false}
+      },
+      "additionalProperties": false
+    },
+    "runtime_write_budget": {
+      "type": "object",
+      "required": ["enforcement", "polling_watchdog", "overshoot_limitation", "paths"],
+      "properties": {
+        "enforcement": {"type": "string"},
+        "polling_watchdog": {"type": "boolean"},
+        "poll_interval_ms": {"type": ["integer", "null"]},
+        "scan_budget": {"type": ["integer", "null"]},
+        "overshoot_limitation": {"type": "string"},
+        "paths": {
+          "type": "object",
+          "required": ["workspace", "out"],
+          "properties": {
+            "workspace": {"$ref": "#/$defs/runtimeWritePath"},
+            "out": {"$ref": "#/$defs/runtimeWritePath"}
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": false
     },
@@ -198,5 +267,23 @@
     "limitations": {"type": "array", "items": {"type": "string"}},
     "next_actions": {"type": "array", "items": {"type": "string"}},
     "safety_statement": {"type": "string"}
+  },
+  "$defs": {
+    "runtimeWritePath": {
+      "type": "object",
+      "required": ["host_backed", "mount", "read_only", "max_bytes", "max_files", "observed_bytes", "observed_files", "exceeded"],
+      "properties": {
+        "host_backed": {"type": "boolean"},
+        "mount": {"type": "string"},
+        "read_only": {"type": "boolean"},
+        "max_bytes": {"type": "integer", "minimum": 0},
+        "max_files": {"type": "integer", "minimum": 0},
+        "observed_bytes": {"type": ["integer", "null"], "minimum": 0},
+        "observed_files": {"type": ["integer", "null"], "minimum": 0},
+        "exceeded": {"type": ["boolean", "null"]},
+        "kernel_enforced": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    }
   }
 }
