@@ -38,7 +38,7 @@ class RealDockerWorkflowContractTests(unittest.TestCase):
         self.assertRegex(
             self.ci_workflow,
             r"(?m)^      - name: Check out repository\n"
-            r"        uses: actions/checkout@v4\n"
+            r"        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n"
             r"        with:\n"
             r"          fetch-depth: 0$",
         )
@@ -59,16 +59,15 @@ class RealDockerWorkflowContractTests(unittest.TestCase):
         self.assertRegex(on_block, r"(?m)^      image:\s*$")
         self.assertNotIn("inputs.command", self.workflow)
 
-    def test_digest_pin_is_validated_and_acquired_in_an_independent_step(self) -> None:
-        acquisition = self._step_block("Acquire digest-pinned test image")
+    def test_digest_pin_is_validated_without_image_pull(self) -> None:
+        acquisition = self._step_block("Verify preloaded digest-pinned test image")
         fixed_tests = self._step_block(
             "Run fixed sandbox --pull=never and real Docker cases 1 to 10"
         )
 
         self.assertIn(r"@sha256:[0-9a-f]{64}", acquisition)
-        self.assertIn('docker pull "$RHD_REAL_DOCKER_IMAGE"', acquisition)
         self.assertIn('docker image inspect "$RHD_REAL_DOCKER_IMAGE"', acquisition)
-        self.assertEqual(1, self.workflow.count("docker pull"))
+        self.assertNotIn("docker pull", acquisition)
         self.assertNotIn("docker pull", fixed_tests)
         self.assertLess(self.workflow.index(acquisition), self.workflow.index(fixed_tests))
 

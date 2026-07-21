@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools==80.9.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -40,8 +40,8 @@ dependencies = []
 
 [project.optional-dependencies]
 test = [
-  "jsonschema>=4.23,<5",
-  "setuptools>=68",
+  "jsonschema==4.25.1",
+  "setuptools==80.9.0",
 ]
 
 [project.urls]

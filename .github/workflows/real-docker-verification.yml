@@ -25,9 +25,10 @@ jobs:
       - name: Prepare fixed test tooling
         run: |
           python3 --version
-          python3 -m pip install build==1.3.0
+          python3 -m pip install --require-hashes -r requirements-ci.lock
+          python3 -m pip install --no-deps -e .
 
-      - name: Acquire digest-pinned test image
+      - name: Verify preloaded digest-pinned test image
         env:
           RHD_REAL_DOCKER_IMAGE: ${{ inputs.image }}
         run: |
@@ -39,7 +40,6 @@ jobs:
           if re.fullmatch(pattern, image) is None:
               raise SystemExit("image must be a digest-pinned registry reference")
           PY
-          docker pull "$RHD_REAL_DOCKER_IMAGE"
           docker image inspect "$RHD_REAL_DOCKER_IMAGE" >/dev/null
 
       - name: Run fixed sandbox --pull=never and real Docker cases 1 to 10
