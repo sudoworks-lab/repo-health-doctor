@@ -12,7 +12,10 @@ from textwrap import dedent
 import unittest
 from unittest.mock import patch
 
-from repo_health_doctor.gate.authorization import validate_execution_authorization
+from repo_health_doctor.gate.authorization import (
+    build_execution_authorization_draft,
+    validate_execution_authorization,
+)
 from repo_health_doctor.sandbox.docker_runner import DockerRunner
 from repo_health_doctor.sandbox.image_binding import (
     is_digest_pinned_authorization_reference,
@@ -20,7 +23,7 @@ from repo_health_doctor.sandbox.image_binding import (
 )
 from repo_health_doctor.sandbox.profiles import PROFILE_MOBY_DEFAULT, resolve_seccomp_profile
 from repo_health_doctor.sandbox.run import DEFAULT_SANDBOX_IMAGE, run_sandbox_run
-from repo_health_doctor.sandbox.run_workspace import CopyBudget, fingerprint_target
+from repo_health_doctor.sandbox.run_workspace import CopyBudget, fingerprint_target, inspect_git_worktree
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,7 +32,7 @@ REAL_DOCKER_ENABLED = os.environ.get("RHD_REAL_DOCKER_TEST") == "1"
 CASE_1_COMMAND = [
     "python3",
     "-c",
-    "from pathlib import Path; Path('/workspace/case-1.txt').write_text('ok\\n', encoding='utf-8')",
+    "from pathlib import Path; Path('/out/case-1.txt').write_text('ok\\n', encoding='utf-8')",
 ]
 CASE_2_COMMAND = [
     "python3",
@@ -100,12 +103,59 @@ class RealDockerBoundaryCasesOneToSeven(unittest.TestCase):
             raise RuntimeError(
                 "RHD_REAL_DOCKER_TEST=1 requires the selected image to exist locally; the test does not pull images"
             )
+        cls.image_id = cls.runner.image_id(cls.image)
+        if cls.image_id is None:
+            raise RuntimeError("RHD_REAL_DOCKER_TEST=1 requires a resolvable local image ID")
 
     def _repo(self, root: Path, *, readme: str = "synthetic real Docker boundary fixture\n") -> Path:
         repo = root / "repo"
         repo.mkdir()
         (repo / "README.md").write_text(readme, encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.invalid"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "config", "user.name", "synthetic"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "add", "README.md"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "-qm", "synthetic fixture"], check=True, capture_output=True)
         return repo
+
+    def _authorization(self, root: Path, repo: Path, command: list[str]) -> tuple[Path, dict[str, object], object]:
+        fixture_root = ROOT / "tests" / "fixtures" / "execution-authorization"
+        gate = json.loads((fixture_root / "gate-allow-limited.json").read_text(encoding="utf-8"))
+        observed = inspect_git_worktree(repo)
+        gate["subject"] = {
+            **gate["subject"],
+            "commit": observed["commit"],
+            "tree_hash": observed["tree_hash"],
+        }
+        authorization = dict(
+            build_execution_authorization_draft(
+                gate,
+                command,
+                expires_at="2099-01-01T00:00:00Z",
+                approved_image={
+                    "requested_reference": self.image,
+                    "resolved_image_id": self.image_id,
+                },
+            )
+        )
+        authorization.update(
+            {
+                "approved": True,
+                "approved_by": "redacted@example.invalid",
+                "approved_at": "2026-07-01T00:00:00Z",
+            }
+        )
+        authorization_path = root / "authorization.json"
+        authorization_path.write_text(json.dumps(authorization) + "\n", encoding="utf-8")
+        validation = validate_execution_authorization(
+            authorization,
+            gate,
+            command,
+            runtime_image_reference=self.image,
+            runtime_image_id=self.image_id,
+        )
+        self.assertTrue(validation.execution_authorized, validation.to_dict())
+        return authorization_path, gate, validation
 
     def _run_case(
         self,
@@ -126,8 +176,13 @@ class RealDockerBoundaryCasesOneToSeven(unittest.TestCase):
             return str(created)
 
         with patch("repo_health_doctor.sandbox.run_workspace.tempfile.mkdtemp", side_effect=tracked_mkdtemp):
+            authorization_path, gate, validation = self._authorization(repo.parent, repo, command)
             report = run_sandbox_run(
                 repo,
+                authorization_path=authorization_path,
+                authorization_validation=validation,
+                gate_decision=gate,
+                fail_on_gate="unknown",
                 image=self.image,
                 profile_name=profile,
                 command_argv=command,
@@ -157,7 +212,10 @@ class RealDockerBoundaryCasesOneToSeven(unittest.TestCase):
         self.assertEqual("completed", report["result"]["status"])
         self.assertEqual(0, report["sandbox_exit_code"])
         self.assertTrue(report["command_started"])
+        self.assertEqual("confirmed", report["command_start_state"])
         self.assertTrue(report["docker"]["docker_invoked"])
+        self.assertEqual("ok", report["docker"]["cleanup_status"])
+        self.assertTrue(report["docker"]["container_tracking_enabled"])
         self.assertEqual("never", report["docker"]["pull_policy"])
         self.assertEqual(1, report["docker"]["argv_redacted"].count("--pull=never"))
         self.assertEqual(1, report["docker"]["argv_redacted"].count("--rm"))
@@ -172,8 +230,8 @@ class RealDockerBoundaryCasesOneToSeven(unittest.TestCase):
 
         self._assert_completed_execution_contract(report, CASE_1_COMMAND)
         self.assertTrue(report["workspace_diff"]["available"])
-        self.assertEqual(1, report["workspace_diff"]["created_count"])
-        self.assertIn("<workspace>/case-1.txt", report["workspace_diff"]["interesting_paths_redacted"])
+        self.assertEqual(0, report["workspace_diff"]["created_count"])
+        self.assertEqual(0, report["runtime_write_budget"]["paths"]["workspace"]["observed_bytes"])
 
     def test_case_2_network_none_without_external_request(self) -> None:
         """case 2: fixed harmless command observes network none without an external request."""
@@ -230,9 +288,11 @@ class RealDockerBoundaryCasesOneToSeven(unittest.TestCase):
 
         self.assertEqual("timed_out", report["result"]["status"])
         self.assertTrue(report["result"]["timed_out"])
-        self.assertTrue(report["command_started"])
+        self.assertFalse(report["command_started"])
+        self.assertEqual("unknown", report["command_start_state"])
         self.assertEqual(1, report["sandbox_exit_code"])
         self.assertEqual("timeout", report["docker"]["failure_class"])
+        self.assertEqual("ok", report["docker"]["cleanup_status"])
         self.assertEqual("never", report["docker"]["pull_policy"])
         self.assertEqual(1, report["docker"]["argv_redacted"].count("--pull=never"))
         self.assertEqual(CASE_6_COMMAND, report["command"]["argv_redacted"])
@@ -295,7 +355,51 @@ class RealDockerBoundaryCasesEightToTen(unittest.TestCase):
         repo = root / "repo"
         repo.mkdir()
         (repo / "README.md").write_text("synthetic real Docker cases 8-10 fixture\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.invalid"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "config", "user.name", "synthetic"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "add", "README.md"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "-qm", "synthetic fixture"], check=True, capture_output=True)
         return repo
+
+    def _authorization(self, root: Path, repo: Path, command: list[str]) -> tuple[Path, dict[str, object], object]:
+        fixture_root = ROOT / "tests" / "fixtures" / "execution-authorization"
+        gate = json.loads((fixture_root / "gate-allow-limited.json").read_text(encoding="utf-8"))
+        observed = inspect_git_worktree(repo)
+        gate["subject"] = {
+            **gate["subject"],
+            "commit": observed["commit"],
+            "tree_hash": observed["tree_hash"],
+        }
+        authorization = dict(
+            build_execution_authorization_draft(
+                gate,
+                command,
+                expires_at="2099-01-01T00:00:00Z",
+                approved_image={
+                    "requested_reference": self.image,
+                    "resolved_image_id": self.image_id,
+                },
+            )
+        )
+        authorization.update(
+            {
+                "approved": True,
+                "approved_by": "redacted@example.invalid",
+                "approved_at": "2026-07-01T00:00:00Z",
+            }
+        )
+        authorization_path = root / "authorization.json"
+        authorization_path.write_text(json.dumps(authorization) + "\n", encoding="utf-8")
+        validation = validate_execution_authorization(
+            authorization,
+            gate,
+            command,
+            runtime_image_reference=self.image,
+            runtime_image_id=self.image_id,
+        )
+        self.assertTrue(validation.execution_authorized, validation.to_dict())
+        return authorization_path, gate, validation
 
     def _run_case(self, repo: Path, *, command: list[str]) -> dict[str, object]:
         original_fingerprint = fingerprint_target(repo).fingerprint
@@ -308,8 +412,13 @@ class RealDockerBoundaryCasesEightToTen(unittest.TestCase):
             return str(created)
 
         with patch("repo_health_doctor.sandbox.run_workspace.tempfile.mkdtemp", side_effect=tracked_mkdtemp):
+            authorization_path, gate, validation = self._authorization(repo.parent, repo, command)
             report = run_sandbox_run(
                 repo,
+                authorization_path=authorization_path,
+                authorization_validation=validation,
+                gate_decision=gate,
+                fail_on_gate="unknown",
                 image=self.image,
                 profile_name="no-network-readonly",
                 seccomp_profile_name=PROFILE_MOBY_DEFAULT,
@@ -339,7 +448,9 @@ class RealDockerBoundaryCasesEightToTen(unittest.TestCase):
         self.assertEqual("completed", report["result"]["status"])
         self.assertEqual(0, report["sandbox_exit_code"])
         self.assertTrue(report["command_started"])
+        self.assertEqual("confirmed", report["command_start_state"])
         self.assertTrue(report["docker"]["docker_invoked"])
+        self.assertEqual("ok", report["docker"]["cleanup_status"])
         self.assertEqual("never", report["docker"]["pull_policy"])
         self.assertEqual(1, report["docker"]["argv_redacted"].count("--pull=never"))
         self.assertEqual(1, report["docker"]["argv_redacted"].count("--rm"))
@@ -407,6 +518,9 @@ class RealDockerBoundaryCasesEightToTen(unittest.TestCase):
             root = Path(temporary)
             repo = self._repo(root)
             original_fingerprint = fingerprint_target(repo).fingerprint
+            authorization_path, gate, _ = self._authorization(root, repo, CASE_10_COMMAND)
+            gate_path = root / "gate.json"
+            gate_path.write_text(json.dumps(gate) + "\n", encoding="utf-8")
             wheel_dir = root / "wheel"
             install_dir = root / "install"
             wheel_dir.mkdir()
@@ -460,6 +574,7 @@ class RealDockerBoundaryCasesEightToTen(unittest.TestCase):
                 import tempfile
                 from unittest.mock import patch
 
+                from repo_health_doctor.gate.authorization import validate_execution_authorization
                 from repo_health_doctor.sandbox.docker_runner import DockerRunner
                 from repo_health_doctor.sandbox.profiles import PROFILE_MOBY_DEFAULT
                 from repo_health_doctor.sandbox.run import run_sandbox_run
@@ -476,18 +591,35 @@ class RealDockerBoundaryCasesEightToTen(unittest.TestCase):
                     "repo_health_doctor.sandbox.run_workspace.tempfile.mkdtemp",
                     side_effect=tracked_mkdtemp,
                 ):
+                    image = sys.argv[3]
+                    authorization_path = Path(sys.argv[2])
+                    authorization = json.loads(authorization_path.read_text(encoding="utf-8"))
+                    gate = json.loads(Path(sys.argv[4]).read_text(encoding="utf-8"))
+                    command = [
+                        "python3",
+                        "-c",
+                        "print('installed-package-seccomp-profile-active')",
+                    ]
+                    runner = DockerRunner()
+                    validation = validate_execution_authorization(
+                        authorization,
+                        gate,
+                        command,
+                        runtime_image_reference=image,
+                        runtime_image_id=runner.image_id(image),
+                    )
                     report = run_sandbox_run(
                         Path(sys.argv[1]),
-                        image=sys.argv[2],
+                        authorization_path=authorization_path,
+                        authorization_validation=validation,
+                        gate_decision=gate,
+                        fail_on_gate="unknown",
+                        image=image,
                         profile_name="no-network-readonly",
                         seccomp_profile_name=PROFILE_MOBY_DEFAULT,
-                        command_argv=[
-                            "python3",
-                            "-c",
-                            "print('installed-package-seccomp-profile-active')",
-                        ],
+                        command_argv=command,
                         timeout_seconds=10,
-                        runner=DockerRunner(),
+                        runner=runner,
                     )
 
                 print(
@@ -502,7 +634,7 @@ class RealDockerBoundaryCasesEightToTen(unittest.TestCase):
                 """
             )
             probed = subprocess.run(
-                [sys.executable, "-c", probe_code, str(repo), self.image],
+                [sys.executable, "-c", probe_code, str(repo), str(authorization_path), self.image, str(gate_path)],
                 check=False,
                 capture_output=True,
                 text=True,

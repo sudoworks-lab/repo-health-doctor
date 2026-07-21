@@ -153,6 +153,20 @@ class ExecutionAuthorizationTests(unittest.TestCase):
         self.assertTrue(result.not_expired)
         self.assertTrue(result.based_on_gate_decision_matches)
 
+    def test_benign_disk_filename_is_not_mistaken_for_a_secret_token(self) -> None:
+        gate = _fixture("gate-allow-limited.json")
+        auth = deepcopy(_fixture("approved-exact.json"))
+        command = [
+            "python3",
+            "-c",
+            "from pathlib import Path; Path('/out/rhd-bounded-disk-probe.bin').write_bytes(b'x')",
+        ]
+        auth["approved_argv"] = command
+        result = validate_execution_authorization(auth, gate, command, now=_now())
+
+        self.assertNotIn("authorization_contains_forbidden_raw_pattern", result.blocking_errors)
+        self.assertTrue(result.execution_authorized, result.to_dict())
+
     def test_fixtures_and_results_do_not_contain_forbidden_patterns(self) -> None:
         gate = _fixture("gate-allow-limited.json")
         auth = _fixture("approved-exact.json")

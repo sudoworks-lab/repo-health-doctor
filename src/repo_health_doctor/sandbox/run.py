@@ -10,6 +10,7 @@ from uuid import uuid4
 from ..doctor import TOOL_VERSION
 from ..gate.authorization import (
     reserve_execution_authorization,
+    validate_execution_authorization,
     validate_execution_authorization_worktree_binding,
 )
 from .approval import load_sandbox_run_approval, validate_sandbox_run_approval
@@ -21,6 +22,7 @@ from .docker_runner import (
     build_docker_run_argv,
     docker_report_fields,
 )
+from .image_binding import is_digest_pinned_authorization_reference, is_safe_docker_image_token
 from .profiles import (
     PROFILE_LOCKED_DOWN,
     PROFILE_INSPECT_ONLY,
@@ -55,6 +57,7 @@ STATUS_BLOCKED = "blocked"
 STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"
 STATUS_TIMED_OUT = "timed_out"
+STATUS_OUTPUT_BUDGET_EXCEEDED = "output_budget_exceeded"
 STATUS_CLEANUP_UNCERTAIN = "cleanup_uncertain"
 STATUS_DRY_RUN = "dry_run"
 DOCKER_INFRASTRUCTURE_EXIT_CODES = {125}
@@ -110,10 +113,11 @@ def run_sandbox_run(
 ) -> dict[str, Any]:
     target = target.resolve()
     command_argv = _normalize_command_argv(command_argv)
-    image = image or DEFAULT_SANDBOX_IMAGE
+    image = image if image is not None else DEFAULT_SANDBOX_IMAGE
     profile = get_sandbox_profile(profile_name)
     seccomp = resolve_seccomp_selection(seccomp_profile_name)
     runner = DockerRunner() if runner is None else runner
+    require_real_authorization = not dry_run and runner.runner_name == "docker"
     limitations: list[str] = []
     next_actions: list[str] = []
     policy_reasons: list[str] = []
@@ -137,7 +141,31 @@ def run_sandbox_run(
         gate_decision=gate_decision,
         fail_on_gate=fail_on_gate,
         authorization_validation=authorization_validation,
+        require_image_binding=require_real_authorization,
     )
+
+    if require_real_authorization and authorization_path is not None:
+        authorization_document = _load_authorization_document(authorization_path)
+        if authorization_document is None:
+            authorization_validation = None
+        else:
+            runtime_image_id = (
+                runner.image_id(image)
+                if is_digest_pinned_authorization_reference(image)
+                else None
+            )
+            authorization_validation = validate_execution_authorization(
+                authorization_document,
+                gate_decision if isinstance(gate_decision, Mapping) else {},
+                command_argv,
+                runtime_image_reference=image,
+                runtime_image_id=runtime_image_id,
+            )
+        base_report["authorization"] = _authorization_report(
+            authorization_path=authorization_path,
+            authorization_validation=authorization_validation,
+            require_image_binding=True,
+        )
 
     if not command_argv:
         infrastructure_reasons.append("command_argv_missing")
@@ -149,11 +177,32 @@ def run_sandbox_run(
         policy_reasons.append("inspect_only_profile_requires_dry_run")
     if target_inventory is None:
         policy_reasons.append("target_fingerprint_unavailable")
+    if not is_safe_docker_image_token(image):
+        policy_reasons.append("image_reference_invalid")
+    elif require_real_authorization and not is_digest_pinned_authorization_reference(image):
+        policy_reasons.append("image_digest_pinned_required")
     gate_block_reason = _gate_block_reason(gate_decision, fail_on_gate)
-    authorization_authorized = _authorization_execution_authorized(authorization_validation)
-    if gate_block_reason is not None and not authorization_authorized:
+    authorization_authorized = _authorization_execution_authorized(
+        authorization_validation,
+        require_image_binding=require_real_authorization,
+    )
+    if require_real_authorization:
+        if gate_decision is None:
+            policy_reasons.append("gate_decision_required")
+        if fail_on_gate is None:
+            policy_reasons.append("gate_threshold_required")
+        if authorization_path is None:
+            policy_reasons.append("authorization_required")
+        elif not authorization_authorized:
+            policy_reasons.extend(
+                _authorization_blocking_reasons(
+                    authorization_validation,
+                    require_image_binding=True,
+                )
+            )
+    if gate_block_reason is not None:
         policy_reasons.append(gate_block_reason)
-    if authorization_path is not None and not authorization_authorized:
+    if authorization_path is not None and not authorization_authorized and not require_real_authorization:
         policy_reasons.extend(_authorization_blocking_reasons(authorization_validation))
 
     approval_validation = None
@@ -284,6 +333,8 @@ def run_sandbox_run(
             profile=profile,
             seccomp_profile_name=seccomp.profile,
             seccomp_profile_path=seccomp_profile_path,
+            container_tracking_label=uuid4().hex,
+            cidfile_path=workspace.root / "container.cid",
         )
         docker_argv_redacted = [_redact_text(token, target=target, workspace=workspace) for token in docker_argv]
         base_report["docker"] = docker_report_fields(
@@ -294,6 +345,7 @@ def run_sandbox_run(
             runner_name=runner.runner_name,
             docker_invoked=bool(runner.docker_invoked and not dry_run),
         )
+        base_report["docker"]["container_tracking_enabled"] = not dry_run and runner.runner_name == "docker"
         if dry_run:
             report = dict(base_report)
             report["authorization"]["single_use_reservation"] = {
@@ -344,6 +396,12 @@ def run_sandbox_run(
             target=target,
             workspace=workspace,
             limit=output_preview_chars,
+            stdout_bytes=run_result.stdout_bytes,
+            stderr_bytes=run_result.stderr_bytes,
+            total_output_bytes=run_result.total_output_bytes,
+            stdout_budget_exceeded=run_result.stdout_truncated,
+            stderr_budget_exceeded=run_result.stderr_truncated,
+            output_budget_exceeded=run_result.output_budget_exceeded,
         )
         docker_with_result = _docker_report_with_result(
             base_report["docker"],
@@ -354,20 +412,25 @@ def run_sandbox_run(
         status = run_result.status
         if run_result.timed_out:
             status = STATUS_TIMED_OUT
+        elif run_result.output_budget_exceeded:
+            status = STATUS_OUTPUT_BUDGET_EXCEEDED
         elif run_result.exit_code not in {0, None}:
             status = STATUS_FAILED
-        command_started = not _is_docker_infrastructure_failure(run_result, runner=runner)
+        command_start_state = getattr(run_result, "command_start_state", "unknown")
+        command_started = command_start_state == "confirmed"
         command_exit_code = run_result.exit_code if command_started else None
-        sandbox_exit_code = (
-            SANDBOX_INFRASTRUCTURE_EXIT_CODE
-            if _is_docker_infrastructure_failure(run_result, runner=runner)
-            else run_result.exit_code
-            if run_result.exit_code is not None
-            else SANDBOX_INFRASTRUCTURE_EXIT_CODE
-        )
+        if run_result.output_budget_exceeded:
+            sandbox_exit_code = SANDBOX_POLICY_BLOCK_EXIT_CODE
+        elif _is_docker_infrastructure_failure(run_result, runner=runner):
+            sandbox_exit_code = SANDBOX_INFRASTRUCTURE_EXIT_CODE
+        elif run_result.exit_code is not None:
+            sandbox_exit_code = run_result.exit_code
+        else:
+            sandbox_exit_code = SANDBOX_INFRASTRUCTURE_EXIT_CODE
         report = dict(base_report)
         report["docker"] = docker_with_result
         report["workspace_diff"] = summarize_workspace_diff(before_snapshot, after_snapshot)
+        report["runtime_write_budget"] = _runtime_write_budget_report(before_snapshot, after_snapshot)
         report["output_summary"] = output_summary
         report["result"] = {
             "status": status,
@@ -377,6 +440,7 @@ def run_sandbox_run(
         }
         report["policy_blocked"] = False
         report["command_started"] = command_started
+        report["command_start_state"] = command_start_state
         report["command_exit_code"] = command_exit_code
         report["sandbox_exit_code"] = sandbox_exit_code
         report["block_reason"] = None
@@ -458,6 +522,7 @@ def _base_report(
     gate_decision: Mapping[str, Any] | None,
     fail_on_gate: str | None,
     authorization_validation: Any | None,
+    require_image_binding: bool,
 ) -> dict[str, Any]:
     target_limitations = []
     if target_inventory is not None:
@@ -504,6 +569,7 @@ def _base_report(
         "authorization": _authorization_report(
             authorization_path=authorization_path,
             authorization_validation=authorization_validation,
+            require_image_binding=require_image_binding,
         ),
         "sandbox_profile": profile.to_report(),
         "seccomp": seccomp.to_report(),
@@ -529,10 +595,12 @@ def _base_report(
         },
         "policy_blocked": False,
         "command_started": False,
+        "command_start_state": "not_started",
         "command_exit_code": None,
         "sandbox_exit_code": SANDBOX_INFRASTRUCTURE_EXIT_CODE,
         "block_reason": None,
         "output_summary": _empty_output_summary(),
+        "runtime_write_budget": _runtime_write_budget_report(None, None),
         "env_policy": {
             "host_environment_inherited": False,
             "injected_env_keys": sorted(profile.env),
@@ -636,6 +704,16 @@ def _finalize_report(
     workspace: DisposableWorkspace | None,
     preserve_workspace: bool,
 ) -> dict[str, Any]:
+    docker = report.get("docker")
+    if isinstance(docker, dict) and docker.get("container_tracking_enabled") is True:
+        cleanup_status = docker.get("cleanup_status")
+        if cleanup_status != "ok" and report.get("result", {}).get("status") != STATUS_BLOCKED:
+            report["result"]["status"] = STATUS_CLEANUP_UNCERTAIN
+            report["sandbox_exit_code"] = SANDBOX_INFRASTRUCTURE_EXIT_CODE
+            report["block_reason"] = "container_cleanup_failed"
+            report["limitations"].append(
+                "Container cleanup could not be confirmed; treat the result as fail-closed evidence."
+            )
     cleanup_status = "not_started"
     if workspace is not None:
         if preserve_workspace:
@@ -697,13 +775,20 @@ def _authorization_report(
     *,
     authorization_path: Path | None,
     authorization_validation: Any | None,
+    require_image_binding: bool,
 ) -> dict[str, Any]:
     payload = authorization_validation.to_dict() if authorization_validation is not None else None
     return {
         "artifact_path_redacted": "<authorization>" if authorization_path is not None else None,
         "validated": authorization_validation is not None,
-        "execution_authorized": _authorization_execution_authorized(authorization_validation),
-        "blocking_errors": _authorization_blocking_reasons(authorization_validation),
+        "execution_authorized": _authorization_execution_authorized(
+            authorization_validation,
+            require_image_binding=require_image_binding,
+        ),
+        "blocking_errors": _authorization_blocking_reasons(
+            authorization_validation,
+            require_image_binding=require_image_binding,
+        ),
         "warnings": _string_items(payload.get("warnings") if isinstance(payload, Mapping) else None),
         "worktree_binding": {
             "checked": False,
@@ -734,19 +819,42 @@ def _gate_block_reason(gate_decision: Mapping[str, Any] | None, fail_on_gate: st
     return None
 
 
-def _authorization_execution_authorized(authorization_validation: Any | None) -> bool:
-    return bool(
+def _authorization_execution_authorized(
+    authorization_validation: Any | None,
+    *,
+    require_image_binding: bool = False,
+) -> bool:
+    basic_authorized = bool(
         authorization_validation is not None
         and getattr(authorization_validation, "execution_authorized", False) is True
     )
+    if not basic_authorized:
+        return False
+    if not require_image_binding:
+        return True
+    return bool(
+        getattr(authorization_validation, "image_binding_present", False) is True
+        and getattr(authorization_validation, "image_reference_matches", False) is True
+        and getattr(authorization_validation, "image_id_matches", False) is True
+    )
 
 
-def _authorization_blocking_reasons(authorization_validation: Any | None) -> list[str]:
+def _authorization_blocking_reasons(
+    authorization_validation: Any | None,
+    *,
+    require_image_binding: bool = False,
+) -> list[str]:
     if authorization_validation is None:
         return ["authorization_missing"]
     payload = authorization_validation.to_dict()
     reasons = _string_items(payload.get("blocking_errors") if isinstance(payload, Mapping) else None)
-    return reasons or ["authorization_invalid"]
+    if require_image_binding and not (
+        getattr(authorization_validation, "image_binding_present", False) is True
+        and getattr(authorization_validation, "image_reference_matches", False) is True
+        and getattr(authorization_validation, "image_id_matches", False) is True
+    ):
+        reasons.append("authorization_image_binding_required")
+    return list(dict.fromkeys(reasons or ["authorization_invalid"]))
 
 
 def _load_authorization_document(path: Path) -> Mapping[str, Any] | None:
@@ -804,6 +912,12 @@ def _build_output_summary(
     target: Path,
     workspace: DisposableWorkspace | None,
     limit: int,
+    stdout_bytes: int = 0,
+    stderr_bytes: int = 0,
+    total_output_bytes: int = 0,
+    stdout_budget_exceeded: bool = False,
+    stderr_budget_exceeded: bool = False,
+    output_budget_exceeded: bool = False,
 ) -> dict[str, Any]:
     stdout_redacted, stdout_truncated = _bounded_redacted_preview(stdout, target=target, workspace=workspace, limit=limit)
     stderr_redacted, stderr_truncated = _bounded_redacted_preview(stderr, target=target, workspace=workspace, limit=limit)
@@ -812,6 +926,17 @@ def _build_output_summary(
         "stderr_preview_redacted": stderr_redacted,
         "stdout_truncated": stdout_truncated,
         "stderr_truncated": stderr_truncated,
+        "stdout_bytes": stdout_bytes,
+        "stderr_bytes": stderr_bytes,
+        "total_output_bytes": total_output_bytes,
+        "stdout_byte_budget": 64 * 1024,
+        "stderr_byte_budget": 64 * 1024,
+        "total_byte_budget": 128 * 1024,
+        "preview_char_budget": limit,
+        "read_chunk_bytes": 8192,
+        "output_budget_exceeded": output_budget_exceeded,
+        "stdout_budget_exceeded": stdout_budget_exceeded,
+        "stderr_budget_exceeded": stderr_budget_exceeded,
         "redaction_applied": True,
         "redaction_failure": None,
         "raw_stdout_stderr_persisted": False,
@@ -824,9 +949,63 @@ def _empty_output_summary() -> dict[str, Any]:
         "stderr_preview_redacted": "",
         "stdout_truncated": False,
         "stderr_truncated": False,
+        "stdout_bytes": 0,
+        "stderr_bytes": 0,
+        "total_output_bytes": 0,
+        "stdout_byte_budget": 64 * 1024,
+        "stderr_byte_budget": 64 * 1024,
+        "total_byte_budget": 128 * 1024,
+        "preview_char_budget": DEFAULT_OUTPUT_PREVIEW_CHARS,
+        "read_chunk_bytes": 8192,
+        "output_budget_exceeded": False,
+        "stdout_budget_exceeded": False,
+        "stderr_budget_exceeded": False,
         "redaction_applied": True,
         "redaction_failure": None,
         "raw_stdout_stderr_persisted": False,
+    }
+
+
+def _runtime_write_budget_report(
+    before: InventoryResult | None,
+    after: InventoryResult | None,
+) -> dict[str, Any]:
+    observed_bytes = None
+    observed_files = None
+    exceeded = None
+    if before is not None and after is not None:
+        observed_bytes = max(0, after.total_bytes - before.total_bytes)
+        observed_files = max(0, after.file_count - before.file_count)
+        exceeded = observed_bytes > 0 or observed_files > 0
+    return {
+        "enforcement": "host_backed_writes_removed_from_real_runtime",
+        "polling_watchdog": False,
+        "poll_interval_ms": None,
+        "scan_budget": None,
+        "overshoot_limitation": "No polling overshoot: /workspace is read-only and /out is a kernel-bounded tmpfs.",
+        "paths": {
+            "workspace": {
+                "host_backed": True,
+                "mount": "bind",
+                "read_only": True,
+                "max_bytes": 0,
+                "max_files": 0,
+                "observed_bytes": observed_bytes,
+                "observed_files": observed_files,
+                "exceeded": exceeded,
+            },
+            "out": {
+                "host_backed": False,
+                "mount": "tmpfs",
+                "read_only": False,
+                "max_bytes": 64 * 1024 * 1024,
+                "max_files": 4096,
+                "observed_bytes": None,
+                "observed_files": None,
+                "exceeded": None,
+                "kernel_enforced": True,
+            },
+        },
     }
 
 
@@ -843,9 +1022,22 @@ def _docker_report_with_result(
     report["exit_code"] = run_result.exit_code
     report["stdout_preview_redacted"] = output_summary["stdout_preview_redacted"]
     report["stderr_preview_redacted"] = output_summary["stderr_preview_redacted"]
+    report["stdout_bytes"] = run_result.stdout_bytes
+    report["stderr_bytes"] = run_result.stderr_bytes
+    report["total_output_bytes"] = run_result.total_output_bytes
+    report["stdout_truncated"] = run_result.stdout_truncated
+    report["stderr_truncated"] = run_result.stderr_truncated
+    report["output_budget_exceeded"] = run_result.output_budget_exceeded
+    report["cleanup_attempted"] = run_result.cleanup_attempted
+    report["cleanup_status"] = run_result.container_cleanup_status
+    report["cleanup_failure_class"] = run_result.cleanup_failure_class
+    report["command_start_state"] = run_result.command_start_state
     report["failure_class"] = None
     report["diagnostic_redacted"] = None
-    if run_result.timed_out:
+    if run_result.output_budget_exceeded:
+        report["failure_class"] = "output_budget_exceeded"
+        report["diagnostic_redacted"] = "Docker output exceeded the bounded byte budget; the client and tracked container were stopped."
+    elif run_result.timed_out:
         report["failure_class"] = "timeout"
         report["diagnostic_redacted"] = (
             "Docker runner timed out before complete bounded evidence was available."

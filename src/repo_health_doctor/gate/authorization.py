@@ -111,10 +111,12 @@ FORBIDDEN_PATTERNS = (
     "ghp_",
     "github_pat_",
     "xoxb-",
-    "sk-",
     "-----BEGIN",
     "password=",
     "token=",
+)
+FORBIDDEN_TOKEN_PATTERNS = (
+    re.compile(r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{8,}(?![A-Za-z0-9_-])"),
 )
 RAW_HOST_PATH = re.compile(r"(?:^|[\s\"'=])(?:/(?:home|Users)/|/mnt/[A-Za-z]/Users/|[A-Za-z]:\\Users\\)")
 AUTHORIZATION_RESERVATION_SUFFIX = ".reserved"
@@ -702,7 +704,9 @@ def _string_items(value: object) -> list[str]:
 
 def _contains_forbidden_pattern(value: object) -> bool:
     if isinstance(value, str):
-        return any(pattern in value for pattern in FORBIDDEN_PATTERNS)
+        return any(pattern in value for pattern in FORBIDDEN_PATTERNS) or any(
+            pattern.search(value) is not None for pattern in FORBIDDEN_TOKEN_PATTERNS
+        )
     if isinstance(value, Mapping):
         return any(_contains_forbidden_pattern(item) for item in value.values())
     if isinstance(value, list):

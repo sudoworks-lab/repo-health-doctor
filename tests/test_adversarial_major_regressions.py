@@ -4,6 +4,7 @@ from dataclasses import fields
 import inspect
 import re
 from pathlib import Path
+import subprocess
 import unittest
 
 from repo_health_doctor.sandbox.docker_runner import (
@@ -12,6 +13,8 @@ from repo_health_doctor.sandbox.docker_runner import (
 )
 from repo_health_doctor.sandbox.profiles import get_sandbox_profile
 from repo_health_doctor.sandbox.run import run_sandbox_run
+from repo_health_doctor.sandbox.run_workspace import inspect_git_worktree
+from repo_health_doctor.cli import _bind_gate_decision_subject
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,6 +72,38 @@ class AdversarialMajorRegressionTests(unittest.TestCase):
         self.assertEqual(0, runner.run_calls)
         self.assertIn("authorization_required", report["approval"]["refusal_reasons"])
 
+    def test_f01_cli_gate_subject_binds_clean_worktree_without_authorizing(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary)
+            (target / "README.md").write_text("synthetic\n", encoding="utf-8")
+            for args in (
+                ["git", "-C", str(target), "init", "-q"],
+                ["git", "-C", str(target), "config", "user.email", "probe@example.invalid"],
+                ["git", "-C", str(target), "config", "user.name", "synthetic"],
+                ["git", "-C", str(target), "add", "README.md"],
+                ["git", "-C", str(target), "commit", "-qm", "synthetic fixture"],
+            ):
+                subprocess.run(args, check=True, capture_output=True)
+            observed = inspect_git_worktree(target)
+            gate = {
+                "subject": {
+                    "repo": "<repo>",
+                    "commit": None,
+                    "tree_hash": None,
+                    "binding_kind": "path_bound",
+                },
+                "verdict": "warn",
+            }
+            bound = _bind_gate_decision_subject(gate, target)
+
+        subject = bound["subject"]
+        self.assertEqual(observed["commit"], subject["commit"])
+        self.assertEqual(observed["tree_hash"], subject["tree_hash"])
+        self.assertEqual("commit_bound", subject["binding_kind"])
+        self.assertFalse(bound.get("execution_authorized", False))
+
     def test_f02_option_like_image_is_rejected_at_argv_boundary(self) -> None:
         with self.assertRaises(ValueError):
             build_docker_run_argv(
@@ -79,17 +114,18 @@ class AdversarialMajorRegressionTests(unittest.TestCase):
                 profile=get_sandbox_profile("locked-down"),
             )
 
-    def test_f02_explicit_mutable_image_is_rejected_even_in_dry_run(self) -> None:
+    def test_f02_explicit_mutable_image_is_rejected_for_real_runner(self) -> None:
         import tempfile
 
         with tempfile.TemporaryDirectory() as temporary:
             target = Path(temporary)
             (target / "README.md").write_text("synthetic\n", encoding="utf-8")
+            runner = _RealRunnerProbe()
             report = run_sandbox_run(
                 target,
                 image="python:3.12-slim",
                 command_argv=["python3", "-c", "print('probe')"],
-                dry_run=True,
+                runner=runner,  # type: ignore[arg-type]
             )
 
         self.assertTrue(report["policy_blocked"])

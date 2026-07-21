@@ -43,7 +43,11 @@ from .sandbox import (
     run_sandbox,
     run_sandbox_run,
 )
+from .sandbox.docker_runner import DockerRunner
+from .sandbox.image_binding import is_digest_pinned_authorization_reference
 from .sandbox.profiles import SECCOMP_PROFILE_CHOICES, SECCOMP_RUNTIME_DEFAULT
+from .sandbox.run import DEFAULT_SANDBOX_IMAGE
+from .sandbox.run_workspace import inspect_git_worktree
 from .gate import (
     build_execution_authorization_draft,
     evaluate_gate_decision_from_v3_report,
@@ -429,7 +433,7 @@ def build_parser(command: str = "scan") -> argparse.ArgumentParser:
     if sandbox_run_mode:
         parser.add_argument("--approval", help="Legacy sandbox-run approval artifact JSON. If supplied, mismatches block execution.")
         parser.add_argument("--authorization", help="Execution authorization artifact JSON for gate-bound sandbox-run execution.")
-        parser.add_argument("--image", default="python:3.12-slim", help="Docker image reference. It must be available locally; sandbox-run uses --pull=never.")
+        parser.add_argument("--image", default=None, help="Docker image reference. Real execution requires a local digest-pinned reference; sandbox-run uses --pull=never.")
         parser.add_argument(
             "--profile",
             default="locked-down",
@@ -671,7 +675,7 @@ def main(argv: list[str] | None = None) -> int:
                 parser.error("--timeout-seconds must be greater than 0")
             if args.output and args.evidence_output:
                 parser.error("--output and --evidence-output cannot both be used")
-            runner = None if args.runner == "docker" else make_fake_runner(args.runner)
+            runner = DockerRunner() if args.runner == "docker" else make_fake_runner(args.runner)
             sandbox_gate_decision = None
             sandbox_authorization_validation = None
             if args.fail_on_gate or args.authorization:
@@ -684,14 +688,27 @@ def main(argv: list[str] | None = None) -> int:
                     local_config_path=None,
                     load_local_config=True,
                 )
-                sandbox_gate_decision = evaluate_gate_decision_from_v3_report(scan_report, repo_root=target)
+                sandbox_gate_decision = _bind_gate_decision_subject(
+                    evaluate_gate_decision_from_v3_report(scan_report, repo_root=target),
+                    target,
+                )
             if args.authorization:
                 try:
                     authorization = _load_json_object(Path(args.authorization), "authorization")
+                    runtime_image_reference = args.image or DEFAULT_SANDBOX_IMAGE
+                    runtime_image_id = None
+                    if args.runner == "docker" and not args.dry_run and is_digest_pinned_authorization_reference(runtime_image_reference):
+                        runtime_image_id = runner.image_id(runtime_image_reference)
                     sandbox_authorization_validation = validate_execution_authorization(
                         authorization,
                         _mapping(sandbox_gate_decision),
                         sandbox_run_argv,
+                        runtime_image_reference=(
+                            runtime_image_reference
+                            if args.runner == "docker" and not args.dry_run
+                            else None
+                        ),
+                        runtime_image_id=runtime_image_id,
                     )
                 except ValueError as exc:
                     parser.error(str(exc))
@@ -774,10 +791,13 @@ def main(argv: list[str] | None = None) -> int:
                 )
             except ValueError as exc:
                 parser.error(str(exc))
-            baseline_gate_decision = evaluate_gate_decision_from_v3_report(
-                scan_report,
-                repo_root=target,
-                external_suite_evidence=external_suite_evidence,
+            baseline_gate_decision = _bind_gate_decision_subject(
+                evaluate_gate_decision_from_v3_report(
+                    scan_report,
+                    repo_root=target,
+                    external_suite_evidence=external_suite_evidence,
+                ),
+                target,
             )
             try:
                 sandbox_evidence = _load_sandbox_run_evidence(
@@ -789,11 +809,14 @@ def main(argv: list[str] | None = None) -> int:
                 )
             except ValueError as exc:
                 parser.error(str(exc))
-            gate_decision = evaluate_gate_decision_from_v3_report(
-                scan_report,
-                repo_root=target,
-                external_suite_evidence=external_suite_evidence,
-                sandbox_evidence=sandbox_evidence,
+            gate_decision = _bind_gate_decision_subject(
+                evaluate_gate_decision_from_v3_report(
+                    scan_report,
+                    repo_root=target,
+                    external_suite_evidence=external_suite_evidence,
+                    sandbox_evidence=sandbox_evidence,
+                ),
+                target,
             )
             authorization_validation = None
             if args.authorization:
@@ -1039,6 +1062,29 @@ def _external_evidence_subject(target: Path) -> Mapping[str, object]:
     status = _git_output(target, ("status", "--short"))
     dirty_state = "unknown" if status is None else ("dirty" if status else "clean")
     return {"repo_commit": commit, "dirty_state": dirty_state}
+
+
+def _bind_gate_decision_subject(
+    gate_decision: Mapping[str, Any],
+    target: Path,
+) -> Mapping[str, Any]:
+    """Attach a clean worktree binding without authorizing execution."""
+    observed = inspect_git_worktree(target)
+    commit = observed.get("commit")
+    tree_hash = observed.get("tree_hash")
+    if (
+        observed.get("git_available") is not True
+        or observed.get("dirty_state") != "clean"
+        or not isinstance(commit, str)
+        or not isinstance(tree_hash, str)
+    ):
+        return gate_decision
+    subject = dict(_mapping(gate_decision.get("subject")))
+    subject["repo"] = subject.get("repo") or "<repo>"
+    subject["commit"] = commit
+    subject["tree_hash"] = tree_hash
+    subject["binding_kind"] = "commit_bound"
+    return {**gate_decision, "subject": subject}
 
 
 def _load_sandbox_run_evidence(
