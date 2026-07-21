@@ -434,3 +434,15 @@
 - feature状態: F035/F036はともに`passes:true`、`blocked:false`となり、全36 featureはpassed 36、blocked 0、pending 0である。
 - 残risk: local/Hosted evidenceは記録されたruntime、image、OS、architecture、kernel、固定8 caseだけに限定される。全runtime互換性や安全性、完全な隔離を示さず、unsupported workloadは失敗する可能性がある。F036後のHosted product-path workflowはまだ再dispatchしていない。
 - 外部操作: push、PR、Hosted workflow dispatch、tag、Release、Goal Loop再開は行っていない。
+
+## 2026-07-21 JST — Hosted approved locked-down product-path最終実測
+
+- 対象product commit: `ee1e3bcab31721abe5c918bb577146bbae4882c2`。通常main CI run `29798851606`はPython 3.11・3.12ともsuccessだった。
+- Hosted product-path実測: GitHub Actions `workflow_dispatch` run `29801228533`、job `88542554562`で、`Run approved locked-down product profile regression`を含む全stepがsuccessとなった。
+- profile identity: 製品APIから`package_data`として`rhd-locked-down-v1`を解決し、SHA-256 `92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543`がHuman-approved hashと一致した。
+- bounded cases: cases 1、2、3、4、5、6、8、10を8件attemptし、8件pass、0件fail、0件not-runだった。candidate docs pathはDockerへ渡さず、raw process outputも保存していない。
+- runtime: Docker server `28.0.4`、`Ubuntu 24.04.4 LTS`、`x86_64`、kernel `6.17.0-1020-azure`、image digest `sha256:d764629ce0ddd8c71fd371e9901efb324a95789d2315a47db7e4d27e78f1b0e9`、rootless false、userns-remap falseで実行した。
+- sandbox境界: `--pull=never`、network none、controlled run rootへmaterializeしたlocked-down profile、capability drop、no-new-privileges、non-root、resource limits、disposable workspaceを維持した。
+- 完了状態: F035/F036は`passes:true`、`blocked:false`、全36 featureはpassed 36、blocked 0、pending 0のままである。実装、通常CI、Human Gate、正式製品接続、承認後Hosted product-path実測まで完了した。
+- 残risk: この結果は記録されたruntime、image、OS、architecture、kernel、固定8 caseに限定される。全runtime・全workloadでの互換性や一般的な安全性、完全な隔離を示すものではなく、未対応workloadは失敗する可能性がある。
+- closeout境界: この追記は`docs/STATUS.md`だけの記録変更であり、製品code、workflow、profile artifact、Human evidence、feature状態は変更していない。Hosted workflowの再dispatch、PR、tag、Release、Goal Loop再開は行っていない。
