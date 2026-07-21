@@ -6,6 +6,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+CI_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "ci.yml"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "real-docker-verification.yml"
 PRODUCT_TEST_PATH = ROOT / "tests" / "test_candidate_seccomp_real_docker.py"
 
@@ -13,6 +14,7 @@ PRODUCT_TEST_PATH = ROOT / "tests" / "test_candidate_seccomp_real_docker.py"
 class RealDockerWorkflowContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        cls.ci_workflow = CI_WORKFLOW_PATH.read_text(encoding="utf-8")
         cls.workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
         cls.product_test = PRODUCT_TEST_PATH.read_text(encoding="utf-8")
 
@@ -31,6 +33,22 @@ class RealDockerWorkflowContractTests(unittest.TestCase):
         match = re.search(r"(?m)^      - name: ", following)
         end = len(self.workflow) if match is None else start + len(marker) + match.start()
         return self.workflow[start:end]
+
+    def test_checkouts_fetch_full_history_for_final_gate_reachability(self) -> None:
+        self.assertRegex(
+            self.ci_workflow,
+            r"(?m)^      - name: Check out repository\n"
+            r"        uses: actions/checkout@v4\n"
+            r"        with:\n"
+            r"          fetch-depth: 0$",
+        )
+        self.assertRegex(
+            self.workflow,
+            r"(?m)^      - name: Check out repository\n"
+            r"        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n"
+            r"        with:\n"
+            r"          fetch-depth: 0$",
+        )
 
     def test_workflow_has_only_workflow_dispatch_trigger(self) -> None:
         on_block = self._top_level_block("on")
