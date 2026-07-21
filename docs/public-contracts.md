@@ -23,6 +23,19 @@ examples that are not public contract.
   command evidence. It uses a disposable workspace, default-deny network,
   locked-down Docker profile, redacted evidence, and gate / authorization
   binding. It is not a safety proof and not complete malware containment.
+- Non-dry-run Docker execution requires a valid approval artifact controlled by
+  a Human;
+  gate decisions and legacy approval artifacts alone do not authorize it.
+- Real Docker images must be local strict digest references of the form
+  `name@sha256:<64 lowercase hex>`. The product uses `--pull=never` and rejects
+  option-like, mutable, malformed, whitespace, and control-character image
+  values at the core boundary.
+- Real execution streams stdout/stderr under per-stream, total, and preview
+  budgets. Timeout, output-budget exceedance, and cleanup uncertainty are
+  distinct fail-closed evidence states; full raw stdout/stderr is not retained
+  or persisted.
+- The real locked-down runtime mounts `/workspace` read-only and `/out` as a
+  size- and inode-bounded tmpfs, and records the runtime write limits.
 
 ## Experimental
 
@@ -74,6 +87,12 @@ approval compatibility surface, fake runner, profile wording, and contextual
 report wording remain draft contract surfaces. They do not change default CLI
 behavior, default v3 JSON output, or gate decision `execution_authorized=false`
 semantics.
+Its non-dry-run Docker path requires Human authorization, strict local digest
+image binding, bounded streaming output, tracked container cleanup, and
+bounded non-host-backed output storage. CI and release workflow action
+references are immutable full commit SHAs and their build/test tooling uses the
+hash-locked `requirements-ci.lock` file. These controls do not claim complete
+malware containment, VM isolation, or production safety.
 Its seccomp default remains `runtime-default`. The package-owned
 `rhd-moby-default-v1` and Human-approved `rhd-locked-down-v1` profiles are
 available only through explicit `--seccomp` selection; arbitrary paths and

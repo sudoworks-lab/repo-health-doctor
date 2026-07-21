@@ -275,15 +275,24 @@ For `sandbox-run`, `--output` writes the machine-readable JSON report. Stdout
 uses `--format`, so you can keep the terminal summary human-readable while
 writing JSON to the report path.
 
-Real Docker mode omits `--dry-run`. It never pulls images automatically; the
-image must already exist locally and Docker uses `--pull=never`. A successful
-sandbox-run is bounded execution evidence only:
+Real Docker mode omits `--dry-run` and requires a valid Human-controlled
+authorization bound to the exact gate, argv, digest-pinned image and local
+image ID, policy, expiry, clean worktree, and single-use reservation. Legacy
+approval artifacts do not authorize real execution. The image must already
+exist locally and Docker uses `--pull=never`; real mode accepts only
+`name@sha256:<64 lowercase hex>`. A successful sandbox-run is bounded
+execution evidence only:
 
 - successful execution does not mean safe
 - successful execution does not mean authorization to continue
 - Docker does not provide complete malware containment
 - host HOME, credentials, SSH agent, and Docker socket are not mounted by the
   locked-down profile
+- `/workspace` is read-only and `/out` is a 64 MiB, 4096-inode tmpfs, so the
+  real runtime has no host-backed writable output mount
+- stdout/stderr are streamed with per-stream and total byte budgets; full raw
+  output is not retained or persisted, and timeout/output-budget cleanup is
+  fail-closed
 
 See [docs/sandbox-run.md](docs/sandbox-run.md) and
 [docs/sandbox-roadmap.md](docs/sandbox-roadmap.md).

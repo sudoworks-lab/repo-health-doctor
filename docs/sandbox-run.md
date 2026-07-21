@@ -43,10 +43,21 @@ Real Docker execution:
 ```bash
 env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run tests/fixtures/demo-repo \
   --profile locked-down \
+  --fail-on-gate unknown \
+  --image python@sha256:<64-lowercase-hex> \
+  --authorization /tmp/rhd-human-authorization.json \
   --evidence-output /tmp/rhd-sandbox-run.json \
-  -- python -c "from pathlib import Path; Path('created.txt').write_text('ok')"
+  -- python -c "print('authorized bounded probe')"
 python3 -m json.tool /tmp/rhd-sandbox-run.json
 ```
+
+Non-dry-run Docker execution requires a valid Human-controlled authorization.
+The authorization binds the gate decision, threshold, exact argv, digest image
+reference and local image ID, policy, expiry, repository commit and tree hash,
+dirty state, worktree, and single-use reservation. Missing or invalid
+authorization, including a legacy `--approval` artifact by itself, blocks
+before Docker is invoked. `--dry-run` does not invoke Docker and may be used
+without authorization.
 
 Gate-bound execution:
 
@@ -69,9 +80,10 @@ It generates Docker argv with:
 
 - `--pull=never`
 - `--network none`
+- a local digest-pinned image in the form `name@sha256:<64 lowercase hex>`
 - `/workspace` as the working directory
-- a disposable repository copy mounted at `/workspace`
-- a disposable output directory mounted at `/out`
+- a disposable repository copy mounted read-only at `/workspace`
+- `/out` as a kernel-bounded 64 MiB, 4096-inode tmpfs; it is not a host bind
 - read-only container root filesystem
 - `/tmp` tmpfs
 - `--cap-drop ALL`
@@ -88,10 +100,12 @@ PID, host IPC, or capability additions.
 ## Image Policy
 
 sandbox-run never pulls images automatically. Docker is invoked with
-`--pull=never`, so the image must already exist locally. The default image is
-`python:3.12-slim` for local development and fixture verification. Digest-pinned
-images are preferred; tag-based images are reported as a reproducibility
-limitation.
+`--pull=never`, so the image must already exist locally. The default
+`python:3.12-slim` reference is retained for dry-run and fake-runner
+documentation compatibility only. Real Docker execution accepts only a strict
+digest-pinned reference and binds it to the local image ID; mutable tags,
+missing or malformed digests, option-like values, whitespace, and control
+characters are rejected.
 
 ## Workspace Copy Policy
 
@@ -117,6 +131,18 @@ If the budget is exceeded, sandbox-run does not start the command. It records
 `copy_budget_exceeded`, sets `policy_blocked=true`, keeps
 `command_started=false`, and exits `2`.
 
+The real runtime does not provide a host-backed writable path to the command:
+`/workspace` is read-only and `/out` is a 64 MiB, 4096-inode tmpfs. This is the
+runtime write budget; it is enforced by the mount boundary rather than by a
+post-run size check or a polling watchdog. The report records the limits and
+whether a path is host-backed.
+
+Docker client output is streamed in fixed 8192-byte reads. stdout and stderr
+are each limited to 64 KiB, total output is limited to 128 KiB, and previews
+are separately character-bounded and redacted. Full raw stdout/stderr is not
+retained in memory or written to disk. Output-budget exceedance is distinct
+from timeout and is fail-closed with exit `2`.
+
 ## Network Policy
 
 The default network policy is deny. The Docker backend uses `--network none`.
@@ -134,19 +160,30 @@ with exit `2` when the verdict meets the selected threshold:
 - `warn`: `WARN`, `QUARANTINE`, or `BLOCK`
 - `unknown`: `UNKNOWN`, `WARN`, `QUARANTINE`, or `BLOCK`
 
-When `--authorization PATH` is supplied, sandbox-run validates the
-human-controlled execution authorization artifact against the generated gate
-decision and exact argv. A gate decision is still not execution authorization.
+For non-dry-run Docker execution, `--authorization PATH` is mandatory.
+sandbox-run validates the human-controlled execution authorization artifact
+against the generated gate decision and exact argv, then performs the
+worktree binding and single-use reservation immediately before Docker. A gate
+decision is still not execution authorization, and product code does not
+generate or approve the artifact automatically.
 
 The legacy `--approval` artifact is still supported for exact sandbox-run
-approval compatibility. If supplied, mismatches block before Docker.
+approval compatibility for non-real paths and dry-run planning. It never
+authorizes a real Docker execution by itself. If supplied, mismatches block
+before Docker.
 
 ## Exit Code Contract
 
 - Policy, gate, authorization, legacy approval, or copy-budget block: exit `2`
   with stderr prefix `SANDBOX-RUN POLICY BLOCK`.
+- Output byte budget exceeded: exit `2`, with the Docker client and the
+  tracked container stopped and cleanup confirmed before the result is usable.
+- Timeout: exit `1`; `command_start_state` is `unknown` unless command start is
+  independently confirmed, and the tracked container is cleaned up.
 - sandbox-run infrastructure or configuration error: exit `1` with stderr
   prefix `SANDBOX-RUN ERROR`.
+- Cleanup failure or an unconfirmed tracked-container removal: exit `1` and
+  report `cleanup_uncertain`.
 - Command started: return the command exit code with stderr prefix
   `SANDBOX-RUN COMMAND EXIT` when nonzero.
 
@@ -171,8 +208,12 @@ The JSON report is `schemas/sandbox-run.schema.json` with
 - `policy_blocked`, `command_started`, `command_exit_code`,
   `sandbox_exit_code`, and `block_reason`
 - bounded redacted stdout/stderr previews
+- stdout/stderr/total observed byte counts, byte budgets, truncation flags, and
+  output-budget status
+- `command_start_state` (`not_started`, `confirmed`, or `unknown`)
 - created / modified / deleted file summary
-- cleanup status and limitations
+- container tracking, cleanup attempt/status/failure class, runtime write
+  budget, and limitations
 
 Reports must not contain raw secrets, raw host private paths, raw local
 environment values, or unbounded stdout/stderr.

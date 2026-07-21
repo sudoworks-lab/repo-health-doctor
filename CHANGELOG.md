@@ -90,6 +90,14 @@ change. See [docs/versioning.md](docs/versioning.md).
 - Sandbox-run `--output` now writes machine-readable JSON regardless of stdout
   format, and Docker infrastructure failures include bounded redacted
   diagnostics when a report can be produced.
+- Real Docker sandbox-run now requires a valid Human-controlled authorization,
+  strict local digest-image binding, exact worktree binding, and a single-use
+  reservation; dry-run remains non-executing.
+- Docker execution now uses a strict image/argv boundary, fixed-size streaming
+  output budgets, tracked timeout/output cleanup, read-only `/workspace`, and
+  a 64 MiB/4096-inode `/out` tmpfs runtime write boundary.
+- CI and release workflows now use immutable full commit SHA action references
+  and the hash-locked `requirements-ci.lock` for build and test tooling.
 
 ### Security
 
@@ -108,6 +116,8 @@ change. See [docs/versioning.md](docs/versioning.md).
   authorization.
 - A successful sandbox-run is documented as bounded evidence only, not safety
   and not authorization to continue.
+- Output-budget exceedance, timeout, and cleanup uncertainty are separate
+  fail-closed states; Docker is not complete malware containment.
 
 ### Known Limitations
 

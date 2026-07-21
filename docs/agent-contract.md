@@ -143,7 +143,11 @@ external-evidence gate用artifactとsandbox内部gate用artifactは、gate decis
 強制したりしてはならない。
 一致しない場合はexit 2で停止し、別のexecution pathへfallbackしない。`sandbox-run`は
 disposable workspace、`--pull=never`、default-deny network、locked-down profile、resource
-limits、redacted outputを使う。これらはpracticalな境界であり、完全隔離や安全性の証明ではない。
+limits、read-only `/workspace`、64 MiB/4096-inode tmpfs `/out`、bounded
+streaming redacted outputを使う。real Docker imageはlocalに存在する
+strict digest reference (`name@sha256:<64 lowercase hex>`)だけを受理する。
+timeout、output budget超過、またはcontainer cleanup uncertaintyはexit 0へ読み替えず停止する。
+これらはpracticalな境界であり、完全隔離や安全性の証明ではない。
 
 JSON evidenceはsuccess、policy block、infrastructure failure、timeout、target command failureの
 いずれでも保持する。exit 0はその1 commandの完了だけを示し、次のcommandを認可しない。

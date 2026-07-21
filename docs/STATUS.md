@@ -446,3 +446,12 @@
 - 完了状態: F035/F036は`passes:true`、`blocked:false`、全36 featureはpassed 36、blocked 0、pending 0のままである。実装、通常CI、Human Gate、正式製品接続、承認後Hosted product-path実測まで完了した。
 - 残risk: この結果は記録されたruntime、image、OS、architecture、kernel、固定8 caseに限定される。全runtime・全workloadでの互換性や一般的な安全性、完全な隔離を示すものではなく、未対応workloadは失敗する可能性がある。
 - closeout境界: この追記は`docs/STATUS.md`だけの記録変更であり、製品code、workflow、profile artifact、Human evidence、feature状態は変更していない。Hosted workflowの再dispatch、PR、tag、Release、Goal Loop再開は行っていない。
+
+## 2026-07-21 JST — Final Major hardening local review
+
+- 対象: 第三者bounded adversarial reviewのMajor F-01〜F-06だけを対象に、修正前regression、実装、local real Docker再検証、full verificationを実施した。F-07〜F-09、fake runner UX、default seccomp、rootless/userns必須化、VM系isolation、全image互換性は対象外として変更していない。
+- F-01〜F-02: real Docker non-dry-runはHuman-controlled authorization、gate threshold、exact argv/image/policy/expiry、commit/tree/dirty/worktree binding、single-use reservationを要求し、strict digest imageとDocker option allowlist boundaryをcore APIとCLIで適用する。dry-runはDockerをinvokeしない。
+- F-03〜F-05: Docker client outputを8192-byte streamingへ変更し、stdout/stderr各64 KiB、total 128 KiB、bounded preview、observed byte数、truncation、timeout/output超過区別を記録する。run label/cidfileで今回containerだけをcleanupし、`/workspace`はread-only、`/out`は64 MiB/4096 inode tmpfsとしてruntime write boundaryを設けた。
+- F-06: CI、release、real-Docker workflowのActionをfull commit SHAへ固定し、build/test toolingを`requirements-ci.lock`のhash pinへ統一した。image pull、publish、workflow dispatchは行っていない。
+- 検証: pre-change regression commitでF-01〜F-06の失敗を確認し、修正後targeted regression、local real Docker synthetic probes（authorization missing/valid、timeout、32 MiB stdout、128 MiB `/out` write、option-like image）がpassした。existing container集合はprobe前後で不変、今回containerとrun rootは残存0だった。
+- 残risk: Docker、kernel、image、runner、tmpfs resource、bounded preview redaction、upstream Action/package provenance、未対象Moderate findingは残る。今回のbounded reviewはpenetration test、malware-proof、complete isolation、production-ready判定ではない。
