@@ -168,12 +168,37 @@ class AdversarialMajorRegressionTests(unittest.TestCase):
 
     def test_f06_actions_and_dependency_install_are_immutable(self) -> None:
         uses_pattern = re.compile(r"^\s*uses:\s*([^\s#]+)", re.MULTILINE)
+        workflows: dict[str, str] = {}
         for workflow_name in ("ci.yml", "release.yml", "real-docker-verification.yml"):
             workflow = (ROOT / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
+            workflows[workflow_name] = workflow
             for value in uses_pattern.findall(workflow):
                 with self.subTest(workflow=workflow_name, value=value):
                     self.assertTrue(value.startswith("./") or re.fullmatch(r"[^/@\s]+/[^/@\s]+@[0-9a-f]{40}", value))
-            self.assertNotIn("docker pull", workflow)
+
+        self.assertNotIn("docker pull", workflows["ci.yml"])
+        self.assertNotIn("docker pull", workflows["release.yml"])
+        real_docker_workflow = workflows["real-docker-verification.yml"]
+        approved_pull = 'docker pull "$RHD_REAL_DOCKER_IMAGE"'
+        self.assertEqual(1, real_docker_workflow.count(approved_pull))
+        self.assertEqual(
+            [f"{approved_pull} >/dev/null 2>&1"],
+            [
+                line.strip()
+                for line in re.findall(r"(?m)^\s*docker pull[^\n]*$", real_docker_workflow)
+            ],
+        )
+        self.assertLess(
+            real_docker_workflow.index("if re.fullmatch(pattern, image) is None:"),
+            real_docker_workflow.index(approved_pull),
+        )
+        self.assertLess(
+            real_docker_workflow.index(approved_pull),
+            real_docker_workflow.index('["docker", "image", "inspect", image]'),
+        )
+        self.assertIn("RepoDigests", real_docker_workflow)
+        self.assertIn(r'r"sha256:[0-9a-f]{64}"', real_docker_workflow)
+        self.assertIn("Run fixed sandbox --pull=never", real_docker_workflow)
 
         lock = ROOT / "requirements-ci.lock"
         self.assertTrue(lock.is_file())

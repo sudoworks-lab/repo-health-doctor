@@ -7,6 +7,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 CI_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "ci.yml"
+RELEASE_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "release.yml"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "real-docker-verification.yml"
 PRODUCT_TEST_PATH = ROOT / "tests" / "test_candidate_seccomp_real_docker.py"
 
@@ -15,6 +16,7 @@ class RealDockerWorkflowContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.ci_workflow = CI_WORKFLOW_PATH.read_text(encoding="utf-8")
+        cls.release_workflow = RELEASE_WORKFLOW_PATH.read_text(encoding="utf-8")
         cls.workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
         cls.product_test = PRODUCT_TEST_PATH.read_text(encoding="utf-8")
 
@@ -59,16 +61,35 @@ class RealDockerWorkflowContractTests(unittest.TestCase):
         self.assertRegex(on_block, r"(?m)^      image:\s*$")
         self.assertNotIn("inputs.command", self.workflow)
 
-    def test_digest_pin_is_validated_without_image_pull(self) -> None:
-        acquisition = self._step_block("Verify preloaded digest-pinned test image")
+    def test_only_approved_digest_acquisition_may_pull_before_binding_checks(self) -> None:
+        acquisition = self._step_block("Acquire approved digest-pinned test image")
         fixed_tests = self._step_block(
             "Run fixed sandbox --pull=never and real Docker cases 1 to 10"
         )
+        approved_pull = 'docker pull "$RHD_REAL_DOCKER_IMAGE"'
+        validation_position = acquisition.index("if re.fullmatch(pattern, image) is None:")
+        pull_position = acquisition.index(approved_pull)
+        inspect_position = acquisition.index('["docker", "image", "inspect", image]')
 
         self.assertIn(r"@sha256:[0-9a-f]{64}", acquisition)
-        self.assertIn('docker image inspect "$RHD_REAL_DOCKER_IMAGE"', acquisition)
-        self.assertNotIn("docker pull", acquisition)
+        self.assertLess(validation_position, pull_position)
+        self.assertLess(pull_position, inspect_position)
+        self.assertEqual(1, self.workflow.count(approved_pull))
+        self.assertEqual(
+            [f"{approved_pull} >/dev/null 2>&1"],
+            [line.strip() for line in re.findall(r"(?m)^\s*docker pull[^\n]*$", self.workflow)],
+        )
+        self.assertIn("RepoDigests", acquisition)
+        self.assertIn("image not in repo_digests", acquisition)
+        self.assertIn(r'r"sha256:[0-9a-f]{64}"', acquisition)
+        self.assertIn("capture_output=True", acquisition)
+        self.assertNotIn("GITHUB_OUTPUT", acquisition)
+        self.assertNotIn("GITHUB_STEP_SUMMARY", acquisition)
+        self.assertNotIn("latest", acquisition)
+        self.assertNotIn("docker pull", self.ci_workflow)
+        self.assertNotIn("docker pull", self.release_workflow)
         self.assertNotIn("docker pull", fixed_tests)
+        self.assertIn("--pull=never", fixed_tests)
         self.assertLess(self.workflow.index(acquisition), self.workflow.index(fixed_tests))
 
     def test_fixed_tests_cover_sandbox_pull_never_and_real_docker_cases(self) -> None:

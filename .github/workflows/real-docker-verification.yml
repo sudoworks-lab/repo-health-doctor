@@ -28,10 +28,11 @@ jobs:
           python3 -m pip install --require-hashes -r requirements-ci.lock
           python3 -m pip install --no-deps -e .
 
-      - name: Verify preloaded digest-pinned test image
+      - name: Acquire approved digest-pinned test image
         env:
           RHD_REAL_DOCKER_IMAGE: ${{ inputs.image }}
         run: |
+          set -euo pipefail
           python3 - <<'PY'
           import os
           import re
@@ -40,7 +41,35 @@ jobs:
           if re.fullmatch(pattern, image) is None:
               raise SystemExit("image must be a digest-pinned registry reference")
           PY
-          docker image inspect "$RHD_REAL_DOCKER_IMAGE" >/dev/null
+          docker pull "$RHD_REAL_DOCKER_IMAGE" >/dev/null 2>&1
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+
+          image = os.environ["RHD_REAL_DOCKER_IMAGE"]
+          inspection = subprocess.run(
+              ["docker", "image", "inspect", image],
+              check=False,
+              capture_output=True,
+              text=True,
+          )
+          if inspection.returncode != 0:
+              raise SystemExit("approved image inspection failed")
+          try:
+              records = json.loads(inspection.stdout)
+          except json.JSONDecodeError:
+              raise SystemExit("approved image inspection returned invalid metadata") from None
+          if len(records) != 1 or not isinstance(records[0], dict):
+              raise SystemExit("approved image inspection returned unexpected metadata")
+          repo_digests = records[0].get("RepoDigests")
+          if not isinstance(repo_digests, list) or image not in repo_digests:
+              raise SystemExit("approved image digest binding failed")
+          image_id = records[0].get("Id")
+          if not isinstance(image_id, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None:
+              raise SystemExit("approved image ID binding failed")
+          PY
 
       - name: Run fixed sandbox --pull=never and real Docker cases 1 to 10
         env:
