@@ -943,7 +943,10 @@ def main(argv: list[str] | None = None) -> int:
         or getattr(args, "gate_summary", False)
         or getattr(args, "fail_on_gate", None)
     ):
-        gate_decision = evaluate_gate_decision_from_v3_report(report, repo_root=target)
+        gate_decision = _bind_gate_decision_subject(
+            evaluate_gate_decision_from_v3_report(report, repo_root=target),
+            target,
+        )
     sandbox_output_path = getattr(args, "evidence_output", None) if command == "sandbox-run" else None
     if args.output or sandbox_output_path:
         output_path = Path(sandbox_output_path or args.output)
