@@ -315,6 +315,9 @@ def validate_execution_authorization_snapshot_binding(
     authorization: Mapping[str, Any],
     gate_decision: Mapping[str, Any],
     *,
+    repository_identity: str | None,
+    commit: str | None,
+    tree: str | None,
     snapshot_id: str | None,
     manifest_fingerprint: str | None,
 ) -> ExecutionAuthorizationSnapshotBinding:
@@ -322,8 +325,14 @@ def validate_execution_authorization_snapshot_binding(
     authorization_subject = _mapping(authorization.get("subject"))
     approved_scope = _mapping(authorization.get("approved_scope"))
     gate_subject = _gate_subject(gate_decision)
-    if not _is_fingerprint(snapshot_id) or not _is_fingerprint(
-        manifest_fingerprint
+    if (
+        not _is_fingerprint(repository_identity)
+        or not isinstance(commit, str)
+        or not commit
+        or not isinstance(tree, str)
+        or not tree
+        or not _is_fingerprint(snapshot_id)
+        or not _is_fingerprint(manifest_fingerprint)
     ):
         return ExecutionAuthorizationSnapshotBinding(
             status=SNAPSHOT_BINDING_UNRESOLVED,
@@ -349,24 +358,24 @@ def validate_execution_authorization_snapshot_binding(
         == manifest_fingerprint
     )
     gate_matches = (
-        gate_subject.get("snapshot_id") == snapshot_id
+        gate_subject.get("repo") == repository_identity
+        and gate_subject.get("commit") == commit
+        and gate_subject.get("tree_hash") == tree
+        and gate_subject.get("snapshot_id") == snapshot_id
         and gate_subject.get("manifest_fingerprint") == manifest_fingerprint
         and gate_subject.get("binding_kind") == "snapshot_bound"
     )
-    expected_repo = gate_subject.get("repo")
     repo_matches = (
-        authorization_subject.get("repo") == expected_repo
-        and approved_scope.get("repo") == expected_repo
+        authorization_subject.get("repo") == repository_identity
+        and approved_scope.get("repo") == repository_identity
     )
     commit_matches = (
-        authorization_subject.get("commit") == gate_subject.get("commit")
-        and approved_scope.get("commit") == gate_subject.get("commit")
-        and isinstance(gate_subject.get("commit"), str)
+        authorization_subject.get("commit") == commit
+        and approved_scope.get("commit") == commit
     )
     tree_matches = (
-        authorization_subject.get("tree_hash") == gate_subject.get("tree_hash")
-        and approved_scope.get("tree_hash") == gate_subject.get("tree_hash")
-        and isinstance(gate_subject.get("tree_hash"), str)
+        authorization_subject.get("tree_hash") == tree
+        and approved_scope.get("tree_hash") == tree
     )
     if (
         repo_matches
@@ -596,6 +605,9 @@ def validate_execution_authorization(
     now: datetime | None = None,
     runtime_image_reference: str | None = None,
     runtime_image_id: str | None = None,
+    expected_repository_identity: str | None = None,
+    expected_commit: str | None = None,
+    expected_tree: str | None = None,
     expected_snapshot_id: str | None = None,
     expected_manifest_fingerprint: str | None = None,
 ) -> ExecutionAuthorizationValidationResult:
@@ -716,13 +728,43 @@ def validate_execution_authorization(
             == expected_manifest_fingerprint
         )
     )
+    runtime_repository_matches = (
+        expected_repository_identity is None
+        or (
+            subject.get("repo") == expected_repository_identity
+            and approved_scope.get("repo") == expected_repository_identity
+            and gate_subject.get("repo") == expected_repository_identity
+        )
+    )
+    runtime_commit_matches = (
+        expected_commit is None
+        or (
+            subject.get("commit") == expected_commit
+            and approved_scope.get("commit") == expected_commit
+            and gate_subject.get("commit") == expected_commit
+        )
+    )
+    runtime_tree_matches = (
+        expected_tree is None
+        or (
+            subject.get("tree_hash") == expected_tree
+            and approved_scope.get("tree_hash") == expected_tree
+            and gate_subject.get("tree_hash") == expected_tree
+        )
+    )
     if schema_version == AUTHORIZATION_SCHEMA_VERSION:
         if (
             not snapshot_binding_present
             or gate_subject.get("binding_kind") != "snapshot_bound"
         ):
             errors.append(AUTHORIZATION_SNAPSHOT_BINDING_UNRESOLVED_REASON)
-        elif not (snapshot_id_matches and manifest_fingerprint_matches):
+        elif not (
+            runtime_repository_matches
+            and runtime_commit_matches
+            and runtime_tree_matches
+            and snapshot_id_matches
+            and manifest_fingerprint_matches
+        ):
             errors.append(AUTHORIZATION_SNAPSHOT_BINDING_MISMATCH_REASON)
 
     not_expired = _not_expired(authorization.get("expires_at"), now=now, errors=errors)

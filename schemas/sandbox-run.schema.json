@@ -103,6 +103,10 @@
         "authorization_manifest_fingerprint",
         "workspace_manifest_fingerprint",
         "evidence_manifest_fingerprint",
+        "actual_source_kind_is_git_commit",
+        "runtime_fields_resolved",
+        "gate_field_matches",
+        "authorization_field_matches",
         "gate_matches",
         "authorization_matches",
         "missing_or_unresolved"
@@ -119,6 +123,10 @@
         "authorization_manifest_fingerprint": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
         "workspace_manifest_fingerprint": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
         "evidence_manifest_fingerprint": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "actual_source_kind_is_git_commit": {"type": "boolean"},
+        "runtime_fields_resolved": {"$ref": "#/$defs/fiveFieldMatches"},
+        "gate_field_matches": {"$ref": "#/$defs/fiveFieldMatches"},
+        "authorization_field_matches": {"$ref": "#/$defs/fiveFieldMatches"},
         "gate_matches": {"type": "boolean"},
         "authorization_matches": {"type": "boolean"},
         "missing_or_unresolved": {"type": "boolean"}
@@ -354,6 +362,24 @@
         "observed_files": {"type": ["integer", "null"], "minimum": 0},
         "exceeded": {"type": ["boolean", "null"]},
         "kernel_enforced": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "fiveFieldMatches": {
+      "type": "object",
+      "required": [
+        "repository_identity",
+        "commit",
+        "tree",
+        "snapshot_id",
+        "manifest_fingerprint"
+      ],
+      "properties": {
+        "repository_identity": {"type": "boolean"},
+        "commit": {"type": "boolean"},
+        "tree": {"type": "boolean"},
+        "snapshot_id": {"type": "boolean"},
+        "manifest_fingerprint": {"type": "boolean"}
       },
       "additionalProperties": false
     }

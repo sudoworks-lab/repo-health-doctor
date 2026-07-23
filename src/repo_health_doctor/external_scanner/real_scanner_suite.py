@@ -14,6 +14,10 @@ import json
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
+from ..sandbox.run_workspace import (
+    DisposableWorkspace,
+    create_static_scan_snapshot,
+)
 from .adapters import (
     ExternalScannerAdapterCapability,
     GitleaksRunResult,
@@ -130,6 +134,39 @@ def run_real_scanner_suite(
     max_findings: int = REAL_SCANNER_MAX_FINDINGS,
     max_report_bytes: int = REAL_SCANNER_MAX_REPORT_BYTES,
 ) -> RealScannerSuiteReport:
+    """Create one bounded snapshot and scan only its immutable workspace."""
+    workspace = create_static_scan_snapshot(Path(repo_path))
+    try:
+        snapshot = workspace.verified_snapshot
+        if snapshot is None:
+            raise ValueError("verified snapshot intake refused the scanner target")
+        return _run_real_scanner_suite_on_snapshot(
+            workspace.workspace,
+            verified_workspace=workspace,
+            runner=runner,
+            timeout_seconds=timeout_seconds,
+            offline=offline,
+            scanners=scanners,
+            max_findings_per_scanner=max_findings_per_scanner,
+            max_findings=max_findings,
+            max_report_bytes=max_report_bytes,
+        )
+    finally:
+        workspace.cleanup()
+
+
+def _run_real_scanner_suite_on_snapshot(
+    repo_path: str | Path,
+    *,
+    verified_workspace: DisposableWorkspace,
+    runner: _ScannerRunner | None = None,
+    timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
+    offline: bool = False,
+    scanners: Sequence[str] = REAL_SCANNER_ADAPTER_NAMES,
+    max_findings_per_scanner: int = REAL_SCANNER_MAX_FINDINGS_PER_SCANNER,
+    max_findings: int = REAL_SCANNER_MAX_FINDINGS,
+    max_report_bytes: int = REAL_SCANNER_MAX_REPORT_BYTES,
+) -> RealScannerSuiteReport:
     """Run the selected scanners one at a time and aggregate bounded results.
 
     ``runner`` is passed to each adapter, which makes unavailable, timeout, and
@@ -159,6 +196,7 @@ def run_real_scanner_suite(
                 repo_path,
                 runner=runner,
                 timeout_seconds=timeout_seconds,
+                _verified_workspace=verified_workspace,
             )
         except Exception:
             entries.append(_runner_error_entry(scanner_name))

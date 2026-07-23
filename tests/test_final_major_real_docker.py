@@ -87,7 +87,14 @@ class FinalMajorRealDockerTests(unittest.TestCase):
         fixture_root = ROOT / "tests" / "fixtures" / "execution-authorization"
         gate = json.loads((fixture_root / "gate-allow-limited.json").read_text(encoding="utf-8"))
         observed = inspect_git_worktree(repo)
-        gate["subject"] = {**gate["subject"], "commit": observed["commit"], "tree_hash": observed["tree_hash"]}
+        gate["subject"] = {
+            "repo": observed["repo_identity"],
+            "commit": observed["commit"],
+            "tree_hash": observed["tree_hash"],
+            "snapshot_id": observed["snapshot_id"],
+            "manifest_fingerprint": observed["manifest_fingerprint"],
+            "binding_kind": "snapshot_bound",
+        }
         authorization = dict(
             build_execution_authorization_draft(
                 gate,
@@ -111,6 +118,11 @@ class FinalMajorRealDockerTests(unittest.TestCase):
             command,
             runtime_image_reference=IMAGE,
             runtime_image_id=self.image_id,
+            expected_repository_identity=observed["repo_identity"],
+            expected_commit=observed["commit"],
+            expected_tree=observed["tree_hash"],
+            expected_snapshot_id=observed["snapshot_id"],
+            expected_manifest_fingerprint=observed["manifest_fingerprint"],
         )
         self.assertTrue(validation.execution_authorized, validation.to_dict())
         return path, gate, validation

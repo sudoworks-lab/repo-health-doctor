@@ -59,16 +59,22 @@
 
 ## Sandbox Boundary
 
-- gateを伴うscanと`sandbox-run`はlive targetから先にbounded Verified Snapshotを
-  作り、scan、gate、authorization、Docker、evidenceを同じ`snapshot_id`と
-  manifest fingerprintへbindする。missingまたはmismatchはDocker前に拒否する。
+- default scan、gateを伴うscan、`real-scan`、`sandbox-run`はlive targetから先に
+  bounded Verified Snapshotを作る。scan traversal、policy読込、tracked-path取得、
+  real scanner、gate、authorization、Docker、evidenceはsnapshotまたは同じ
+  bounded control-file readerへ収束する。
 - snapshot intakeはiterative no-follow traversal、fixed-size streaming hash/copy、
   file/directory/depth/byte/path budget、lstat/fstat、source/root再検証を使う。
   symlink、special file、mutation、dirty/untracked Git tree、partial copyは
   fail-closedである。
 - Git intakeはtrusted absolute Git 2.42.0以上の`rev-parse`、`ls-tree`、
   `cat-file`だけをsanitized environmentで実行し、repository fsmonitor、hook、
-  credential helper、network、pager、editor、promptを起動しない。
+  credential helper、network、pager、editor、promptを起動しない。各Git childは
+  exec前のhard OS resource limitと独立process groupを持つ。
+- real executionはactual snapshotのrepository identity、commit、tree、
+  `snapshot_id`、manifest fingerprintの5項目すべてをgateとauthorizationへ照合する。
+- explicit authorization、runtime reload、argv JSONは64 KiB bounded、
+  `O_NOFOLLOW`、state-checked readerを共有する。
 - `sandbox` remains plan-first by default, and repo-derived Docker runtime commands require explicit opt-in plus exact-match approval before any gated execution path is considered
 - approval files are validated against normalized `argv` candidates before any execution gate is considered
 - disposable workspace materialization and cleanup now happen locally before report generation

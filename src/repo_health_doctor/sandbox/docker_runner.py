@@ -355,10 +355,50 @@ class DockerRunner:
                 cleanup_failure_class=cleanup[2],
                 command_start_state="not_started",
             )
-        stdout, stderr, counts, timed_out, output_budget_exceeded = _stream_process_output(
-            process,
-            timeout_seconds=timeout_seconds,
-        )
+        stream_failure: BaseException | None = None
+        stdout = ""
+        stderr = ""
+        counts: dict[str, int | bool] = {
+            "stdout_bytes": 0,
+            "stderr_bytes": 0,
+            "total_output_bytes": 0,
+            "stdout_truncated": False,
+            "stderr_truncated": False,
+        }
+        timed_out = False
+        output_budget_exceeded = False
+        try:
+            (
+                stdout,
+                stderr,
+                counts,
+                timed_out,
+                output_budget_exceeded,
+            ) = _stream_process_output(
+                process,
+                timeout_seconds=timeout_seconds,
+            )
+        except BaseException as exc:
+            stream_failure = exc
+        finally:
+            cleanup = self._cleanup_tracked_container(tracking)
+        if stream_failure is not None:
+            if not isinstance(stream_failure, Exception):
+                raise stream_failure
+            duration_ms = int((time.monotonic() - started) * 1000)
+            return RunnerResult(
+                status="failed",
+                exit_code=None,
+                stdout="",
+                stderr=stream_failure.__class__.__name__,
+                timed_out=False,
+                duration_ms=duration_ms,
+                container_tracking_enabled=tracking.enabled,
+                cleanup_attempted=cleanup[0],
+                container_cleanup_status=cleanup[1],
+                cleanup_failure_class=cleanup[2],
+                command_start_state="unknown",
+            )
         if timed_out:
             command_start_state = "unknown"
         elif output_budget_exceeded:
@@ -367,7 +407,6 @@ class DockerRunner:
             command_start_state = "not_started"
         else:
             command_start_state = "confirmed"
-        cleanup = self._cleanup_tracked_container(tracking)
         duration_ms = int((time.monotonic() - started) * 1000)
         if timed_out:
             status = "timed_out"

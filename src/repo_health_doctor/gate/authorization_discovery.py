@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import errno
-import json
 import os
 from pathlib import Path
-import stat
 from typing import Any, Mapping
 
+from ..control_file import (
+    CONTROL_FILE_MAX_BYTES,
+    ControlFileReadError,
+    load_bounded_json_document,
+)
 from ..sandbox.run_workspace import create_verified_snapshot
 
 
 AUTHORIZATION_DISCOVERY_FILENAME = ".repo-health-doctor.authorization.json"
-AUTHORIZATION_DISCOVERY_MAX_BYTES = 64 * 1024
+AUTHORIZATION_DISCOVERY_MAX_BYTES = CONTROL_FILE_MAX_BYTES
 
 TRACKED_REFUSED = "tracked_refused"
 NOT_A_GIT_REPO = "not_a_git_repo"
@@ -100,58 +102,23 @@ def discover_authorization(
 
 def _read_candidate(candidate: Path, *, max_bytes: int) -> AuthorizationDiscoveryResult:
     try:
-        before = candidate.lstat()
-    except FileNotFoundError:
-        return _refused(NOT_FOUND)
-    except OSError:
-        return _refused(FILE_CHANGED)
-
-    if stat.S_ISLNK(before.st_mode):
-        return _refused(SYMLINK_REFUSED)
-    if not stat.S_ISREG(before.st_mode):
-        return _refused(FILE_CHANGED)
-    if before.st_size > max_bytes:
-        return _refused(TOO_LARGE)
-
-    flags = os.O_RDONLY
-    flags |= getattr(os, "O_CLOEXEC", 0)
-    flags |= getattr(os, "O_NOFOLLOW", 0)
-    try:
-        descriptor = os.open(candidate, flags)
-    except OSError as error:
-        if error.errno == errno.ELOOP:
-            return _refused(SYMLINK_REFUSED)
-        return _refused(FILE_CHANGED)
-
-    try:
-        try:
-            opened = os.fstat(descriptor)
-        except OSError:
-            return _refused(FILE_CHANGED)
-        if not stat.S_ISREG(opened.st_mode) or not _same_file_state(before, opened):
-            return _refused(FILE_CHANGED)
-        if opened.st_size > max_bytes:
-            return _refused(TOO_LARGE)
-
-        try:
-            content = _bounded_read(descriptor, max_bytes=max_bytes)
-            after = os.fstat(descriptor)
-        except OSError:
-            return _refused(FILE_CHANGED)
-        if content is None:
-            return _refused(TOO_LARGE)
-        if not _same_file_state(opened, after) or len(content) != after.st_size:
-            return _refused(FILE_CHANGED)
-    finally:
-        try:
-            os.close(descriptor)
-        except OSError:
-            pass
-
-    try:
-        authorization = json.loads(content)
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
-        return _refused(PARSE_FAILED)
+        document = load_bounded_json_document(
+            candidate,
+            label="authorization",
+            max_bytes=max_bytes,
+            _open=os.open,
+            _fstat=os.fstat,
+            _read=_read_descriptor,
+        )
+    except ControlFileReadError as exc:
+        reason = {
+            "not_found": NOT_FOUND,
+            "symlink_refused": SYMLINK_REFUSED,
+            "too_large": TOO_LARGE,
+            "parse_failed": PARSE_FAILED,
+        }.get(exc.reason, FILE_CHANGED)
+        return _refused(reason)
+    authorization = document.payload
     if not isinstance(authorization, dict):
         return _refused(PARSE_FAILED)
     return AuthorizationDiscoveryResult(
@@ -161,43 +128,8 @@ def _read_candidate(candidate: Path, *, max_bytes: int) -> AuthorizationDiscover
     )
 
 
-def _bounded_read(descriptor: int, *, max_bytes: int) -> bytes | None:
-    remaining = max_bytes + 1
-    chunks: list[bytes] = []
-    while remaining:
-        chunk = _read_descriptor(descriptor, min(8192, remaining))
-        if not chunk:
-            break
-        chunks.append(chunk)
-        remaining -= len(chunk)
-    content = b"".join(chunks)
-    if len(content) > max_bytes:
-        return None
-    return content
-
-
 def _read_descriptor(descriptor: int, size: int) -> bytes:
     return os.read(descriptor, size)
-
-
-def _same_file_state(left: os.stat_result, right: os.stat_result) -> bool:
-    return (
-        left.st_dev,
-        left.st_ino,
-        left.st_mode,
-        left.st_size,
-        left.st_mtime_ns,
-        left.st_ctime_ns,
-    ) == (
-        right.st_dev,
-        right.st_ino,
-        right.st_mode,
-        right.st_size,
-        right.st_mtime_ns,
-        right.st_ctime_ns,
-    )
-
-
 def _refused(reason: str) -> AuthorizationDiscoveryResult:
     return AuthorizationDiscoveryResult(
         discovered=False,

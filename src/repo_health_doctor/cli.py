@@ -7,6 +7,11 @@ from pathlib import Path
 import sys
 from typing import Any, Mapping, Sequence
 
+from .control_file import (
+    BoundedJsonDocument,
+    ControlFileReadError,
+    load_bounded_json_document,
+)
 from .doctor import (
     DEFAULT_LARGE_FILE_THRESHOLD_MB,
     POLICY_ALLOW_STATUS_EXPIRED,
@@ -49,6 +54,7 @@ from .sandbox.run import DEFAULT_SANDBOX_IMAGE
 from .sandbox.run_workspace import (
     DisposableWorkspace,
     VerifiedSnapshot,
+    create_static_scan_snapshot,
     create_verified_snapshot,
 )
 from .gate import (
@@ -683,79 +689,114 @@ def main(argv: list[str] | None = None) -> int:
             runner = DockerRunner() if args.runner == "docker" else make_fake_runner(args.runner)
             sandbox_gate_decision = None
             sandbox_authorization_validation = None
+            sandbox_authorization_control: BoundedJsonDocument | None = None
             prepared_workspace = create_verified_snapshot(target)
-            prepared_snapshot = prepared_workspace.verified_snapshot
-            if (
-                prepared_snapshot is not None
-                and (args.fail_on_gate or args.authorization)
-            ):
-                scan_report = diagnose_repo(
-                    prepared_workspace.workspace,
-                    large_file_threshold_mb=DEFAULT_LARGE_FILE_THRESHOLD_MB,
-                    secrets_ignores=(),
-                    public_safety=True,
-                    config_path=None,
-                    local_config_path=None,
-                    load_local_config=True,
-                    tracked_relative_paths=_snapshot_tracked_paths(
-                        prepared_snapshot
-                    ),
-                )
-                sandbox_gate_decision = _bind_gate_decision_subject(
-                    evaluate_gate_decision_from_v3_report(
-                        scan_report,
-                        repo_root=prepared_workspace.workspace,
-                        subject=_snapshot_gate_subject(prepared_snapshot),
-                    ),
-                    prepared_snapshot,
-                )
-            if args.authorization:
-                try:
-                    authorization = _load_json_object(Path(args.authorization), "authorization")
-                    runtime_image_reference = args.image or DEFAULT_SANDBOX_IMAGE
-                    runtime_image_id = None
-                    if args.runner == "docker" and not args.dry_run and is_digest_pinned_authorization_reference(runtime_image_reference):
-                        runtime_image_id = runner.image_id(runtime_image_reference)
-                    sandbox_authorization_validation = validate_execution_authorization(
-                        authorization,
-                        _mapping(sandbox_gate_decision),
-                        sandbox_run_argv,
-                        runtime_image_reference=(
-                            runtime_image_reference
-                            if args.runner == "docker" and not args.dry_run
-                            else None
+            completed_sandbox_run = False
+            try:
+                prepared_snapshot = prepared_workspace.verified_snapshot
+                if (
+                    prepared_snapshot is not None
+                    and (args.fail_on_gate or args.authorization)
+                ):
+                    scan_report = diagnose_repo(
+                        prepared_workspace.workspace,
+                        large_file_threshold_mb=DEFAULT_LARGE_FILE_THRESHOLD_MB,
+                        secrets_ignores=(),
+                        public_safety=True,
+                        config_path=None,
+                        local_config_path=None,
+                        load_local_config=True,
+                        tracked_relative_paths=_snapshot_tracked_paths(
+                            prepared_snapshot
                         ),
-                        runtime_image_id=runtime_image_id,
-                        expected_snapshot_id=(
-                            prepared_snapshot.snapshot_id
-                            if prepared_snapshot is not None
-                            else None
+                        scan_relative_paths=_snapshot_scan_paths(
+                            prepared_snapshot
                         ),
-                        expected_manifest_fingerprint=(
-                            prepared_snapshot.manifest_fingerprint
-                            if prepared_snapshot is not None
-                            else None
-                        ),
+                        git_repository=prepared_snapshot.source_kind
+                        == "git_commit",
                     )
-                except ValueError as exc:
-                    parser.error(str(exc))
-            report = run_sandbox_run(
-                target,
-                approval_path=Path(args.approval) if args.approval else None,
-                image=args.image,
-                profile_name=args.profile,
-                seccomp_profile_name=args.seccomp,
-                command_argv=sandbox_run_argv,
-                timeout_seconds=args.timeout_seconds,
-                runner=runner,
-                dry_run=args.dry_run,
-                preserve_workspace=args.preserve_workspace,
-                gate_decision=sandbox_gate_decision,
-                fail_on_gate=args.fail_on_gate,
-                authorization_path=Path(args.authorization) if args.authorization else None,
-                authorization_validation=sandbox_authorization_validation,
-                prepared_workspace=prepared_workspace,
-            )
+                    sandbox_gate_decision = _bind_gate_decision_subject(
+                        evaluate_gate_decision_from_v3_report(
+                            scan_report,
+                            repo_root=prepared_workspace.workspace,
+                            subject=_snapshot_gate_subject(prepared_snapshot),
+                        ),
+                        prepared_snapshot,
+                    )
+                if args.authorization:
+                    try:
+                        sandbox_authorization_control = _load_json_document(
+                            Path(args.authorization),
+                            "authorization",
+                        )
+                        authorization = _require_json_object(
+                            sandbox_authorization_control,
+                            "authorization",
+                        )
+                        runtime_image_reference = args.image or DEFAULT_SANDBOX_IMAGE
+                        runtime_image_id = None
+                        if args.runner == "docker" and not args.dry_run and is_digest_pinned_authorization_reference(runtime_image_reference):
+                            runtime_image_id = runner.image_id(runtime_image_reference)
+                        sandbox_authorization_validation = validate_execution_authorization(
+                            authorization,
+                            _mapping(sandbox_gate_decision),
+                            sandbox_run_argv,
+                            runtime_image_reference=(
+                                runtime_image_reference
+                                if args.runner == "docker" and not args.dry_run
+                                else None
+                            ),
+                            runtime_image_id=runtime_image_id,
+                            expected_repository_identity=(
+                                prepared_snapshot.source_identity_redacted
+                                if prepared_snapshot is not None
+                                else None
+                            ),
+                            expected_commit=(
+                                prepared_snapshot.source_commit
+                                if prepared_snapshot is not None
+                                else None
+                            ),
+                            expected_tree=(
+                                prepared_snapshot.source_tree
+                                if prepared_snapshot is not None
+                                else None
+                            ),
+                            expected_snapshot_id=(
+                                prepared_snapshot.snapshot_id
+                                if prepared_snapshot is not None
+                                else None
+                            ),
+                            expected_manifest_fingerprint=(
+                                prepared_snapshot.manifest_fingerprint
+                                if prepared_snapshot is not None
+                                else None
+                            ),
+                        )
+                    except ValueError as exc:
+                        parser.error(str(exc))
+                report = run_sandbox_run(
+                    target,
+                    approval_path=Path(args.approval) if args.approval else None,
+                    image=args.image,
+                    profile_name=args.profile,
+                    seccomp_profile_name=args.seccomp,
+                    command_argv=sandbox_run_argv,
+                    timeout_seconds=args.timeout_seconds,
+                    runner=runner,
+                    dry_run=args.dry_run,
+                    preserve_workspace=args.preserve_workspace,
+                    gate_decision=sandbox_gate_decision,
+                    fail_on_gate=args.fail_on_gate,
+                    authorization_path=Path(args.authorization) if args.authorization else None,
+                    authorization_validation=sandbox_authorization_validation,
+                    authorization_control_document=sandbox_authorization_control,
+                    prepared_workspace=prepared_workspace,
+                )
+                completed_sandbox_run = True
+            finally:
+                if not completed_sandbox_run:
+                    prepared_workspace.cleanup()
             if sandbox_gate_decision is not None:
                 gate_report = dict(_mapping(report.get("gate")))
                 gate_report["decision_fingerprint"] = gate_decision_fingerprint(sandbox_gate_decision)
@@ -819,6 +860,8 @@ def main(argv: list[str] | None = None) -> int:
                 local_config_path=args.local_config,
                 load_local_config=not args.no_local_config,
                 tracked_relative_paths=_snapshot_tracked_paths(gate_snapshot),
+                scan_relative_paths=_snapshot_scan_paths(gate_snapshot),
+                git_repository=gate_snapshot.source_kind == "git_commit",
             )
             try:
                 external_suite_evidence = _load_external_suite_evidence(
@@ -867,6 +910,9 @@ def main(argv: list[str] | None = None) -> int:
                         authorization,
                         gate_decision,
                         argv,
+                        expected_repository_identity=gate_snapshot.source_identity_redacted,
+                        expected_commit=gate_snapshot.source_commit,
+                        expected_tree=gate_snapshot.source_tree,
                         expected_snapshot_id=gate_snapshot.snapshot_id,
                         expected_manifest_fingerprint=gate_snapshot.manifest_fingerprint,
                     )
@@ -883,6 +929,9 @@ def main(argv: list[str] | None = None) -> int:
                         discovered.authorization,
                         gate_decision,
                         gate_check_argv,
+                        expected_repository_identity=gate_snapshot.source_identity_redacted,
+                        expected_commit=gate_snapshot.source_commit,
+                        expected_tree=gate_snapshot.source_tree,
                         expected_snapshot_id=gate_snapshot.snapshot_id,
                         expected_manifest_fingerprint=gate_snapshot.manifest_fingerprint,
                     )
@@ -939,30 +988,41 @@ def main(argv: list[str] | None = None) -> int:
                 or getattr(args, "gate_summary", False)
                 or getattr(args, "fail_on_gate", None)
             )
-            scan_target = target
-            tracked_relative_paths = None
-            if gate_requested:
-                scan_gate_workspace = create_verified_snapshot(target)
-                scan_verified_snapshot = scan_gate_workspace.verified_snapshot
-                if scan_verified_snapshot is None:
-                    scan_gate_workspace.cleanup()
-                    parser.error(
-                        "verified snapshot intake refused the target before gate evaluation"
-                    )
-                scan_target = scan_gate_workspace.workspace
-                tracked_relative_paths = _snapshot_tracked_paths(
-                    scan_verified_snapshot
-                )
-            report = diagnose_repo(
-                scan_target,
-                large_file_threshold_mb=args.large_file_threshold_mb,
-                secrets_ignores=tuple(args.secrets_ignore),
-                public_safety=args.public_safety,
-                config_path=args.config,
-                local_config_path=args.local_config,
-                load_local_config=not args.no_local_config,
-                tracked_relative_paths=tracked_relative_paths,
+            scan_gate_workspace = (
+                create_verified_snapshot(target)
+                if gate_requested
+                else create_static_scan_snapshot(target)
             )
+            scan_verified_snapshot = scan_gate_workspace.verified_snapshot
+            if scan_verified_snapshot is None:
+                scan_gate_workspace.cleanup()
+                parser.error(
+                    "verified snapshot intake refused the target before scanning"
+                )
+            try:
+                report = diagnose_repo(
+                    scan_gate_workspace.workspace,
+                    large_file_threshold_mb=args.large_file_threshold_mb,
+                    secrets_ignores=tuple(args.secrets_ignore),
+                    public_safety=args.public_safety,
+                    config_path=args.config,
+                    local_config_path=args.local_config,
+                    load_local_config=not args.no_local_config,
+                    tracked_relative_paths=_snapshot_tracked_paths(
+                        scan_verified_snapshot
+                    ),
+                    scan_relative_paths=_snapshot_scan_paths(
+                        scan_verified_snapshot
+                    ),
+                    report_root=target,
+                    git_repository=scan_verified_snapshot.source_kind
+                    == "git_commit",
+                )
+            except BaseException:
+                scan_gate_workspace.cleanup()
+                raise
+            if not gate_requested:
+                scan_gate_workspace.cleanup()
             fail_on = "warn" if args.strict else args.fail_on
     if command in {"authorization-draft", "authorization-validate"}:
         output = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
@@ -1078,27 +1138,34 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _load_json_object(path: Path, label: str) -> dict[str, object]:
-    if not path.exists():
-        raise ValueError(f"{label} path does not exist: <path>")
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"{label} JSON parse failed: {exc.msg}") from exc
-    if not isinstance(payload, dict):
-        raise ValueError(f"{label} must be a JSON object")
-    return payload
+    return _require_json_object(_load_json_document(path, label), label)
 
 
 def _load_argv_json(path: Path) -> list[str]:
-    if not path.exists():
-        raise ValueError("argv JSON path does not exist: <path>")
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"argv JSON parse failed: {exc.msg}") from exc
+    payload = _load_json_document(path, "argv JSON").payload
     if not isinstance(payload, list) or not payload or not all(isinstance(item, str) and item for item in payload):
         raise ValueError("argv JSON must be a non-empty JSON array of strings")
     return payload
+
+
+def _load_json_document(path: Path, label: str) -> BoundedJsonDocument:
+    try:
+        return load_bounded_json_document(path, label=label)
+    except ControlFileReadError as exc:
+        if exc.reason == "not_found":
+            raise ValueError(f"{label} path does not exist: <path>") from exc
+        if exc.reason == "parse_failed":
+            raise ValueError(f"{label} JSON parse failed") from exc
+        raise ValueError(f"{label} path was refused: {exc.reason}") from exc
+
+
+def _require_json_object(
+    document: BoundedJsonDocument,
+    label: str,
+) -> dict[str, object]:
+    if not isinstance(document.payload, dict):
+        raise ValueError(f"{label} must be a JSON object")
+    return document.payload
 
 
 def _load_external_suite_evidence(
@@ -1154,6 +1221,10 @@ def _external_evidence_subject(
 
 
 def _snapshot_tracked_paths(snapshot: VerifiedSnapshot) -> tuple[str, ...]:
+    return snapshot.source_tracked_paths
+
+
+def _snapshot_scan_paths(snapshot: VerifiedSnapshot) -> tuple[str, ...]:
     return tuple(
         entry.path
         for entry in snapshot.manifest

@@ -7,9 +7,9 @@ from collections import Counter
 from pathlib import Path
 import json
 import re
-import subprocess
 from typing import Iterable
 
+from .control_file import ControlFileReadError, read_bounded_control_file
 
 DEFAULT_LARGE_FILE_THRESHOLD_MB = 10
 LARGE_FILE_THRESHOLD_BYTES = DEFAULT_LARGE_FILE_THRESHOLD_MB * 1024 * 1024
@@ -247,13 +247,19 @@ class PolicyConfig:
     allow_finding_count: int
 
 
-def _iter_files(root: Path, ignore_patterns: tuple[str, ...] = ()) -> Iterable[Path]:
-    for path in root.rglob("*"):
-        if any(part in IGNORED_DIRS for part in path.parts):
+def _iter_files(
+    root: Path,
+    relative_paths: tuple[str, ...],
+    ignore_patterns: tuple[str, ...] = (),
+) -> Iterable[Path]:
+    for relative_text in sorted(relative_paths):
+        relative = Path(relative_text)
+        if any(part in IGNORED_DIRS for part in relative.parts):
             continue
-        if path.is_file():
-            if _is_ignored_path(path.relative_to(root), ignore_patterns):
-                continue
+        if _is_ignored_path(relative, ignore_patterns):
+            continue
+        path = root / relative
+        if path.is_file() and not path.is_symlink():
             yield path
 
 
@@ -276,15 +282,6 @@ def _iter_candidate_files(
                     continue
                 yield path
         return
-
-    for path in root.rglob("*"):
-        if not include_ignored and any(part in IGNORED_DIRS for part in path.parts):
-            continue
-        if path.is_file():
-            if _is_ignored_path(path.relative_to(root), ignore_patterns):
-                continue
-            yield path
-
 
 def _has_any(root: Path, names: tuple[str, ...]) -> list[str]:
     found: list[str] = []
@@ -353,32 +350,6 @@ def _is_binary_file(path: Path) -> bool:
     return NULL_BYTE in sample
 
 
-def _list_tracked_files(root: Path) -> tuple[Path, ...] | None:
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(root), "ls-files", "-z"],
-            check=False,
-            capture_output=True,
-        )
-    except OSError:
-        return None
-    if result.returncode != 0:
-        return None
-
-    tracked_files: list[Path] = []
-    for raw_path in result.stdout.split(NULL_BYTE):
-        if not raw_path:
-            continue
-        try:
-            relative_path = Path(raw_path.decode("utf-8"))
-        except UnicodeDecodeError:
-            continue
-        candidate = root / relative_path
-        if candidate.is_file():
-            tracked_files.append(candidate)
-    return tuple(tracked_files)
-
-
 def _safe_repo_path(root: Path) -> str:
     try:
         cwd = Path.cwd().resolve()
@@ -441,7 +412,11 @@ def _parse_simple_policy_yaml(content: str) -> dict:
 
 
 def _load_policy_document(path: Path) -> dict:
-    content = path.read_text(encoding="utf-8")
+    try:
+        raw = read_bounded_control_file(path, label="policy").content
+        content = raw.decode("utf-8")
+    except (ControlFileReadError, UnicodeDecodeError) as exc:
+        raise ValueError("policy document could not be read safely") from exc
     if not content.strip():
         return {}
     try:
@@ -1018,11 +993,15 @@ def diff_reports(before_report_path: str | Path, after_report_path: str | Path) 
     return _diff_loaded_reports(before_report, after_report)
 
 
-def _scan_secrets(root: Path, ignore_patterns: tuple[str, ...]) -> tuple[list[dict], int]:
+def _scan_secrets(
+    root: Path,
+    ignore_patterns: tuple[str, ...],
+    relative_paths: tuple[str, ...],
+) -> tuple[list[dict], int]:
     findings: list[dict] = []
     scanned_files = 0
 
-    for path in _iter_files(root):
+    for path in _iter_files(root, relative_paths):
         if scanned_files >= MAX_SCANNED_FILES:
             break
         relative_path = path.relative_to(root)
@@ -1057,9 +1036,18 @@ def _scan_secrets(root: Path, ignore_patterns: tuple[str, ...]) -> tuple[list[di
     return findings, scanned_files
 
 
-def _scan_large_files(root: Path, threshold_bytes: int, ignore_patterns: tuple[str, ...]) -> list[dict]:
+def _scan_large_files(
+    root: Path,
+    threshold_bytes: int,
+    ignore_patterns: tuple[str, ...],
+    relative_paths: tuple[str, ...],
+) -> list[dict]:
     findings: list[dict] = []
-    for path in _iter_files(root, ignore_patterns=ignore_patterns):
+    for path in _iter_files(
+        root,
+        relative_paths,
+        ignore_patterns=ignore_patterns,
+    ):
         try:
             size = path.stat().st_size
         except OSError:
@@ -1179,8 +1167,45 @@ def diagnose_repo(
     local_config_path: str | Path | None = None,
     load_local_config: bool = True,
     tracked_relative_paths: tuple[str, ...] | None = None,
+    scan_relative_paths: tuple[str, ...] | None = None,
+    report_root: str | Path | None = None,
+    git_repository: bool = False,
 ) -> dict:
     root = Path(repo_path).resolve()
+    if tracked_relative_paths is None:
+        from .sandbox.run_workspace import create_static_scan_snapshot
+
+        workspace = create_static_scan_snapshot(root)
+        try:
+            snapshot = workspace.verified_snapshot
+            if snapshot is None:
+                raise ValueError("verified snapshot intake refused the target")
+            return diagnose_repo(
+                workspace.workspace,
+                large_file_threshold_mb=large_file_threshold_mb,
+                secrets_ignores=secrets_ignores,
+                public_safety=public_safety,
+                config_path=config_path,
+                local_config_path=local_config_path,
+                load_local_config=load_local_config,
+                tracked_relative_paths=tuple(
+                    snapshot.source_tracked_paths
+                ),
+                scan_relative_paths=tuple(
+                    entry.path
+                    for entry in snapshot.manifest
+                    if entry.entry_type == "file"
+                ),
+                report_root=root if report_root is None else report_root,
+                git_repository=snapshot.source_kind == "git_commit",
+            )
+        finally:
+            workspace.cleanup()
+    bounded_scan_paths = (
+        scan_relative_paths
+        if scan_relative_paths is not None
+        else tracked_relative_paths
+    )
     threshold_bytes = large_file_threshold_mb * 1024 * 1024
     policy = _load_policy_config(
         root,
@@ -1217,6 +1242,8 @@ def diagnose_repo(
     )
 
     gitignores = _has_any(root, GITIGNORE_NAMES)
+    if git_repository and ".git/info/exclude" not in gitignores:
+        gitignores.append(".git/info/exclude")
     checks.append(
         CheckResult(
             name="gitignore",
@@ -1270,7 +1297,11 @@ def diagnose_repo(
         )
     )
 
-    secret_findings, scanned_files = _scan_secrets(root, combined_secrets_ignores)
+    secret_findings, scanned_files = _scan_secrets(
+        root,
+        combined_secrets_ignores,
+        bounded_scan_paths,
+    )
     secret_findings = _apply_allow_findings(secret_findings, policy)
     checks.append(
         CheckResult(
@@ -1289,7 +1320,15 @@ def diagnose_repo(
         )
     )
 
-    large_files = _apply_allow_findings(_scan_large_files(root, threshold_bytes, policy_ignore_paths), policy)
+    large_files = _apply_allow_findings(
+        _scan_large_files(
+            root,
+            threshold_bytes,
+            policy_ignore_paths,
+            bounded_scan_paths,
+        ),
+        policy,
+    )
     checks.append(
         CheckResult(
             name="large_files",
@@ -1306,12 +1345,13 @@ def diagnose_repo(
     if public_safety:
         tracked_files = (
             tuple(root / relative for relative in tracked_relative_paths)
-            if tracked_relative_paths is not None
-            else _list_tracked_files(root)
+        )
+        public_scan_files = tuple(
+            root / relative for relative in bounded_scan_paths
         )
         public_text_findings, scanned_files, scope = _scan_public_text_safety(
             root,
-            tracked_files,
+            public_scan_files,
             (),
         )
         public_text_findings = _apply_allow_findings(public_text_findings, policy)
@@ -1362,7 +1402,10 @@ def diagnose_repo(
     if policy.sources or policy.issues:
         checks.append(_policy_check(policy))
 
-    return _build_report(root, checks)
+    return _build_report(
+        Path(report_root).resolve() if report_root is not None else root,
+        checks,
+    )
 
 
 def validate_policy(

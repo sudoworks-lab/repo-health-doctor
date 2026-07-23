@@ -40,6 +40,8 @@ DIRECTORY_EXCLUSIONS = {
     ".nox": "cache",
     "dist": "build_output",
     "build": "build_output",
+    "logs": "generated_output",
+    "log": "generated_output",
     ".cache": "cache",
     ".aws": "credential_like",
     ".azure": "credential_like",

@@ -180,9 +180,9 @@ class ExecutionAuthorizationWorktreeBindingTests(unittest.TestCase):
             )
 
             self.assertTrue(report["policy_blocked"])
-            self.assertEqual(report["authorization"]["snapshot_binding"]["status"], "mismatch")  # type: ignore[index]
+            self.assertEqual(report["authorization"]["snapshot_binding"]["status"], "unresolved")  # type: ignore[index]
             reasons = report["authorization"]["snapshot_binding"]["refusal_reasons"]  # type: ignore[index]
-            self.assertIn(AUTHORIZATION_SNAPSHOT_BINDING_MISMATCH_REASON, reasons)
+            self.assertIn(AUTHORIZATION_SNAPSHOT_BINDING_UNRESOLVED_REASON, reasons)
 
 
 if __name__ == "__main__":

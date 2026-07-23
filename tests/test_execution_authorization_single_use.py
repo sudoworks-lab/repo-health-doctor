@@ -62,7 +62,7 @@ class ExecutionAuthorizationSingleUseTests(unittest.TestCase):
         gate = deepcopy(_fixture("gate-allow-limited.json"))
         observed = inspect_git_worktree(repo)
         subject = {
-            "repo": "<repo>",
+            "repo": observed["repo_identity"],
             "commit": observed["commit"],
             "tree_hash": observed["tree_hash"],
             "snapshot_id": observed["snapshot_id"],

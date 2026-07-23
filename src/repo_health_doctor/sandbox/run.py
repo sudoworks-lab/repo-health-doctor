@@ -8,6 +8,12 @@ from pathlib import Path
 from typing import Any, Mapping
 from uuid import uuid4
 
+from ..control_file import (
+    BoundedJsonDocument,
+    ControlFileReadError,
+    control_file_matches,
+    load_bounded_json_document,
+)
 from ..doctor import TOOL_VERSION
 from ..gate.authorization import (
     gate_decision_fingerprint,
@@ -115,6 +121,66 @@ def run_sandbox_run(
     fail_on_gate: str | None = None,
     authorization_path: Path | None = None,
     authorization_validation: Any | None = None,
+    authorization_control_document: BoundedJsonDocument | None = None,
+    prepared_workspace: DisposableWorkspace | None = None,
+) -> dict[str, Any]:
+    """Own the prepared snapshot until a report is returned.
+
+    Interruptions and other BaseException paths still attempt workspace cleanup.
+    """
+    workspace = (
+        prepared_workspace
+        if prepared_workspace is not None
+        else create_verified_snapshot(target, copy_budget=copy_budget)
+    )
+    completed = False
+    try:
+        report = _run_sandbox_run(
+            target,
+            approval_path=approval_path,
+            image=image,
+            profile_name=profile_name,
+            seccomp_profile_name=seccomp_profile_name,
+            command_argv=command_argv,
+            timeout_seconds=timeout_seconds,
+            runner=runner,
+            output_preview_chars=output_preview_chars,
+            dry_run=dry_run,
+            preserve_workspace=preserve_workspace,
+            copy_budget=copy_budget,
+            gate_decision=gate_decision,
+            fail_on_gate=fail_on_gate,
+            authorization_path=authorization_path,
+            authorization_validation=authorization_validation,
+            authorization_control_document=authorization_control_document,
+            prepared_workspace=workspace,
+        )
+        completed = True
+        return report
+    finally:
+        if not completed:
+            workspace.cleanup()
+
+
+def _run_sandbox_run(
+    target: Path,
+    *,
+    approval_path: Path | None = None,
+    image: str | None = None,
+    profile_name: str = PROFILE_LOCKED_DOWN,
+    seccomp_profile_name: str = SECCOMP_RUNTIME_DEFAULT,
+    command_argv: list[str],
+    timeout_seconds: int = 30,
+    runner: SandboxDockerRunner | None = None,
+    output_preview_chars: int = DEFAULT_OUTPUT_PREVIEW_CHARS,
+    dry_run: bool = False,
+    preserve_workspace: bool = False,
+    copy_budget: CopyBudget | None = None,
+    gate_decision: Mapping[str, Any] | None = None,
+    fail_on_gate: str | None = None,
+    authorization_path: Path | None = None,
+    authorization_validation: Any | None = None,
+    authorization_control_document: BoundedJsonDocument | None = None,
     prepared_workspace: DisposableWorkspace | None = None,
 ) -> dict[str, Any]:
     target = Path(os.path.abspath(target))
@@ -142,6 +208,11 @@ def run_sandbox_run(
     )
     snapshot = workspace.verified_snapshot
     snapshot_id = snapshot.snapshot_id if snapshot is not None else None
+    repository_identity = (
+        snapshot.source_identity_redacted if snapshot is not None else None
+    )
+    source_commit = snapshot.source_commit if snapshot is not None else None
+    source_tree = snapshot.source_tree if snapshot is not None else None
     manifest_fingerprint = (
         snapshot.manifest_fingerprint if snapshot is not None else None
     )
@@ -174,14 +245,32 @@ def run_sandbox_run(
         require_image_binding=require_real_authorization,
         workspace=workspace,
     )
-    authorization_document = (
-        _load_authorization_document(authorization_path)
+    runtime_authorization_control = (
+        _load_authorization_control_document(authorization_path)
         if authorization_path is not None
         else None
     )
+    authorization_document = (
+        runtime_authorization_control.payload
+        if runtime_authorization_control is not None
+        and isinstance(runtime_authorization_control.payload, Mapping)
+        else None
+    )
+    authorization_control_matches = (
+        authorization_control_document is None
+        or (
+            runtime_authorization_control is not None
+            and control_file_matches(
+                authorization_control_document,
+                runtime_authorization_control,
+            )
+        )
+    )
+    if authorization_path is not None and not authorization_control_matches:
+        policy_reasons.append("authorization_control_file_changed")
 
     if require_real_authorization and authorization_path is not None:
-        if authorization_document is None:
+        if authorization_document is None or not authorization_control_matches:
             authorization_validation = None
         else:
             runtime_image_id = (
@@ -195,6 +284,9 @@ def run_sandbox_run(
                 command_argv,
                 runtime_image_reference=image,
                 runtime_image_id=runtime_image_id,
+                expected_repository_identity=repository_identity,
+                expected_commit=source_commit,
+                expected_tree=source_tree,
                 expected_snapshot_id=snapshot_id,
                 expected_manifest_fingerprint=manifest_fingerprint,
             )
@@ -243,17 +335,27 @@ def run_sandbox_run(
         policy_reasons.extend(_authorization_blocking_reasons(authorization_validation))
 
     subject_consistency = _subject_consistency_report(
+        repository_identity=repository_identity,
+        commit=source_commit,
+        tree=source_tree,
+        source_kind=snapshot.source_kind if snapshot is not None else None,
         snapshot_id=snapshot_id,
         manifest_fingerprint=manifest_fingerprint,
         gate_decision=gate_decision,
         authorization=authorization_document,
     )
     base_report["subject_consistency"] = subject_consistency
-    if gate_decision is not None and not subject_consistency["gate_matches"]:
+    if (
+        not dry_run
+        and gate_decision is not None
+        and not subject_consistency["gate_matches"]
+    ):
         policy_reasons.append("snapshot_subject_mismatch")
-    if authorization_path is not None and not subject_consistency[
-        "authorization_matches"
-    ]:
+    if (
+        not dry_run
+        and authorization_path is not None
+        and not subject_consistency["authorization_matches"]
+    ):
         policy_reasons.append("snapshot_subject_mismatch")
     if require_real_authorization and not subject_consistency["consistent"]:
         policy_reasons.append("snapshot_subject_mismatch")
@@ -282,6 +384,9 @@ def run_sandbox_run(
         snapshot_binding = validate_execution_authorization_snapshot_binding(
             authorization_document or {},
             gate_decision or {},
+            repository_identity=repository_identity,
+            commit=source_commit,
+            tree=source_tree,
             snapshot_id=snapshot_id,
             manifest_fingerprint=manifest_fingerprint,
         )
@@ -422,6 +527,29 @@ def run_sandbox_run(
             report["sandbox_exit_code"] = 0
             return _finalize_report(report, workspace=workspace, preserve_workspace=preserve_workspace)
         if authorization_path is not None:
+            reservation_control = _load_authorization_control_document(
+                authorization_path
+            )
+            if (
+                runtime_authorization_control is None
+                or reservation_control is None
+                or not control_file_matches(
+                    runtime_authorization_control,
+                    reservation_control,
+                )
+            ):
+                return _policy_blocked_report(
+                    base_report,
+                    approval_path=approval_path,
+                    refusal_reasons=["authorization_control_file_changed"],
+                    approval_validation=authorization_validation,
+                    next_actions=[
+                        "Obtain a new authorization artifact and repeat validation.",
+                        "Do not run the repository-derived command on the host as a fallback.",
+                    ],
+                    workspace=workspace,
+                    preserve_workspace=preserve_workspace,
+                )
             reservation = reserve_execution_authorization(authorization_path)
             base_report["authorization"]["single_use_reservation"] = reservation.to_dict()
             if not reservation.reserved:
@@ -432,6 +560,29 @@ def run_sandbox_run(
                     approval_validation=approval_validation,
                     next_actions=[
                         "Do not retry the authorization after a reservation refusal; obtain a new authorization artifact.",
+                        "Do not run the repository-derived command on the host as a fallback.",
+                    ],
+                    workspace=workspace,
+                    preserve_workspace=preserve_workspace,
+                )
+            post_reservation_control = _load_authorization_control_document(
+                authorization_path
+            )
+            if (
+                runtime_authorization_control is None
+                or post_reservation_control is None
+                or not control_file_matches(
+                    runtime_authorization_control,
+                    post_reservation_control,
+                )
+            ):
+                return _policy_blocked_report(
+                    base_report,
+                    approval_path=approval_path,
+                    refusal_reasons=["authorization_control_file_changed"],
+                    approval_validation=authorization_validation,
+                    next_actions=[
+                        "The consumed authorization changed; obtain a new authorization artifact.",
                         "Do not run the repository-derived command on the host as a fallback.",
                     ],
                     workspace=workspace,
@@ -649,6 +800,26 @@ def _base_report(
         },
         "verified_snapshot": verified_snapshot,
         "subject_consistency": _subject_consistency_report(
+            repository_identity=(
+                workspace.verified_snapshot.source_identity_redacted
+                if workspace.verified_snapshot is not None
+                else None
+            ),
+            commit=(
+                workspace.verified_snapshot.source_commit
+                if workspace.verified_snapshot is not None
+                else None
+            ),
+            tree=(
+                workspace.verified_snapshot.source_tree
+                if workspace.verified_snapshot is not None
+                else None
+            ),
+            source_kind=(
+                workspace.verified_snapshot.source_kind
+                if workspace.verified_snapshot is not None
+                else None
+            ),
             snapshot_id=(
                 workspace.verified_snapshot.snapshot_id
                 if workspace.verified_snapshot is not None
@@ -892,6 +1063,10 @@ def _gate_report(gate_decision: Mapping[str, Any] | None, fail_on_gate: str | No
 
 def _subject_consistency_report(
     *,
+    repository_identity: str | None,
+    commit: str | None,
+    tree: str | None,
+    source_kind: str | None,
     snapshot_id: str | None,
     manifest_fingerprint: str | None,
     gate_decision: Mapping[str, Any] | None,
@@ -909,36 +1084,74 @@ def _subject_consistency_report(
         and isinstance(authorization.get("subject"), Mapping)
         else {}
     )
-    gate_snapshot_id = gate_subject.get("snapshot_id")
-    gate_manifest = gate_subject.get("manifest_fingerprint")
-    authorization_snapshot_id = authorization_subject.get("snapshot_id")
-    authorization_manifest = authorization_subject.get("manifest_fingerprint")
-    snapshot_resolved = _is_sha256_fingerprint(snapshot_id) and _is_sha256_fingerprint(
-        manifest_fingerprint
+    actual_fields = {
+        "repository_identity": repository_identity,
+        "commit": commit,
+        "tree": tree,
+        "snapshot_id": snapshot_id,
+        "manifest_fingerprint": manifest_fingerprint,
+    }
+    gate_fields = {
+        "repository_identity": gate_subject.get("repo"),
+        "commit": gate_subject.get("commit"),
+        "tree": gate_subject.get("tree_hash"),
+        "snapshot_id": gate_subject.get("snapshot_id"),
+        "manifest_fingerprint": gate_subject.get("manifest_fingerprint"),
+    }
+    authorization_fields = {
+        "repository_identity": authorization_subject.get("repo"),
+        "commit": authorization_subject.get("commit"),
+        "tree": authorization_subject.get("tree_hash"),
+        "snapshot_id": authorization_subject.get("snapshot_id"),
+        "manifest_fingerprint": authorization_subject.get(
+            "manifest_fingerprint"
+        ),
+    }
+    field_resolved = {
+        "repository_identity": _is_sha256_fingerprint(repository_identity),
+        "commit": isinstance(commit, str) and bool(commit),
+        "tree": isinstance(tree, str) and bool(tree),
+        "snapshot_id": _is_sha256_fingerprint(snapshot_id),
+        "manifest_fingerprint": _is_sha256_fingerprint(manifest_fingerprint),
+    }
+    snapshot_resolved = source_kind == "git_commit" and all(
+        field_resolved.values()
     )
+    gate_field_matches = {
+        key: value == actual_fields[key]
+        for key, value in gate_fields.items()
+    }
+    authorization_field_matches = {
+        key: value == actual_fields[key]
+        for key, value in authorization_fields.items()
+    }
     gate_matches = gate_decision is None or (
-        gate_subject.get("binding_kind") in {"snapshot_bound", "path_bound"}
-        and gate_snapshot_id == snapshot_id
-        and gate_manifest == manifest_fingerprint
+        gate_subject.get("binding_kind") == "snapshot_bound"
+        and all(gate_field_matches.values())
     )
     authorization_matches = authorization is None or (
-        authorization_snapshot_id == snapshot_id
-        and authorization_manifest == manifest_fingerprint
+        all(authorization_field_matches.values())
     )
     return {
         "consistent": bool(
             snapshot_resolved and gate_matches and authorization_matches
         ),
         "scan_snapshot_id": snapshot_id,
-        "gate_snapshot_id": gate_snapshot_id,
-        "authorization_snapshot_id": authorization_snapshot_id,
+        "gate_snapshot_id": gate_fields["snapshot_id"],
+        "authorization_snapshot_id": authorization_fields["snapshot_id"],
         "workspace_snapshot_id": snapshot_id,
         "evidence_snapshot_id": snapshot_id,
         "scan_manifest_fingerprint": manifest_fingerprint,
-        "gate_manifest_fingerprint": gate_manifest,
-        "authorization_manifest_fingerprint": authorization_manifest,
+        "gate_manifest_fingerprint": gate_fields["manifest_fingerprint"],
+        "authorization_manifest_fingerprint": authorization_fields[
+            "manifest_fingerprint"
+        ],
         "workspace_manifest_fingerprint": manifest_fingerprint,
         "evidence_manifest_fingerprint": manifest_fingerprint,
+        "actual_source_kind_is_git_commit": source_kind == "git_commit",
+        "runtime_fields_resolved": field_resolved,
+        "gate_field_matches": gate_field_matches,
+        "authorization_field_matches": authorization_field_matches,
         "gate_matches": gate_matches,
         "authorization_matches": authorization_matches,
         "missing_or_unresolved": not snapshot_resolved,
@@ -1050,12 +1263,26 @@ def _authorization_blocking_reasons(
     return list(dict.fromkeys(reasons or ["authorization_invalid"]))
 
 
-def _load_authorization_document(path: Path) -> Mapping[str, Any] | None:
+def _load_authorization_control_document(
+    path: Path,
+) -> BoundedJsonDocument | None:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        document = load_bounded_json_document(
+            path,
+            label="authorization",
+        )
+    except ControlFileReadError:
         return None
-    return payload if isinstance(payload, Mapping) else None
+    return document if isinstance(document.payload, Mapping) else None
+
+
+def _load_authorization_document(path: Path) -> Mapping[str, Any] | None:
+    document = _load_authorization_control_document(path)
+    return (
+        document.payload
+        if document is not None and isinstance(document.payload, Mapping)
+        else None
+    )
 
 
 def _command_uses_explicit_shell(command_argv: list[str]) -> bool:

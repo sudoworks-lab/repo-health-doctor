@@ -16,6 +16,11 @@ import subprocess
 import tempfile
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
+from ...sandbox.run_workspace import (
+    DisposableWorkspace,
+    create_static_scan_snapshot,
+    verify_verified_snapshot,
+)
 from ..result_validator import (
     EXTERNAL_SCANNER_RESULT_SCHEMA_VERSION,
     REPORT_KIND_EXTERNAL_SCANNER_RESULT,
@@ -185,10 +190,59 @@ def run_osv_scan(
     *,
     runner: RunnerCallable | None = None,
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+    _verified_workspace: DisposableWorkspace | None = None,
 ) -> OsvScannerRunResult:
+    if _verified_workspace is None:
+        workspace = create_static_scan_snapshot(Path(repo_path))
+        try:
+            if workspace.verified_snapshot is None:
+                normalized = _unknown_result(
+                    scanner_version="unknown",
+                    repo_commit=None,
+                    dirty_state="unknown",
+                    unknown_reason="snapshot_intake_refused",
+                    scanner_completed=False,
+                    network_used=False,
+                )
+                return _run_result(
+                    False,
+                    False,
+                    ("snapshot_intake_refused",),
+                    (),
+                    normalized,
+                )
+            return run_osv_scan(
+                workspace.workspace,
+                runner=runner,
+                timeout_seconds=timeout_seconds,
+                _verified_workspace=workspace,
+            )
+        finally:
+            workspace.cleanup()
     target_repo = Path(repo_path)
+    verified_snapshot = _verified_workspace.verified_snapshot
+    if (
+        verified_snapshot is None
+        or target_repo.resolve() != _verified_workspace.workspace.resolve()
+        or not verify_verified_snapshot(_verified_workspace)
+    ):
+        normalized = _unknown_result(
+            scanner_version="unknown",
+            repo_commit=None,
+            dirty_state="unknown",
+            unknown_reason="snapshot_intake_refused",
+            scanner_completed=False,
+            network_used=False,
+        )
+        return _run_result(
+            False,
+            False,
+            ("snapshot_intake_refused",),
+            (),
+            normalized,
+        )
     active_runner = runner or _run_command
-    repo_commit, dirty_state = _repo_commit_and_dirty_state(target_repo)
+    repo_commit, dirty_state = _repo_commit_and_dirty_state(verified_snapshot)
     version_result = _run_preflight(active_runner, timeout_seconds)
     if version_result is None or version_result.returncode != 0 or version_result.timed_out:
         unknown_reason = "timeout" if version_result is not None and version_result.timed_out else "scanner_unavailable"
@@ -400,28 +454,16 @@ def _run_command(argv: Sequence[str], timeout_seconds: int) -> OsvScannerCommand
     )
 
 
-def _repo_commit_and_dirty_state(repo_path: Path) -> tuple[str | None, str]:
-    commit = _git_output(repo_path, ("rev-parse", "HEAD"))
-    status = _git_output(repo_path, ("status", "--short"))
-    dirty_state = "unknown" if status is None else ("dirty" if status.strip() else "clean")
-    return commit, dirty_state
-
-
-def _git_output(repo_path: Path, args: Sequence[str]) -> str | None:
-    try:
-        completed = subprocess.run(
-            ["git", "-C", str(repo_path), *args],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if completed.returncode != 0:
-        return None
-    value = completed.stdout.strip()
-    return value or None
+def _repo_commit_and_dirty_state(
+    snapshot: object,
+) -> tuple[str | None, str]:
+    if (
+        not hasattr(snapshot, "source_kind")
+        or getattr(snapshot, "source_kind") != "git_commit"
+        or not isinstance(getattr(snapshot, "source_commit", None), str)
+    ):
+        return None, "unknown"
+    return str(getattr(snapshot, "source_commit")), "clean"
 
 
 def _parse_osv_report(report_bytes: bytes) -> Mapping[str, Any] | None:

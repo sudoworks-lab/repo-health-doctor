@@ -24,6 +24,13 @@ cache, or scanner database state. CI does not install, download, or invoke
 live scanners. A live run is evidence collection only and is not execution
 authorization.
 
+`real-scan`はscanner adapterを呼ぶ前に1つのVerified Snapshotを作る。各adapterは
+live repositoryを受け取らず、同じread-only snapshot workspaceと検証済みsubject
+だけを受け取る。adapter内のambient `git rev-parse`、`git status`、caller `PATH`
+依存Git処理は使用しない。dirty Git repositoryはbounded filesystem snapshotへ
+落としてscanできるが、commit bindingがないためno-finding evidenceはscope
+ambiguousのままであり、riskを下げない。
+
 The suite applies these bounded defaults before formatting:
 
 - 100 findings per scanner;

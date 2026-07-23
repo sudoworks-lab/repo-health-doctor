@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import resource
 import selectors
+import signal
 import shutil
 import stat
 import subprocess
@@ -15,6 +17,7 @@ import tempfile
 import time
 from typing import Any, BinaryIO, Callable, Iterable
 
+from ..control_file import ControlFileReadError, read_bounded_control_file
 from .workspace import DIRECTORY_EXCLUSIONS, FILE_EXCLUSIONS, FILE_SUFFIX_EXCLUSIONS
 
 
@@ -35,6 +38,12 @@ STREAM_CHUNK_BYTES = 64 * 1024
 GIT_MINIMUM_VERSION = (2, 42, 0)
 GIT_COMMAND_TIMEOUT_SECONDS = 15
 GIT_STDERR_LIMIT_BYTES = 64 * 1024
+GIT_CHILD_ADDRESS_SPACE_LIMIT_BYTES = 512 * 1024 * 1024
+GIT_CHILD_DATA_LIMIT_BYTES = 512 * 1024 * 1024
+GIT_CHILD_CPU_LIMIT_SECONDS = 12
+GIT_CHILD_FILE_SIZE_LIMIT_BYTES = 300 * 1024 * 1024
+GIT_CHILD_OPEN_FILE_LIMIT = 64
+GIT_CHILD_PROCESS_LIMIT = 16
 GIT_ALLOWED_SUBCOMMANDS = frozenset({"rev-parse", "ls-tree", "cat-file"})
 TRUSTED_GIT_EXECUTABLE_CANDIDATES = ("/usr/bin/git", "/bin/git")
 AUTHORIZATION_CONTROL_FILENAME = ".repo-health-doctor.authorization.json"
@@ -123,6 +132,7 @@ class VerifiedSnapshot:
     limitations: tuple[str, ...]
     refusal_reasons: tuple[str, ...]
     manifest: tuple[SnapshotManifestEntry, ...] = field(repr=False)
+    source_tracked_paths: tuple[str, ...] = field(default=(), repr=False)
 
     def to_report(self) -> dict[str, object]:
         return {
@@ -190,6 +200,7 @@ class DisposableWorkspace:
     verified_snapshot: VerifiedSnapshot | None = None
     observed_source_commit: str | None = None
     observed_source_tree: str | None = None
+    observed_tracked_paths: list[str] = field(default_factory=list)
 
     @property
     def copy_safety_ok(self) -> bool:
@@ -453,6 +464,7 @@ def create_verified_snapshot(
     *,
     copy_budget: CopyBudget | None = None,
     _event_hook: _EventHook | None = None,
+    _force_filesystem: bool = False,
 ) -> DisposableWorkspace:
     budget = CopyBudget() if copy_budget is None else copy_budget
     source_root = Path(os.path.abspath(source))
@@ -478,7 +490,10 @@ def create_verified_snapshot(
             raise _SnapshotRefusal("source_root_symlink")
         if not stat.S_ISDIR(source_lstat.st_mode):
             raise _SnapshotRefusal("source_root_not_directory")
-        if _looks_like_direct_git_repository(source_root):
+        if (
+            not _force_filesystem
+            and _looks_like_direct_git_repository(source_root)
+        ):
             _create_git_snapshot(workspace, _event_hook)
         else:
             entries = _copy_filesystem_tree(
@@ -516,6 +531,196 @@ def create_verified_snapshot(
         )
         _invalidate_partial_workspace(workspace)
     return workspace
+
+
+def create_static_scan_snapshot(
+    source: Path,
+    *,
+    copy_budget: CopyBudget | None = None,
+) -> DisposableWorkspace:
+    """Prefer an exact commit snapshot and safely fall back to bounded files."""
+    strict = create_verified_snapshot(source, copy_budget=copy_budget)
+    if strict.verified_snapshot is not None:
+        linked_tracked_paths = _bounded_linked_worktree_tracked_paths(
+            source,
+            strict,
+        )
+        if linked_tracked_paths is not None:
+            strict.verified_snapshot = replace(
+                strict.verified_snapshot,
+                source_tracked_paths=linked_tracked_paths,
+            )
+        return strict
+    bounded_tracked_paths = (
+        tuple(strict.observed_tracked_paths)
+        if strict.refusal_reasons == ["source_worktree_not_exact_commit"]
+        and strict.observed_source_commit is not None
+        and strict.observed_source_tree is not None
+        else ()
+    )
+    strict.cleanup()
+    if strict.cleanup_status != "ok":
+        return strict
+    fallback = create_verified_snapshot(
+        source,
+        copy_budget=copy_budget,
+        _force_filesystem=True,
+    )
+    if fallback.verified_snapshot is not None and bounded_tracked_paths:
+        fallback.verified_snapshot = replace(
+            fallback.verified_snapshot,
+            source_tracked_paths=bounded_tracked_paths,
+        )
+    return fallback
+
+
+def _bounded_linked_worktree_tracked_paths(
+    source: Path,
+    snapshot_workspace: DisposableWorkspace,
+) -> tuple[str, ...] | None:
+    metadata_path = source / ".git"
+    try:
+        metadata = read_bounded_control_file(
+            metadata_path,
+            label="Git worktree metadata",
+            max_bytes=4096,
+        )
+        text = metadata.content.decode("utf-8", "strict")
+        if "\x00" in text or not text.endswith("\n"):
+            return None
+        lines = text.splitlines()
+        if len(lines) != 1 or not lines[0].startswith("gitdir: "):
+            return None
+        raw_git_dir = lines[0][len("gitdir: ") :]
+        if not raw_git_dir:
+            return None
+        git_dir = Path(raw_git_dir)
+        if not git_dir.is_absolute():
+            git_dir = source / git_dir
+        git_dir = Path(os.path.realpath(os.path.abspath(git_dir)))
+        git_dir_before = os.lstat(git_dir)
+        head_before = os.lstat(git_dir / "HEAD")
+        if (
+            not stat.S_ISDIR(git_dir_before.st_mode)
+            or stat.S_ISLNK(git_dir_before.st_mode)
+            or not stat.S_ISREG(head_before.st_mode)
+            or stat.S_ISLNK(head_before.st_mode)
+        ):
+            return None
+        backpointer = read_bounded_control_file(
+            git_dir / "gitdir",
+            label="Git worktree backpointer",
+            max_bytes=4096,
+        )
+        common = read_bounded_control_file(
+            git_dir / "commondir",
+            label="Git common directory metadata",
+            max_bytes=4096,
+        )
+        if common.content != b"../..\n":
+            return None
+        try:
+            backpointer_text = backpointer.content.decode("utf-8", "strict")
+        except UnicodeDecodeError:
+            return None
+        if (
+            "\x00" in backpointer_text
+            or not backpointer_text.endswith("\n")
+            or len(backpointer_text.splitlines()) != 1
+        ):
+            return None
+        raw_backpointer = Path(backpointer_text.rstrip("\n"))
+        if not raw_backpointer.is_absolute():
+            raw_backpointer = git_dir / raw_backpointer
+        if Path(os.path.realpath(raw_backpointer)) != Path(
+            os.path.realpath(metadata_path)
+        ):
+            return None
+        common_dir = Path(os.path.realpath(git_dir / "../.."))
+        common_before = os.lstat(common_dir)
+        objects_before = os.lstat(common_dir / "objects")
+        if (
+            git_dir.parent.name != "worktrees"
+            or Path(os.path.realpath(git_dir.parent.parent)) != common_dir
+            or not stat.S_ISDIR(common_before.st_mode)
+            or stat.S_ISLNK(common_before.st_mode)
+            or not stat.S_ISDIR(objects_before.st_mode)
+            or stat.S_ISLNK(objects_before.st_mode)
+        ):
+            return None
+
+        git_path = _git_executable()
+        environment = _git_environment(snapshot_workspace.root)
+        version = _git_version(git_path, environment)
+        if version is None or version < GIT_MINIMUM_VERSION:
+            return None
+        tree = _git_object_id(
+            git_path,
+            git_dir,
+            source,
+            ("rev-parse", "--verify", "HEAD^{tree}"),
+            environment,
+        )
+        if tree is None:
+            return None
+        tracking_workspace = DisposableWorkspace(
+            source_root=source,
+            root=snapshot_workspace.root,
+            workspace=snapshot_workspace.workspace,
+            out=snapshot_workspace.out,
+            copy_budget=snapshot_workspace.copy_budget,
+        )
+        _git_tree_entries(
+            git_path,
+            git_dir,
+            source,
+            tree,
+            environment,
+            tracking_workspace,
+        )
+        final_tree = _git_object_id(
+            git_path,
+            git_dir,
+            source,
+            ("rev-parse", "--verify", "HEAD^{tree}"),
+            environment,
+        )
+        metadata_after = read_bounded_control_file(
+            metadata_path,
+            label="Git worktree metadata",
+            max_bytes=4096,
+        )
+        backpointer_after = read_bounded_control_file(
+            git_dir / "gitdir",
+            label="Git worktree backpointer",
+            max_bytes=4096,
+        )
+        common_after = read_bounded_control_file(
+            git_dir / "commondir",
+            label="Git common directory metadata",
+            max_bytes=4096,
+        )
+        if (
+            final_tree != tree
+            or metadata_after.sha256 != metadata.sha256
+            or metadata_after.state != metadata.state
+            or backpointer_after.sha256 != backpointer.sha256
+            or backpointer_after.state != backpointer.state
+            or common_after.sha256 != common.sha256
+            or common_after.state != common.state
+            or not _same_directory(git_dir_before, os.lstat(git_dir))
+            or not _same_directory(common_before, os.lstat(common_dir))
+            or not _same_directory(objects_before, os.lstat(common_dir / "objects"))
+        ):
+            return None
+        return tuple(tracking_workspace.observed_tracked_paths)
+    except (
+        ControlFileReadError,
+        OSError,
+        UnicodeDecodeError,
+        _SnapshotRefusal,
+    ):
+        return None
 
 
 def verify_verified_snapshot(workspace: DisposableWorkspace) -> bool:
@@ -1140,6 +1345,9 @@ def _git_tree_entries(
         cwd=workspace.root,
         shell=False,
         bufsize=0,
+        close_fds=True,
+        preexec_fn=_install_git_resource_limits,
+        start_new_session=True,
     )
     reader = _BoundedPipeReader(
         process,
@@ -1186,6 +1394,7 @@ def _git_tree_entries(
                     )
             if object_type != b"blob" or mode not in {b"100644", b"100755"}:
                 raise _SnapshotRefusal("git_tree_unsupported_entry", relative)
+            workspace.observed_tracked_paths.append(relative)
             try:
                 size = int(raw_size)
             except ValueError as exc:
@@ -1218,11 +1427,7 @@ def _git_tree_entries(
         if return_code != 0 or reader.stderr_buffer:
             raise _SnapshotRefusal("git_command_failed")
     except BaseException:
-        process.kill()
-        try:
-            process.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            pass
+        _terminate_git_process_group(process)
         raise
     finally:
         reader.close()
@@ -1259,6 +1464,9 @@ def _export_git_blobs(
         cwd=workspace.root,
         shell=False,
         bufsize=0,
+        close_fds=True,
+        preexec_fn=_install_git_resource_limits,
+        start_new_session=True,
     )
     reader = _BoundedPipeReader(
         process,
@@ -1341,11 +1549,7 @@ def _export_git_blobs(
         if return_code != 0 or reader.stderr_buffer:
             raise _SnapshotRefusal("git_batch_failed")
     except BaseException:
-        process.kill()
-        try:
-            process.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            pass
+        _terminate_git_process_group(process)
         raise
     finally:
         reader.close()
@@ -1427,6 +1631,15 @@ def _finish_snapshot(
         limitations=limitations,
         refusal_reasons=(),
         manifest=tuple(sorted_entries),
+        source_tracked_paths=(
+            tuple(workspace.observed_tracked_paths)
+            if source_kind == "git_commit"
+            else tuple(
+                entry.path
+                for entry in sorted_entries
+                if entry.entry_type == "file"
+            )
+        ),
     )
     workspace.verified_snapshot = snapshot
     workspace.files_copied = snapshot.file_count
@@ -1593,6 +1806,9 @@ def _run_standalone_git_capture(
         cwd=environment["HOME"],
         shell=False,
         bufsize=0,
+        close_fds=True,
+        preexec_fn=_install_git_resource_limits,
+        start_new_session=True,
     )
     reader = _BoundedPipeReader(
         process,
@@ -1627,11 +1843,7 @@ def _run_standalone_git_capture(
             raise _SnapshotRefusal("git_command_failed")
         return bytes(output)
     except BaseException:
-        process.kill()
-        try:
-            process.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            pass
+        _terminate_git_process_group(process)
         raise
     finally:
         reader.close()
@@ -1668,8 +1880,55 @@ def _git_repository_argv(
         "submodule.recurse=false",
         "-c",
         "diff.external=",
+        "-c",
+        "core.deltaBaseCacheLimit=16m",
+        "-c",
+        "core.packedGitLimit=128m",
+        "-c",
+        "core.packedGitWindowSize=16m",
+        "-c",
+        "pack.deltaCacheSize=16m",
+        "-c",
+        "pack.threads=1",
+        "-c",
+        "pack.windowMemory=16m",
         *arguments,
     ]
+
+
+def _install_git_resource_limits() -> None:
+    """Install hard child limits before Git parses repository-controlled data."""
+    required_limits = (
+        (resource.RLIMIT_AS, GIT_CHILD_ADDRESS_SPACE_LIMIT_BYTES),
+        (resource.RLIMIT_DATA, GIT_CHILD_DATA_LIMIT_BYTES),
+        (resource.RLIMIT_CPU, GIT_CHILD_CPU_LIMIT_SECONDS),
+        (resource.RLIMIT_FSIZE, GIT_CHILD_FILE_SIZE_LIMIT_BYTES),
+        (resource.RLIMIT_NOFILE, GIT_CHILD_OPEN_FILE_LIMIT),
+        (resource.RLIMIT_NPROC, GIT_CHILD_PROCESS_LIMIT),
+        (resource.RLIMIT_CORE, 0),
+    )
+    for limit, requested in required_limits:
+        _, existing_hard = resource.getrlimit(limit)
+        bounded = (
+            requested
+            if existing_hard == resource.RLIM_INFINITY
+            else min(requested, existing_hard)
+        )
+        resource.setrlimit(limit, (bounded, bounded))
+
+
+def _terminate_git_process_group(process: subprocess.Popen[bytes]) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except (AttributeError, OSError, ProcessLookupError):
+        try:
+            process.kill()
+        except OSError:
+            pass
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def _looks_like_direct_git_repository(source: Path) -> bool:
@@ -1771,6 +2030,8 @@ def _path_exclusion_category(relative: str, name: str) -> str | None:
 
 
 def _file_exclusion_category(name: str) -> str | None:
+    if name == ".git":
+        return "vcs_metadata"
     if name == AUTHORIZATION_CONTROL_FILENAME or name.startswith(
         AUTHORIZATION_CONTROL_FILENAME + "."
     ):
