@@ -46,6 +46,8 @@ _SANDBOX_REQUIRED_FIELDS = {
     "contract",
     "run",
     "target",
+    "verified_snapshot",
+    "subject_consistency",
     "approval",
     "gate",
     "authorization",
@@ -76,6 +78,8 @@ _SANDBOX_OBJECT_FIELDS = {
     "contract",
     "run",
     "target",
+    "verified_snapshot",
+    "subject_consistency",
     "approval",
     "gate",
     "authorization",
@@ -243,6 +247,14 @@ def validate_sandbox_run_evidence(
         "report_fingerprint": computed_fingerprint,
         "run_id": run_id,
         "gate_decision_fingerprint": gate_fingerprint,
+        "snapshot_id": (
+            subject.get("snapshot_id") if isinstance(subject, Mapping) else None
+        ),
+        "manifest_fingerprint": (
+            subject.get("manifest_fingerprint")
+            if isinstance(subject, Mapping)
+            else None
+        ),
         "validation_status": "valid" if valid else "invalid",
         "reasons": list(reasons),
     }
@@ -309,7 +321,17 @@ def _validate_source_shape(source: Mapping[str, Any], errors: list[str]) -> None
 
 
 def _mapping_matches(actual: Mapping[str, object], expected: Mapping[str, object]) -> bool:
-    return all(actual.get(field) == expected.get(field) for field in ("repo", "commit", "tree_hash", "binding_kind"))
+    return all(
+        actual.get(field) == expected.get(field)
+        for field in (
+            "repo",
+            "commit",
+            "tree_hash",
+            "snapshot_id",
+            "manifest_fingerprint",
+            "binding_kind",
+        )
+    )
 
 
 def _string_list(value: object) -> list[str]:

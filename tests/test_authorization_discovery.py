@@ -43,6 +43,13 @@ class AuthorizationDiscoveryTests(unittest.TestCase):
         payload = {"approved": True} if value is None else value
         self.candidate.write_text(json.dumps(payload), encoding="utf-8")
 
+    def _discover(self, **kwargs: object):  # type: ignore[no-untyped-def]
+        return discover_execution_authorization(
+            self.repo,
+            tracked_relative_paths=(),
+            **kwargs,
+        )
+
     def test_untracked_regular_file_is_read_with_nofollow_and_fstat(self) -> None:
         self._write_candidate()
         real_open = os.open
@@ -62,7 +69,7 @@ class AuthorizationDiscoveryTests(unittest.TestCase):
         with mock.patch.object(authorization_discovery.os, "open", side_effect=recording_open), mock.patch.object(
             authorization_discovery.os, "fstat", side_effect=recording_fstat
         ):
-            result = discover_execution_authorization(self.repo)
+            result = self._discover()
 
         self.assertTrue(result.discovered)
         self.assertEqual(result.authorization, {"approved": True})
@@ -80,7 +87,10 @@ class AuthorizationDiscoveryTests(unittest.TestCase):
             capture_output=True,
         )
 
-        result = discover_execution_authorization(self.repo)
+        result = discover_execution_authorization(
+            self.repo,
+            tracked_relative_paths=(AUTHORIZATION_DISCOVERY_FILENAME,),
+        )
 
         self.assertEqual(result.reason, TRACKED_REFUSED)
         self.assertFalse(result.discovered)
@@ -98,21 +108,21 @@ class AuthorizationDiscoveryTests(unittest.TestCase):
             with self.subTest(broken=broken):
                 self.candidate.unlink(missing_ok=True)
                 self.candidate.symlink_to(self.repo / "missing.json" if broken else target)
-                result = discover_execution_authorization(self.repo)
+                result = self._discover()
                 self.assertEqual(result.reason, SYMLINK_REFUSED)
 
     def test_oversize_candidate_is_refused_before_read(self) -> None:
         self.candidate.write_bytes(b"x" * (AUTHORIZATION_DISCOVERY_MAX_BYTES + 1))
         with mock.patch.object(authorization_discovery, "_read_descriptor") as read:
-            result = discover_execution_authorization(self.repo)
+            result = self._discover()
 
         self.assertEqual(result.reason, TOO_LARGE)
         read.assert_not_called()
 
     def test_git_error_is_refused(self) -> None:
         with mock.patch.object(
-            authorization_discovery.subprocess,
-            "run",
+            authorization_discovery,
+            "create_verified_snapshot",
             side_effect=OSError("git unavailable"),
         ):
             result = discover_execution_authorization(self.repo)
@@ -134,7 +144,7 @@ class AuthorizationDiscoveryTests(unittest.TestCase):
             return content
 
         with mock.patch.object(authorization_discovery, "_read_descriptor", side_effect=changing_read):
-            result = discover_execution_authorization(self.repo)
+            result = self._discover()
 
         self.assertEqual(result.reason, FILE_CHANGED)
 
@@ -152,7 +162,7 @@ class AuthorizationDiscoveryTests(unittest.TestCase):
             return real_open(path, flags)
 
         with mock.patch.object(authorization_discovery.os, "open", side_effect=replacing_open):
-            result = discover_execution_authorization(self.repo)
+            result = self._discover()
 
         self.assertEqual(result.reason, FILE_CHANGED)
 
@@ -163,13 +173,13 @@ class AuthorizationDiscoveryTests(unittest.TestCase):
             "_read_descriptor",
             return_value=b"x" * 9,
         ) as read:
-            result = discover_execution_authorization(self.repo, max_bytes=8)
+            result = self._discover(max_bytes=8)
 
         self.assertEqual(result.reason, TOO_LARGE)
         read.assert_called_once_with(mock.ANY, 9)
 
     def test_not_found_is_refused(self) -> None:
-        result = discover_execution_authorization(self.repo)
+        result = self._discover()
 
         self.assertEqual(result.reason, NOT_FOUND)
 
@@ -177,7 +187,7 @@ class AuthorizationDiscoveryTests(unittest.TestCase):
         for content in (b"{", b"[]"):
             with self.subTest(content=content):
                 self.candidate.write_bytes(content)
-                result = discover_execution_authorization(self.repo)
+                result = self._discover()
                 self.assertEqual(result.reason, PARSE_FAILED)
 
     def test_repo_subdirectory_is_not_accepted_as_top_level(self) -> None:

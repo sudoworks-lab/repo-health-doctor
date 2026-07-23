@@ -31,7 +31,11 @@ REQUIRED_TOP_LEVEL_FIELDS = {
     "residual_risks",
 }
 TOP_LEVEL_FIELDS = REQUIRED_TOP_LEVEL_FIELDS | {"evidence_refs"}
-SUBJECT_FIELDS = {"repo", "commit", "tree_hash", "binding_kind"}
+LEGACY_SUBJECT_FIELDS = {"repo", "commit", "tree_hash", "binding_kind"}
+SUBJECT_FIELDS = LEGACY_SUBJECT_FIELDS | {
+    "snapshot_id",
+    "manifest_fingerprint",
+}
 EXPLANATION_FIELDS = {"summary", "key_reasons", "next_actions"}
 EVIDENCE_SUMMARY_FIELDS = {
     "findings_count",
@@ -56,6 +60,8 @@ SANDBOX_EVIDENCE_REF_FIELDS = {
     "report_fingerprint",
     "run_id",
     "gate_decision_fingerprint",
+    "snapshot_id",
+    "manifest_fingerprint",
     "validation_status",
     "reasons",
 }
@@ -82,7 +88,14 @@ SANDBOX_EVIDENCE_REF_REASONS = {
 
 VERDICTS = {"allow_limited", "warn", "quarantine", "block", "unknown"}
 CONFIDENCES = {"low", "medium", "high", "unknown"}
-BINDING_KINDS = {"unbound", "path_bound", "commit_bound", "tree_bound", "synthetic"}
+BINDING_KINDS = {
+    "unbound",
+    "path_bound",
+    "commit_bound",
+    "tree_bound",
+    "snapshot_bound",
+    "synthetic",
+}
 
 
 def validate_gate_decision(data: Mapping[str, Any]) -> GateDecisionValidationResult:
@@ -121,12 +134,25 @@ def validate_gate_decision(data: Mapping[str, Any]) -> GateDecisionValidationRes
         if not _string_items(explanation.get("next_actions")):
             errors.append("explanation_next_actions_required")
 
-    subject = _mapping(data.get("subject"), SUBJECT_FIELDS, "subject", errors)
+    subject_value = data.get("subject")
+    subject = subject_value if isinstance(subject_value, Mapping) else None
+    if subject is None:
+        errors.append("subject_must_be_object")
+    elif frozenset(subject) not in {
+        frozenset(LEGACY_SUBJECT_FIELDS),
+        frozenset(SUBJECT_FIELDS),
+    }:
+        errors.append("subject_required_or_unknown_field")
     if subject is not None:
         if not isinstance(subject.get("repo"), str) or not subject.get("repo"):
             errors.append("subject_repo_required")
         if subject.get("binding_kind") not in BINDING_KINDS:
             errors.append("subject_binding_kind_invalid")
+        if subject.get("binding_kind") == "snapshot_bound":
+            if not _is_fingerprint(subject.get("snapshot_id")):
+                errors.append("subject_snapshot_id_invalid")
+            if not _is_fingerprint(subject.get("manifest_fingerprint")):
+                errors.append("subject_manifest_fingerprint_invalid")
 
     evidence_summary = _mapping(data.get("evidence_summary"), EVIDENCE_SUMMARY_FIELDS, "evidence_summary", errors)
     if evidence_summary is not None:
@@ -254,6 +280,9 @@ def _validate_sandbox_evidence_ref(
     for field in ("report_fingerprint", "gate_decision_fingerprint"):
         fingerprint = evidence_ref.get(field)
         if fingerprint is not None and not _is_fingerprint(fingerprint):
+            errors.append(f"evidence_ref_{field}_invalid")
+    for field in ("snapshot_id", "manifest_fingerprint"):
+        if not _is_fingerprint(evidence_ref.get(field)):
             errors.append(f"evidence_ref_{field}_invalid")
     run_id = evidence_ref.get("run_id")
     if run_id is not None and (

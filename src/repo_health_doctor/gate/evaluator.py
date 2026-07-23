@@ -180,7 +180,13 @@ def evaluate_gate_decision(
 
         if source.get("execution_mode") in {"sandbox_observer", "docker_isolated"}:
             any_runtime_observation = True
-        if subject_data.get("binding_kind") in {"path_bound", "commit_bound", "tree_bound", "synthetic"}:
+        if subject_data.get("binding_kind") in {
+            "path_bound",
+            "commit_bound",
+            "tree_bound",
+            "snapshot_bound",
+            "synthetic",
+        }:
             any_binding_acceptable = True
         if trust.get("level") not in LOW_TRUST_LEVELS:
             all_low_trust = False
@@ -557,6 +563,12 @@ def _decision_subject(subject: Mapping[str, Any] | None, evidence: list[Mapping[
             "repo": str(subject.get("repo") or subject.get("repo_identity") or "<repo>"),
             "commit": subject.get("commit") if isinstance(subject.get("commit"), str) else None,
             "tree_hash": subject.get("tree_hash") if isinstance(subject.get("tree_hash"), str) else None,
+            "snapshot_id": subject.get("snapshot_id") if isinstance(subject.get("snapshot_id"), str) else None,
+            "manifest_fingerprint": (
+                subject.get("manifest_fingerprint")
+                if isinstance(subject.get("manifest_fingerprint"), str)
+                else None
+            ),
             "binding_kind": str(subject.get("binding_kind", "unbound")),
         }
     for item in evidence:
@@ -566,9 +578,22 @@ def _decision_subject(subject: Mapping[str, Any] | None, evidence: list[Mapping[
                 "repo": str(item_subject.get("repo_identity", "<repo>")),
                 "commit": item_subject.get("commit") if isinstance(item_subject.get("commit"), str) else None,
                 "tree_hash": item_subject.get("tree_hash") if isinstance(item_subject.get("tree_hash"), str) else None,
+                "snapshot_id": item_subject.get("snapshot_id") if isinstance(item_subject.get("snapshot_id"), str) else None,
+                "manifest_fingerprint": (
+                    item_subject.get("manifest_fingerprint")
+                    if isinstance(item_subject.get("manifest_fingerprint"), str)
+                    else None
+                ),
                 "binding_kind": str(item_subject.get("binding_kind", "unbound")),
             }
-    return {"repo": "<repo>", "commit": None, "tree_hash": None, "binding_kind": "unbound"}
+    return {
+        "repo": "<repo>",
+        "commit": None,
+        "tree_hash": None,
+        "snapshot_id": None,
+        "manifest_fingerprint": None,
+        "binding_kind": "unbound",
+    }
 
 
 def _build_explanation(

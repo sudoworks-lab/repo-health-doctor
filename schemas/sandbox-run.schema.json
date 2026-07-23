@@ -13,6 +13,8 @@
     "contract",
     "run",
     "target",
+    "verified_snapshot",
+    "subject_consistency",
     "approval",
     "gate",
     "authorization",
@@ -53,6 +55,76 @@
     "contract": {"type": "object"},
     "run": {"type": "object"},
     "target": {"type": "object"},
+    "verified_snapshot": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "snapshot_id",
+        "manifest_fingerprint",
+        "integrity_status",
+        "limitations",
+        "refusal_reasons",
+        "integrity_after_execution"
+      ],
+      "properties": {
+        "schema_version": {"type": "string", "const": "1.0"},
+        "snapshot_id": {
+          "type": ["string", "null"],
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "manifest_fingerprint": {
+          "type": ["string", "null"],
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "integrity_status": {
+          "type": "string",
+          "enum": ["verified", "invalid"]
+        },
+        "integrity_after_execution": {
+          "type": "string",
+          "enum": ["not_checked", "verified", "mismatch"]
+        },
+        "limitations": {"type": "array", "items": {"type": "string"}},
+        "refusal_reasons": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": true
+    },
+    "subject_consistency": {
+      "type": "object",
+      "required": [
+        "consistent",
+        "scan_snapshot_id",
+        "gate_snapshot_id",
+        "authorization_snapshot_id",
+        "workspace_snapshot_id",
+        "evidence_snapshot_id",
+        "scan_manifest_fingerprint",
+        "gate_manifest_fingerprint",
+        "authorization_manifest_fingerprint",
+        "workspace_manifest_fingerprint",
+        "evidence_manifest_fingerprint",
+        "gate_matches",
+        "authorization_matches",
+        "missing_or_unresolved"
+      ],
+      "properties": {
+        "consistent": {"type": "boolean"},
+        "scan_snapshot_id": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "gate_snapshot_id": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "authorization_snapshot_id": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "workspace_snapshot_id": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "evidence_snapshot_id": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "scan_manifest_fingerprint": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "gate_manifest_fingerprint": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "authorization_manifest_fingerprint": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "workspace_manifest_fingerprint": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "evidence_manifest_fingerprint": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "gate_matches": {"type": "boolean"},
+        "authorization_matches": {"type": "boolean"},
+        "missing_or_unresolved": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
     "approval": {"type": "object"},
     "gate": {"type": "object"},
     "authorization": {"type": "object"},

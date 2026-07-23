@@ -51,10 +51,9 @@ def _git_output(*argv: str) -> str | None:
 
 
 def _subject() -> dict[str, object]:
-    status = _git_output("status", "--short")
     return {
-        "repo_commit": _git_output("rev-parse", "HEAD"),
-        "dirty_state": "unknown" if status is None else ("dirty" if status else "clean"),
+        "repo_commit": None,
+        "dirty_state": "not_applicable",
     }
 
 

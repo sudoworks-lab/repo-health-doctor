@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repo-health-doctor://schemas/verified-snapshot.schema.json",
+  "title": "repo-health-doctor Verified Snapshot",
+  "description": "Internal immutable snapshot identity produced by bounded, no-follow intake. It contains redacted identity and manifest metadata, never file contents or a raw host path.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "snapshot_id",
+    "source_identity_redacted",
+    "source_kind",
+    "source_commit",
+    "source_tree",
+    "manifest_fingerprint",
+    "file_count",
+    "total_bytes",
+    "copied_at",
+    "copy_policy_version",
+    "budget_policy",
+    "integrity_status",
+    "limitations",
+    "refusal_reasons",
+    "raw_host_path_recorded",
+    "file_contents_recorded"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "snapshot_id": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "source_identity_redacted": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "source_kind": {
+      "type": "string",
+      "enum": [
+        "git_commit",
+        "filesystem"
+      ]
+    },
+    "source_commit": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+    },
+    "source_tree": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+    },
+    "manifest_fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "file_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "total_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "copied_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "copy_policy_version": {
+      "type": "string",
+      "const": "verified-snapshot-copy-policy-v1"
+    },
+    "budget_policy": {
+      "type": "object",
+      "required": [
+        "max_file_count",
+        "max_directory_count",
+        "max_depth",
+        "max_total_bytes",
+        "max_file_bytes",
+        "max_relative_path_bytes"
+      ],
+      "properties": {
+        "max_file_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_directory_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_total_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_file_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_relative_path_bytes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "integrity_status": {
+      "type": "string",
+      "const": "verified"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "refusal_reasons": {
+      "type": "array",
+      "maxItems": 0
+    },
+    "raw_host_path_recorded": {
+      "type": "boolean",
+      "const": false
+    },
+    "file_contents_recorded": {
+      "type": "boolean",
+      "const": false
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "source_kind": {
+            "const": "git_commit"
+          }
+        },
+        "required": [
+          "source_kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source_commit": {
+            "type": "string"
+          },
+          "source_tree": {
+            "type": "string"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "source_commit": {
+            "type": "null"
+          },
+          "source_tree": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

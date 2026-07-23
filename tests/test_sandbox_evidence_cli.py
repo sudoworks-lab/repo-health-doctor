@@ -105,6 +105,8 @@ class SandboxEvidenceCliTests(unittest.TestCase):
                 "report_fingerprint",
                 "run_id",
                 "gate_decision_fingerprint",
+                "snapshot_id",
+                "manifest_fingerprint",
                 "validation_status",
                 "reasons",
             },

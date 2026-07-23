@@ -9,7 +9,10 @@ SCHEMAS_ROOT = Path(__file__).resolve().parents[1] / "schemas"
 
 EXPECTED_SCHEMA_METADATA = {
     "evidence.schema.json": ("0.1-draft", None),
-    "execution-authorization.schema.json": (("0.1-draft", "0.2-draft"), None),
+    "execution-authorization.schema.json": (
+        ("0.1-draft", "0.2-draft", "0.3-draft"),
+        None,
+    ),
     "external-scanner-plan.schema.json": ("0.1-draft", None),
     "external-scanner-readiness-result.schema.json": ("0.1-draft", "external_scanner_execution_readiness"),
     "external-scanner-result.schema.json": ("0.1-draft", "external_scanner_result"),
@@ -56,6 +59,7 @@ EXPECTED_SCHEMA_METADATA = {
         "0.1-draft",
         "sandbox_unknown_repo_profile",
     ),
+    "verified-snapshot.schema.json": ("1.0", None),
 }
 
 NON_EXECUTING_FALSE_FIELDS = {

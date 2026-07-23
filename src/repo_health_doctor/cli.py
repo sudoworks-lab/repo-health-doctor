@@ -4,7 +4,6 @@ import argparse
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
-import subprocess
 import sys
 from typing import Any, Mapping, Sequence
 
@@ -47,7 +46,11 @@ from .sandbox.docker_runner import DockerRunner
 from .sandbox.image_binding import is_digest_pinned_authorization_reference
 from .sandbox.profiles import SECCOMP_PROFILE_CHOICES, SECCOMP_RUNTIME_DEFAULT
 from .sandbox.run import DEFAULT_SANDBOX_IMAGE
-from .sandbox.run_workspace import inspect_git_worktree
+from .sandbox.run_workspace import (
+    DisposableWorkspace,
+    VerifiedSnapshot,
+    create_verified_snapshot,
+)
 from .gate import (
     build_execution_authorization_draft,
     evaluate_gate_decision_from_v3_report,
@@ -522,6 +525,8 @@ def main(argv: list[str] | None = None) -> int:
     command = "scan"
     sandbox_run_argv: list[str] = []
     gate_check_argv: list[str] = []
+    scan_gate_workspace: DisposableWorkspace | None = None
+    scan_verified_snapshot: VerifiedSnapshot | None = None
     if raw_args and raw_args[0] == "validate-policy":
         command = "validate-policy"
         raw_args = raw_args[1:]
@@ -678,19 +683,31 @@ def main(argv: list[str] | None = None) -> int:
             runner = DockerRunner() if args.runner == "docker" else make_fake_runner(args.runner)
             sandbox_gate_decision = None
             sandbox_authorization_validation = None
-            if args.fail_on_gate or args.authorization:
+            prepared_workspace = create_verified_snapshot(target)
+            prepared_snapshot = prepared_workspace.verified_snapshot
+            if (
+                prepared_snapshot is not None
+                and (args.fail_on_gate or args.authorization)
+            ):
                 scan_report = diagnose_repo(
-                    target,
+                    prepared_workspace.workspace,
                     large_file_threshold_mb=DEFAULT_LARGE_FILE_THRESHOLD_MB,
                     secrets_ignores=(),
                     public_safety=True,
                     config_path=None,
                     local_config_path=None,
                     load_local_config=True,
+                    tracked_relative_paths=_snapshot_tracked_paths(
+                        prepared_snapshot
+                    ),
                 )
                 sandbox_gate_decision = _bind_gate_decision_subject(
-                    evaluate_gate_decision_from_v3_report(scan_report, repo_root=target),
-                    target,
+                    evaluate_gate_decision_from_v3_report(
+                        scan_report,
+                        repo_root=prepared_workspace.workspace,
+                        subject=_snapshot_gate_subject(prepared_snapshot),
+                    ),
+                    prepared_snapshot,
                 )
             if args.authorization:
                 try:
@@ -709,6 +726,16 @@ def main(argv: list[str] | None = None) -> int:
                             else None
                         ),
                         runtime_image_id=runtime_image_id,
+                        expected_snapshot_id=(
+                            prepared_snapshot.snapshot_id
+                            if prepared_snapshot is not None
+                            else None
+                        ),
+                        expected_manifest_fingerprint=(
+                            prepared_snapshot.manifest_fingerprint
+                            if prepared_snapshot is not None
+                            else None
+                        ),
                     )
                 except ValueError as exc:
                     parser.error(str(exc))
@@ -727,6 +754,7 @@ def main(argv: list[str] | None = None) -> int:
                 fail_on_gate=args.fail_on_gate,
                 authorization_path=Path(args.authorization) if args.authorization else None,
                 authorization_validation=sandbox_authorization_validation,
+                prepared_workspace=prepared_workspace,
             )
             if sandbox_gate_decision is not None:
                 gate_report = dict(_mapping(report.get("gate")))
@@ -775,29 +803,39 @@ def main(argv: list[str] | None = None) -> int:
                     parser.error("--argv-json is required when --authorization is provided without trailing argv")
             if args.argv_json and not args.authorization:
                 parser.error("--authorization is required when --argv-json is provided")
+            gate_workspace = create_verified_snapshot(target)
+            gate_snapshot = gate_workspace.verified_snapshot
+            if gate_snapshot is None:
+                gate_workspace.cleanup()
+                parser.error(
+                    "verified snapshot intake refused the target before gate-check"
+                )
             scan_report = diagnose_repo(
-                target,
+                gate_workspace.workspace,
                 large_file_threshold_mb=args.large_file_threshold_mb,
                 secrets_ignores=tuple(args.secrets_ignore),
                 public_safety=True,
                 config_path=args.config,
                 local_config_path=args.local_config,
                 load_local_config=not args.no_local_config,
+                tracked_relative_paths=_snapshot_tracked_paths(gate_snapshot),
             )
             try:
                 external_suite_evidence = _load_external_suite_evidence(
                     args.external_evidence,
-                    target=target,
+                    snapshot=gate_snapshot,
                 )
             except ValueError as exc:
+                gate_workspace.cleanup()
                 parser.error(str(exc))
             baseline_gate_decision = _bind_gate_decision_subject(
                 evaluate_gate_decision_from_v3_report(
                     scan_report,
-                    repo_root=target,
+                    repo_root=gate_workspace.workspace,
                     external_suite_evidence=external_suite_evidence,
+                    subject=_snapshot_gate_subject(gate_snapshot),
                 ),
-                target,
+                gate_snapshot,
             )
             try:
                 sandbox_evidence = _load_sandbox_run_evidence(
@@ -808,37 +846,52 @@ def main(argv: list[str] | None = None) -> int:
                     ),
                 )
             except ValueError as exc:
+                gate_workspace.cleanup()
                 parser.error(str(exc))
             gate_decision = _bind_gate_decision_subject(
                 evaluate_gate_decision_from_v3_report(
                     scan_report,
-                    repo_root=target,
+                    repo_root=gate_workspace.workspace,
                     external_suite_evidence=external_suite_evidence,
                     sandbox_evidence=sandbox_evidence,
+                    subject=_snapshot_gate_subject(gate_snapshot),
                 ),
-                target,
+                gate_snapshot,
             )
             authorization_validation = None
             if args.authorization:
                 try:
                     authorization = _load_json_object(Path(args.authorization), "authorization")
                     argv = gate_check_argv or _load_argv_json(Path(args.argv_json))
-                    authorization_validation = validate_execution_authorization(authorization, gate_decision, argv)
+                    authorization_validation = validate_execution_authorization(
+                        authorization,
+                        gate_decision,
+                        argv,
+                        expected_snapshot_id=gate_snapshot.snapshot_id,
+                        expected_manifest_fingerprint=gate_snapshot.manifest_fingerprint,
+                    )
                 except ValueError as exc:
+                    gate_workspace.cleanup()
                     parser.error(str(exc))
             elif gate_check_argv and not args.no_discover:
-                discovered = discover_execution_authorization(target)
+                discovered = discover_execution_authorization(
+                    target,
+                    tracked_relative_paths=_snapshot_tracked_paths(gate_snapshot),
+                )
                 if discovered.discovered and discovered.authorization is not None:
                     authorization_validation = validate_execution_authorization(
                         discovered.authorization,
                         gate_decision,
                         gate_check_argv,
+                        expected_snapshot_id=gate_snapshot.snapshot_id,
+                        expected_manifest_fingerprint=gate_snapshot.manifest_fingerprint,
                     )
             report = _build_gate_check_report(
                 gate_decision,
                 fail_on_gate=args.fail_on_gate,
                 authorization_validation=authorization_validation,
             )
+            gate_workspace.cleanup()
             fail_on = None
         elif command == "validate-policy":
             report = validate_policy(
@@ -881,14 +934,34 @@ def main(argv: list[str] | None = None) -> int:
         else:
             if args.large_file_threshold_mb <= 0:
                 parser.error("--large-file-threshold-mb must be greater than 0")
+            gate_requested = bool(
+                getattr(args, "gate_decision_output", None)
+                or getattr(args, "gate_summary", False)
+                or getattr(args, "fail_on_gate", None)
+            )
+            scan_target = target
+            tracked_relative_paths = None
+            if gate_requested:
+                scan_gate_workspace = create_verified_snapshot(target)
+                scan_verified_snapshot = scan_gate_workspace.verified_snapshot
+                if scan_verified_snapshot is None:
+                    scan_gate_workspace.cleanup()
+                    parser.error(
+                        "verified snapshot intake refused the target before gate evaluation"
+                    )
+                scan_target = scan_gate_workspace.workspace
+                tracked_relative_paths = _snapshot_tracked_paths(
+                    scan_verified_snapshot
+                )
             report = diagnose_repo(
-                target,
+                scan_target,
                 large_file_threshold_mb=args.large_file_threshold_mb,
                 secrets_ignores=tuple(args.secrets_ignore),
                 public_safety=args.public_safety,
                 config_path=args.config,
                 local_config_path=args.local_config,
                 load_local_config=not args.no_local_config,
+                tracked_relative_paths=tracked_relative_paths,
             )
             fail_on = "warn" if args.strict else args.fail_on
     if command in {"authorization-draft", "authorization-validate"}:
@@ -944,9 +1017,23 @@ def main(argv: list[str] | None = None) -> int:
         or getattr(args, "fail_on_gate", None)
     ):
         gate_decision = _bind_gate_decision_subject(
-            evaluate_gate_decision_from_v3_report(report, repo_root=target),
-            target,
+            evaluate_gate_decision_from_v3_report(
+                report,
+                repo_root=(
+                    scan_gate_workspace.workspace
+                    if scan_gate_workspace is not None
+                    else target
+                ),
+                subject=(
+                    _snapshot_gate_subject(scan_verified_snapshot)
+                    if scan_verified_snapshot is not None
+                    else None
+                ),
+            ),
+            scan_verified_snapshot,
         )
+        if scan_gate_workspace is not None:
+            scan_gate_workspace.cleanup()
     sandbox_output_path = getattr(args, "evidence_output", None) if command == "sandbox-run" else None
     if args.output or sandbox_output_path:
         output_path = Path(sandbox_output_path or args.output)
@@ -1017,9 +1104,9 @@ def _load_argv_json(path: Path) -> list[str]:
 def _load_external_suite_evidence(
     paths: Sequence[str],
     *,
-    target: Path,
+    snapshot: VerifiedSnapshot,
 ) -> tuple[ExternalSuiteGateEvidence, ...]:
-    expected_subject = _external_evidence_subject(target)
+    expected_subject = _external_evidence_subject(snapshot)
     seen_fingerprints: set[str] = set()
     evidence: list[ExternalSuiteGateEvidence] = []
     for path_value in paths:
@@ -1055,39 +1142,68 @@ def _load_external_suite_evidence(
     return tuple(evidence)
 
 
-def _external_evidence_subject(target: Path) -> Mapping[str, object]:
-    commit = _git_output(target, ("rev-parse", "HEAD"))
-    if commit is not None and (
-        len(commit) not in {40, 64}
-        or any(character not in "0123456789abcdef" for character in commit)
-    ):
-        commit = None
-    status = _git_output(target, ("status", "--short"))
-    dirty_state = "unknown" if status is None else ("dirty" if status else "clean")
-    return {"repo_commit": commit, "dirty_state": dirty_state}
+def _external_evidence_subject(
+    snapshot: VerifiedSnapshot,
+) -> Mapping[str, object]:
+    return {
+        "repo_commit": snapshot.source_commit,
+        "dirty_state": (
+            "clean" if snapshot.source_kind == "git_commit" else "not_applicable"
+        ),
+    }
+
+
+def _snapshot_tracked_paths(snapshot: VerifiedSnapshot) -> tuple[str, ...]:
+    return tuple(
+        entry.path
+        for entry in snapshot.manifest
+        if entry.entry_type == "file"
+    )
+
+
+def _snapshot_gate_subject(snapshot: VerifiedSnapshot) -> Mapping[str, object]:
+    return {
+        "repo": snapshot.source_identity_redacted,
+        "commit": snapshot.source_commit,
+        "tree_hash": snapshot.source_tree,
+        "snapshot_id": snapshot.snapshot_id,
+        "manifest_fingerprint": snapshot.manifest_fingerprint,
+        "binding_kind": (
+            "snapshot_bound"
+            if snapshot.source_kind == "git_commit"
+            else "path_bound"
+        ),
+    }
 
 
 def _bind_gate_decision_subject(
     gate_decision: Mapping[str, Any],
-    target: Path,
+    snapshot: VerifiedSnapshot | Path | None,
 ) -> Mapping[str, Any]:
-    """Attach a clean worktree binding without authorizing execution."""
-    observed = inspect_git_worktree(target)
-    commit = observed.get("commit")
-    tree_hash = observed.get("tree_hash")
-    if (
-        observed.get("git_available") is not True
-        or observed.get("dirty_state") != "clean"
-        or not isinstance(commit, str)
-        or not isinstance(tree_hash, str)
-    ):
+    """Attach one verified snapshot subject without authorizing execution."""
+    temporary_workspace: DisposableWorkspace | None = None
+    if isinstance(snapshot, Path):
+        temporary_workspace = create_verified_snapshot(snapshot)
+        snapshot = temporary_workspace.verified_snapshot
+    if snapshot is None:
+        if temporary_workspace is not None:
+            temporary_workspace.cleanup()
         return gate_decision
     subject = dict(_mapping(gate_decision.get("subject")))
-    subject["repo"] = subject.get("repo") or "<repo>"
-    subject["commit"] = commit
-    subject["tree_hash"] = tree_hash
-    subject["binding_kind"] = "commit_bound"
-    return {**gate_decision, "subject": subject}
+    subject["repo"] = snapshot.source_identity_redacted
+    subject["commit"] = snapshot.source_commit
+    subject["tree_hash"] = snapshot.source_tree
+    subject["snapshot_id"] = snapshot.snapshot_id
+    subject["manifest_fingerprint"] = snapshot.manifest_fingerprint
+    subject["binding_kind"] = (
+        "snapshot_bound"
+        if snapshot.source_kind == "git_commit"
+        else "path_bound"
+    )
+    result = {**gate_decision, "subject": subject}
+    if temporary_workspace is not None:
+        temporary_workspace.cleanup()
+    return result
 
 
 def _load_sandbox_run_evidence(
@@ -1132,22 +1248,6 @@ def _load_sandbox_run_evidence(
         if isinstance(fingerprint, str):
             seen_fingerprints.add(fingerprint)
     return tuple(evidence)
-
-
-def _git_output(target: Path, argv: Sequence[str]) -> str | None:
-    try:
-        completed = subprocess.run(
-            ["git", "-C", str(target), *argv],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if completed.returncode != 0:
-        return None
-    return completed.stdout.strip()
 
 
 def _build_gate_check_report(

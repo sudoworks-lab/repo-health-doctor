@@ -8,13 +8,13 @@ import json
 import os
 from pathlib import Path
 import stat
-import subprocess
 from typing import Any, Mapping
+
+from ..sandbox.run_workspace import create_verified_snapshot
 
 
 AUTHORIZATION_DISCOVERY_FILENAME = ".repo-health-doctor.authorization.json"
 AUTHORIZATION_DISCOVERY_MAX_BYTES = 64 * 1024
-GIT_TIMEOUT_SECONDS = 5.0
 
 TRACKED_REFUSED = "tracked_refused"
 NOT_A_GIT_REPO = "not_a_git_repo"
@@ -52,6 +52,7 @@ def discover_execution_authorization(
     repo_path: str | Path,
     *,
     max_bytes: int = AUTHORIZATION_DISCOVERY_MAX_BYTES,
+    tracked_relative_paths: tuple[str, ...] | None = None,
 ) -> AuthorizationDiscoveryResult:
     """Read the single untracked authorization candidate at a Git top-level.
 
@@ -65,19 +66,26 @@ def discover_execution_authorization(
         requested_root = Path(repo_path).resolve(strict=False)
     except (OSError, RuntimeError):
         return _refused(NOT_A_GIT_REPO)
-    top_level = _git_top_level(requested_root)
-    if isinstance(top_level, AuthorizationDiscoveryResult):
-        return top_level
-    if top_level != requested_root:
-        return _refused(NOT_A_GIT_REPO)
-
-    tracked = _git_tracked(top_level)
-    if isinstance(tracked, AuthorizationDiscoveryResult):
-        return tracked
-    if tracked:
+    if tracked_relative_paths is None:
+        try:
+            workspace = create_verified_snapshot(requested_root)
+        except OSError:
+            return _refused(GIT_ERROR)
+        try:
+            snapshot = workspace.verified_snapshot
+            if snapshot is None or snapshot.source_kind != "git_commit":
+                return _refused(NOT_A_GIT_REPO)
+            tracked_relative_paths = tuple(
+                entry.path
+                for entry in snapshot.manifest
+                if entry.entry_type == "file"
+            )
+        finally:
+            workspace.cleanup()
+    if AUTHORIZATION_DISCOVERY_FILENAME in tracked_relative_paths:
         return _refused(TRACKED_REFUSED)
 
-    candidate = top_level / AUTHORIZATION_DISCOVERY_FILENAME
+    candidate = requested_root / AUTHORIZATION_DISCOVERY_FILENAME
     return _read_candidate(candidate, max_bytes=max_bytes)
 
 
@@ -88,59 +96,6 @@ def discover_authorization(
 ) -> AuthorizationDiscoveryResult:
     """Compatibility name for callers that do not need the longer function name."""
     return discover_execution_authorization(repo_path, max_bytes=max_bytes)
-
-
-def _git_top_level(root: Path) -> Path | AuthorizationDiscoveryResult:
-    try:
-        completed = subprocess.run(
-            ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=GIT_TIMEOUT_SECONDS,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return _refused(GIT_ERROR)
-
-    if completed.returncode != 0:
-        if b"not a git repository" in completed.stderr.lower():
-            return _refused(NOT_A_GIT_REPO)
-        return _refused(GIT_ERROR)
-
-    try:
-        raw_top_level = completed.stdout.rstrip(b"\r\n")
-        if not raw_top_level or b"\n" in raw_top_level or b"\r" in raw_top_level:
-            return _refused(GIT_ERROR)
-        return Path(os.fsdecode(raw_top_level)).resolve(strict=False)
-    except (OSError, UnicodeError, ValueError):
-        return _refused(GIT_ERROR)
-
-
-def _git_tracked(root: Path) -> bool | AuthorizationDiscoveryResult:
-    try:
-        completed = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(root),
-                "ls-files",
-                "--error-unmatch",
-                "--",
-                AUTHORIZATION_DISCOVERY_FILENAME,
-            ],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=GIT_TIMEOUT_SECONDS,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return _refused(GIT_ERROR)
-
-    if completed.returncode == 0:
-        return True
-    if completed.returncode == 1:
-        return False
-    return _refused(GIT_ERROR)
 
 
 def _read_candidate(candidate: Path, *, max_bytes: int) -> AuthorizationDiscoveryResult:

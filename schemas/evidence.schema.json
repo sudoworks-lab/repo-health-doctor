@@ -101,13 +101,32 @@
         "repo_identity": {"type": "string", "minLength": 1},
         "commit": {"type": ["string", "null"]},
         "tree_hash": {"type": ["string", "null"]},
+        "snapshot_id": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "manifest_fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
         "path_scope": {"type": "array", "items": {"type": "string"}},
         "binding_kind": {
           "type": "string",
-          "enum": ["unbound", "path_bound", "commit_bound", "tree_bound", "synthetic"]
+          "enum": ["unbound", "path_bound", "commit_bound", "tree_bound", "snapshot_bound", "synthetic"]
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {"binding_kind": {"const": "snapshot_bound"}},
+            "required": ["binding_kind"]
+          },
+          "then": {
+            "required": ["snapshot_id", "manifest_fingerprint"]
+          }
+        }
+      ]
     },
     "classification": {
       "type": "object",

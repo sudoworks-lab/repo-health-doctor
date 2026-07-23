@@ -101,7 +101,12 @@ class AdversarialMajorRegressionTests(unittest.TestCase):
         subject = bound["subject"]
         self.assertEqual(observed["commit"], subject["commit"])
         self.assertEqual(observed["tree_hash"], subject["tree_hash"])
-        self.assertEqual("commit_bound", subject["binding_kind"])
+        self.assertEqual("snapshot_bound", subject["binding_kind"])
+        self.assertEqual(observed["snapshot_id"], subject["snapshot_id"])
+        self.assertEqual(
+            observed["manifest_fingerprint"],
+            subject["manifest_fingerprint"],
+        )
         self.assertFalse(bound.get("execution_authorized", False))
 
     def test_f02_option_like_image_is_rejected_at_argv_boundary(self) -> None:

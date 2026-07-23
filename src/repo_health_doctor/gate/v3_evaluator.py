@@ -101,6 +101,7 @@ def evaluate_gate_decision_from_v3_report(
     repo_root: str | Path | None = None,
     external_suite_evidence: Sequence[ExternalSuiteGateEvidence] = (),
     sandbox_evidence: Sequence[Mapping[str, Any] | SandboxRunEvidenceValidationResult] = (),
+    subject: Mapping[str, Any] | None = None,
 ) -> Mapping[str, Any]:
     candidate = build_gate_decision_candidate_from_v3_report(report)
     demo_evidence, demo_missing_evidence = _demo_context_from_v3_report(report, repo_root=repo_root)
@@ -126,14 +127,45 @@ def evaluate_gate_decision_from_v3_report(
 
     evidence_candidates = list(extract_evidence_candidates_from_v3_report(report))
     evidence_candidates.extend(demo_evidence)
+    if subject is not None:
+        evidence_candidates = [
+            _bind_evidence_candidate_to_subject(item, subject)
+            for item in evidence_candidates
+        ]
     evaluation = evaluate_gate_decision(
         evidence_candidates,
-        subject=candidate["subject"],
+        subject=subject or candidate["subject"],
         policy=effective_policy,
         external_suite_evidence=external_suite_evidence,
         sandbox_evidence=sandbox_evidence,
     )
     return evaluation.decision
+
+
+def _bind_evidence_candidate_to_subject(
+    evidence: Mapping[str, Any],
+    subject: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    bound_subject = {
+        "repo_identity": str(
+            subject.get("repo") or subject.get("repo_identity") or "<repo>"
+        ),
+        "commit": (
+            subject.get("commit")
+            if isinstance(subject.get("commit"), str)
+            else None
+        ),
+        "tree_hash": (
+            subject.get("tree_hash")
+            if isinstance(subject.get("tree_hash"), str)
+            else None
+        ),
+        "snapshot_id": subject.get("snapshot_id"),
+        "manifest_fingerprint": subject.get("manifest_fingerprint"),
+        "path_scope": [],
+        "binding_kind": str(subject.get("binding_kind", "unbound")),
+    }
+    return {**evidence, "subject": bound_subject}
 
 
 def _demo_context_from_v3_report(

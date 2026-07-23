@@ -9,7 +9,7 @@ import unittest
 from jsonschema import Draft202012Validator
 
 from repo_health_doctor.gate.authorization import (
-    AUTHORIZATION_SCHEMA_VERSION,
+    IMAGE_BOUND_AUTHORIZATION_SCHEMA_VERSION,
     LEGACY_AUTHORIZATION_SCHEMA_VERSION,
     validate_execution_authorization,
 )
@@ -38,7 +38,10 @@ class ExecutionAuthorizationImageBindingTests(unittest.TestCase):
         new = _fixture("approved-exact-0.2.json")
 
         self.assertEqual(old["schema_version"], LEGACY_AUTHORIZATION_SCHEMA_VERSION)
-        self.assertEqual(new["schema_version"], AUTHORIZATION_SCHEMA_VERSION)
+        self.assertEqual(
+            new["schema_version"],
+            IMAGE_BOUND_AUTHORIZATION_SCHEMA_VERSION,
+        )
         self.assertEqual(list(validator.iter_errors(old)), [])
         self.assertEqual(list(validator.iter_errors(new)), [])
 

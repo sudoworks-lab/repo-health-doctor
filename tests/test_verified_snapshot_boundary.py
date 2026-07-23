@@ -167,6 +167,55 @@ class VerifiedSnapshotBoundaryTests(unittest.TestCase):
             finally:
                 workspace.cleanup()
 
+    def test_git_tree_applies_file_directory_and_depth_budgets_before_export(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = _git_repo(Path(tmp))
+            deep = repo / "one" / "two" / "three"
+            deep.mkdir(parents=True)
+            (deep / "payload.txt").write_text("deep", encoding="utf-8")
+            for index in range(4):
+                (repo / f".env.{index}").write_text("excluded", encoding="utf-8")
+            _git(repo, "add", "one/two/three/payload.txt", *[f".env.{index}" for index in range(4)])
+            _git(
+                repo,
+                "-c",
+                "user.email=test@example.invalid",
+                "-c",
+                "user.name=test",
+                "commit",
+                "-qm",
+                "budget fixture",
+            )
+
+            depth_refusal = create_verified_snapshot(
+                repo,
+                copy_budget=CopyBudget(max_depth=2),
+            )
+            try:
+                self.assertFalse(depth_refusal.copy_safety_ok)
+                self.assertEqual(
+                    depth_refusal.copy_budget_exceeded_reason,
+                    "max_depth",
+                )
+                self.assertEqual(list(depth_refusal.workspace.iterdir()), [])
+            finally:
+                depth_refusal.cleanup()
+
+            file_refusal = create_verified_snapshot(
+                repo,
+                copy_budget=CopyBudget(max_file_count=2),
+            )
+            try:
+                self.assertFalse(file_refusal.copy_safety_ok)
+                self.assertEqual(
+                    file_refusal.copy_budget_exceeded_reason,
+                    "max_file_count",
+                )
+                self.assertEqual(file_refusal.entries_examined, 3)
+                self.assertEqual(list(file_refusal.workspace.iterdir()), [])
+            finally:
+                file_refusal.cleanup()
+
     def test_symlinks_and_special_files_are_never_followed_or_valid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -245,6 +294,32 @@ class VerifiedSnapshotBoundaryTests(unittest.TestCase):
             finally:
                 workspace.cleanup()
 
+    def test_source_root_rename_swap_invalidates_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            (repo / "payload.txt").write_text("original", encoding="utf-8")
+            original = root / "original"
+            swapped = False
+
+            def swap(event: str, relative: str) -> None:
+                nonlocal swapped
+                if event == "before_source_root_recheck" and not swapped:
+                    repo.rename(original)
+                    repo.mkdir()
+                    (repo / "payload.txt").write_text("replacement", encoding="utf-8")
+                    swapped = True
+
+            workspace = create_verified_snapshot(repo, _event_hook=swap)
+            try:
+                self.assertTrue(swapped)
+                self.assertFalse(workspace.copy_safety_ok)
+                self.assertIn("source_root_swap_detected", workspace.refusal_reasons)
+                self.assertEqual(list(workspace.workspace.iterdir()), [])
+            finally:
+                workspace.cleanup()
+
     def test_identity_is_canonical_and_changes_for_content_path_or_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -302,6 +377,34 @@ class VerifiedSnapshotBoundaryTests(unittest.TestCase):
                 )
             finally:
                 changed_mode.cleanup()
+
+    def test_verified_snapshot_report_matches_closed_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            (repo / "payload.txt").write_text("schema", encoding="utf-8")
+            workspace = create_verified_snapshot(repo)
+            try:
+                snapshot = workspace.verified_snapshot
+                self.assertIsNotNone(snapshot)
+                schema = json.loads(
+                    (ROOT / "schemas" / "verified-snapshot.schema.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                try:
+                    from jsonschema import Draft202012Validator
+                except ModuleNotFoundError:
+                    self.assertEqual(
+                        set(snapshot.to_report()),  # type: ignore[union-attr]
+                        set(schema["required"]),
+                    )
+                else:
+                    Draft202012Validator(schema).validate(
+                        snapshot.to_report()  # type: ignore[union-attr]
+                    )
+            finally:
+                workspace.cleanup()
 
     def test_git_snapshot_is_exact_commit_and_dirty_tree_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -437,6 +540,36 @@ class VerifiedSnapshotBoundaryTests(unittest.TestCase):
             self.assertTrue(report["policy_blocked"])
             self.assertIn(
                 "snapshot_subject_mismatch",
+                report["approval"]["refusal_reasons"],
+            )
+
+    def test_snapshot_mutation_after_planning_blocks_immediately_before_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            payload = repo / "payload.txt"
+            payload.write_text("immutable", encoding="utf-8")
+            workspace = create_verified_snapshot(repo)
+            snapshot_payload = workspace.workspace / "payload.txt"
+
+            class MutatingRuntimeProbe(_CountingRunner):
+                def detect_runtime(self) -> dict[str, str]:
+                    snapshot_payload.chmod(0o600)
+                    snapshot_payload.write_text("mutated", encoding="utf-8")
+                    return super().detect_runtime()
+
+            runner = MutatingRuntimeProbe()
+            report = run_sandbox_run(
+                repo,
+                command_argv=COMMAND,
+                runner=runner,
+                prepared_workspace=workspace,
+            )
+
+            self.assertEqual(runner.run_calls, 0)
+            self.assertTrue(report["policy_blocked"])
+            self.assertIn(
+                "snapshot_integrity_verification_failed",
                 report["approval"]["refusal_reasons"],
             )
 

@@ -203,7 +203,11 @@ class GateDecisionCliReportIntegrationTests(unittest.TestCase):
             self.assertEqual(gate["verdict"], "warn")
             self.assertEqual(gate["subject"]["commit"], observed["commit"])
             self.assertEqual(gate["subject"]["tree_hash"], observed["tree_hash"])
-            self.assertEqual(gate["subject"]["binding_kind"], "commit_bound")
+            self.assertEqual(gate["subject"]["binding_kind"], "snapshot_bound")
+            self.assertEqual(
+                gate["subject"]["snapshot_id"],
+                observed["snapshot_id"],
+            )
             authorization = dict(
                 build_execution_authorization_draft(
                     gate,
@@ -267,7 +271,7 @@ class GateDecisionCliReportIntegrationTests(unittest.TestCase):
             readme.write_text("dirty\n", encoding="utf-8")
             dirty = _bind_gate_decision_subject(gate, target)
 
-        self.assertEqual(clean["subject"]["binding_kind"], "commit_bound")
+        self.assertEqual(clean["subject"]["binding_kind"], "snapshot_bound")
         self.assertIsNotNone(clean["subject"]["commit"])
         self.assertIsNotNone(clean["subject"]["tree_hash"])
         self.assertEqual(dirty, gate)

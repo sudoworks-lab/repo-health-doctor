@@ -30,7 +30,17 @@ TOP_LEVEL_FIELDS = {
     "residual_risks",
 }
 SOURCE_FIELDS = {"tool_name", "tool_version", "adapter_name", "adapter_version", "execution_mode"}
-SUBJECT_FIELDS = {"repo_identity", "commit", "tree_hash", "path_scope", "binding_kind"}
+LEGACY_SUBJECT_FIELDS = {
+    "repo_identity",
+    "commit",
+    "tree_hash",
+    "path_scope",
+    "binding_kind",
+}
+SUBJECT_FIELDS = LEGACY_SUBJECT_FIELDS | {
+    "snapshot_id",
+    "manifest_fingerprint",
+}
 CLASSIFICATION_FIELDS = {"category", "subcategory", "severity", "confidence", "confidence_reason"}
 FINDING_FIELDS = {"present", "count", "locations", "redacted_summary"}
 RAW_HANDLING_FIELDS = {
@@ -76,7 +86,14 @@ CATEGORIES = {
 SEVERITIES = {"info", "warn", "block", "unknown"}
 CONFIDENCES = {"low", "medium", "high", "unknown"}
 GATE_EFFECTS = {"evidence_only", "requires_human_review", "allow_limited", "warn", "quarantine", "block"}
-BINDING_KINDS = {"unbound", "path_bound", "commit_bound", "tree_bound", "synthetic"}
+BINDING_KINDS = {
+    "unbound",
+    "path_bound",
+    "commit_bound",
+    "tree_bound",
+    "snapshot_bound",
+    "synthetic",
+}
 
 RAW_HOST_PATH = re.compile(r"(?:^|[\s\"'=])(?:/(?:home|Users)/|/mnt/[A-Za-z]/Users/|[A-Za-z]:\\Users\\)")
 
@@ -104,7 +121,15 @@ def validate_evidence(data: Mapping[str, Any]) -> EvidenceValidationResult:
         errors.append("evidence_id_required")
 
     source = _mapping(data.get("source"), SOURCE_FIELDS, "source", errors)
-    subject = _mapping(data.get("subject"), SUBJECT_FIELDS, "subject", errors)
+    subject_value = data.get("subject")
+    subject = subject_value if isinstance(subject_value, Mapping) else None
+    if subject is None:
+        errors.append("subject_must_be_object")
+    elif frozenset(subject) not in {
+        frozenset(LEGACY_SUBJECT_FIELDS),
+        frozenset(SUBJECT_FIELDS),
+    }:
+        errors.append("subject_required_or_unknown_field")
     classification = _mapping(data.get("classification"), CLASSIFICATION_FIELDS, "classification", errors)
     finding = _mapping(data.get("finding"), FINDING_FIELDS, "finding", errors)
     raw_handling = _mapping(data.get("raw_handling"), RAW_HANDLING_FIELDS, "raw_handling", errors)
@@ -123,6 +148,11 @@ def validate_evidence(data: Mapping[str, Any]) -> EvidenceValidationResult:
             errors.append("subject_path_scope_must_be_array")
         if not _non_empty_string(subject.get("repo_identity")):
             errors.append("subject_repo_identity_required")
+        if subject.get("binding_kind") == "snapshot_bound":
+            if not _fingerprint(subject.get("snapshot_id")):
+                errors.append("subject_snapshot_id_invalid")
+            if not _fingerprint(subject.get("manifest_fingerprint")):
+                errors.append("subject_manifest_fingerprint_invalid")
 
     if classification is not None:
         if classification.get("category") not in CATEGORIES:
@@ -225,6 +255,15 @@ def _require_strings(data: Mapping[str, Any], fields: tuple[str, ...], errors: l
 
 def _non_empty_string(value: Any) -> bool:
     return isinstance(value, str) and bool(value)
+
+
+def _fingerprint(value: Any) -> bool:
+    return bool(
+        isinstance(value, str)
+        and value.startswith("sha256:")
+        and len(value) == 71
+        and all(character in "0123456789abcdef" for character in value[7:])
+    )
 
 
 def _string_items(value: Any) -> list[str]:

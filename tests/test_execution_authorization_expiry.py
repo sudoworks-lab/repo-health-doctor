@@ -132,19 +132,22 @@ class ExecutionAuthorizationExpiryTests(unittest.TestCase):
             with self.subTest(reason=reason):
                 self.assertIn(f"`{reason}`", contract)
 
-    def test_t0_subject_binding_sources_and_gaps_are_documented(self) -> None:
+    def test_verified_snapshot_subject_binding_is_documented(self) -> None:
         contract = CONTRACT.read_text(encoding="utf-8")
 
         for term in (
-            "T0",
+            "VerifiedSnapshot",
             "repo",
             "commit",
             "tree_hash",
             "dirty",
             "binding_kind",
             "path_bound",
-            "_decision_subject",
-            "_gate_subject",
+            "snapshot_bound",
+            "snapshot_id",
+            "manifest_fingerprint",
+            "0.3-draft",
+            "`git status`は使用しない",
             "sandbox-run",
         ):
             with self.subTest(term=term):

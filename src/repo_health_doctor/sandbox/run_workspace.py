@@ -36,6 +36,8 @@ GIT_MINIMUM_VERSION = (2, 42, 0)
 GIT_COMMAND_TIMEOUT_SECONDS = 15
 GIT_STDERR_LIMIT_BYTES = 64 * 1024
 GIT_ALLOWED_SUBCOMMANDS = frozenset({"rev-parse", "ls-tree", "cat-file"})
+TRUSTED_GIT_EXECUTABLE_CANDIDATES = ("/usr/bin/git", "/bin/git")
+AUTHORIZATION_CONTROL_FILENAME = ".repo-health-doctor.authorization.json"
 _GIT_VERSION = re.compile(r"\bgit version (\d+)\.(\d+)\.(\d+)")
 _EventHook = Callable[[str, str], None]
 
@@ -179,6 +181,7 @@ class DisposableWorkspace:
     copy_errors: list[str] = field(default_factory=list)
     refusal_reasons: list[str] = field(default_factory=list)
     files_copied: int = 0
+    files_examined: int = 0
     total_bytes_copied: int = 0
     directories_examined: int = 0
     entries_examined: int = 0
@@ -219,6 +222,7 @@ class DisposableWorkspace:
             "copy_policy_version": COPY_POLICY_VERSION,
             "excluded_path_categories": _categories(self.excluded_counts),
             "files_copied": self.files_copied,
+            "files_examined": self.files_examined,
             "directories_examined": self.directories_examined,
             "entries_examined": self.entries_examined,
             "total_bytes_copied": self.total_bytes_copied,
@@ -328,6 +332,25 @@ class _BoundedPipeReader:
             remaining -= len(chunk)
             yield chunk
 
+    def read_delimited(self, delimiter: bytes, limit: int) -> bytes | None:
+        if len(delimiter) != 1 or limit <= 0:
+            raise ValueError("bounded delimiter reads require one byte and a positive limit")
+        while True:
+            marker = self.stdout_buffer.find(delimiter)
+            if marker >= 0:
+                if marker > limit:
+                    raise _SnapshotRefusal("git_output_record_budget_exceeded")
+                value = bytes(self.stdout_buffer[:marker])
+                del self.stdout_buffer[: marker + 1]
+                return value
+            if len(self.stdout_buffer) > limit:
+                raise _SnapshotRefusal("git_output_record_budget_exceeded")
+            if self.stdout_eof:
+                if self.stdout_buffer:
+                    raise _SnapshotRefusal("git_output_truncated")
+                return None
+            self._pump()
+
     def _pump(self) -> None:
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
@@ -352,7 +375,11 @@ class _BoundedPipeReader:
 
 
 def target_identity(path: Path) -> str:
-    return f"path:{path.resolve().name}"
+    canonical_path = os.fsencode(os.path.abspath(path))
+    digest = hashlib.sha256(
+        b"repo-health-doctor-local-repository-identity-v1\0" + canonical_path
+    ).hexdigest()
+    return f"sha256:{digest}"
 
 
 def inspect_git_worktree(path: Path) -> dict[str, object]:
@@ -444,6 +471,8 @@ def create_verified_snapshot(
         created=True,
     )
     try:
+        if not _no_follow_platform_supported():
+            raise _SnapshotRefusal("snapshot_platform_no_follow_unsupported")
         source_lstat = os.lstat(source_root)
         if stat.S_ISLNK(source_lstat.st_mode):
             raise _SnapshotRefusal("source_root_symlink")
@@ -469,6 +498,11 @@ def create_verified_snapshot(
                     "real_execution_requires_git_commit_tree_binding",
                 ),
             )
+        if _event_hook is not None:
+            _event_hook("before_source_root_recheck", ".")
+        final_source_lstat = os.lstat(source_root)
+        if not _same_directory(source_lstat, final_source_lstat):
+            raise _SnapshotRefusal("source_root_swap_detected")
     except _SnapshotRefusal as exc:
         _record_refusal(workspace, exc)
         _invalidate_partial_workspace(workspace)
@@ -664,6 +698,10 @@ def _create_git_snapshot(
         raise
     finally:
         workspace.entries_examined += comparison_workspace.entries_examined
+        workspace.files_examined = max(
+            workspace.files_examined,
+            comparison_workspace.files_examined,
+        )
         workspace.directories_examined = max(
             workspace.directories_examined,
             comparison_workspace.directories_examined,
@@ -828,6 +866,7 @@ def _copy_filesystem_tree(
                 )
                 continue
             if stat.S_ISREG(mode):
+                _register_file_examined(workspace, relative)
                 category = _file_exclusion_category(entry.name)
                 if category is not None:
                     _count(workspace.excluded_counts, category)
@@ -1086,56 +1125,114 @@ def _git_tree_entries(
     environment: dict[str, str],
     workspace: DisposableWorkspace,
 ) -> list[tuple[str, str, int, str]]:
-    maximum_output = min(
-        128 * 1024 * 1024,
-        workspace.copy_budget.max_file_count
-        * (workspace.copy_budget.max_relative_path_bytes + 160),
-    )
-    output = _run_git_capture(
+    arguments = _git_repository_argv(
         git_path,
         git_dir,
         work_tree,
         ("ls-tree", "-rz", "-l", "--full-tree", tree),
-        environment,
-        stdout_limit=maximum_output,
+    )
+    process = subprocess.Popen(
+        arguments,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=environment,
+        cwd=workspace.root,
+        shell=False,
+        bufsize=0,
+    )
+    reader = _BoundedPipeReader(
+        process,
+        timeout_seconds=GIT_COMMAND_TIMEOUT_SECONDS,
+        stderr_limit=GIT_STDERR_LIMIT_BYTES,
     )
     entries: list[tuple[str, str, int, str]] = []
+    directory_paths: set[str] = set()
     total_bytes = 0
-    for record in output.split(b"\0"):
-        if not record:
-            continue
-        workspace.entries_examined += 1
-        try:
-            metadata, raw_path = record.split(b"\t", 1)
-            mode, object_type, object_id, raw_size = metadata.split(b" ", 3)
-            relative = raw_path.decode("utf-8", "strict")
-            size = int(raw_size)
-        except (ValueError, UnicodeDecodeError) as exc:
-            raise _SnapshotRefusal("git_tree_output_invalid") from exc
-        _validate_relative_path(relative, workspace.copy_budget)
-        if object_type != b"blob" or mode not in {b"100644", b"100755"}:
-            raise _SnapshotRefusal("git_tree_unsupported_entry", relative)
-        path_name = relative.rsplit("/", 1)[-1]
-        if _path_exclusion_category(relative, path_name) is not None:
-            _count(
-                workspace.excluded_counts,
-                _path_exclusion_category(relative, path_name) or "excluded",
+    try:
+        while True:
+            record = reader.read_delimited(
+                b"\0",
+                workspace.copy_budget.max_relative_path_bytes + 256,
             )
-            continue
-        if size < 0:
-            raise _SnapshotRefusal("git_tree_size_invalid", relative)
-        _preflight_file_budget_values(
-            workspace,
-            relative,
-            size,
-            next_file_count=len(entries) + 1,
-            next_total_bytes=total_bytes + size,
-        )
-        oid = object_id.decode("ascii", "strict")
-        if not _valid_object_id(oid):
-            raise _SnapshotRefusal("git_tree_object_id_invalid", relative)
-        entries.append((relative, mode.decode("ascii"), size, oid))
-        total_bytes += size
+            if record is None:
+                break
+            workspace.entries_examined += 1
+            try:
+                metadata, raw_path = record.split(b"\t", 1)
+                mode, object_type, object_id, raw_size = metadata.split(b" ", 3)
+                relative = raw_path.decode("utf-8", "strict")
+            except (ValueError, UnicodeDecodeError) as exc:
+                raise _SnapshotRefusal("git_tree_output_invalid") from exc
+            _validate_relative_path(relative, workspace.copy_budget)
+            _register_file_examined(workspace, relative)
+            relative_parts = relative.split("/")
+            directory_parts = relative_parts[:-1]
+            if len(directory_parts) > workspace.copy_budget.max_depth:
+                _budget_refusal(workspace, "max_depth", relative)
+            for index in range(1, len(directory_parts) + 1):
+                directory = "/".join(directory_parts[:index])
+                if directory in directory_paths:
+                    continue
+                directory_paths.add(directory)
+                if (
+                    len(directory_paths) + 1
+                    > workspace.copy_budget.max_directory_count
+                ):
+                    _budget_refusal(
+                        workspace,
+                        "max_directory_count",
+                        relative,
+                    )
+            if object_type != b"blob" or mode not in {b"100644", b"100755"}:
+                raise _SnapshotRefusal("git_tree_unsupported_entry", relative)
+            try:
+                size = int(raw_size)
+            except ValueError as exc:
+                raise _SnapshotRefusal("git_tree_size_invalid", relative) from exc
+            path_name = relative_parts[-1]
+            if relative == AUTHORIZATION_CONTROL_FILENAME:
+                raise _SnapshotRefusal("tracked_authorization_artifact_refused")
+            exclusion = _path_exclusion_category(relative, path_name)
+            if exclusion is not None:
+                _count(workspace.excluded_counts, exclusion)
+                continue
+            if size < 0:
+                raise _SnapshotRefusal("git_tree_size_invalid", relative)
+            _preflight_file_budget_values(
+                workspace,
+                relative,
+                size,
+                next_file_count=workspace.files_examined,
+                next_total_bytes=total_bytes + size,
+            )
+            oid = object_id.decode("ascii", "strict")
+            if not _valid_object_id(oid):
+                raise _SnapshotRefusal("git_tree_object_id_invalid", relative)
+            entries.append((relative, mode.decode("ascii"), size, oid))
+            total_bytes += size
+        try:
+            return_code = process.wait(timeout=1)
+        except subprocess.TimeoutExpired as exc:
+            raise _SnapshotRefusal("git_command_timeout") from exc
+        if return_code != 0 or reader.stderr_buffer:
+            raise _SnapshotRefusal("git_command_failed")
+    except BaseException:
+        process.kill()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
+        raise
+    finally:
+        reader.close()
+        for stream in (process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
+    workspace.directories_examined = max(
+        workspace.directories_examined,
+        len(directory_paths) + 1,
+    )
     return entries
 
 
@@ -1159,6 +1256,7 @@ def _export_git_blobs(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env=environment,
+        cwd=workspace.root,
         shell=False,
         bufsize=0,
     )
@@ -1304,7 +1402,7 @@ def _finish_snapshot(
     snapshot = VerifiedSnapshot(
         schema_version=SNAPSHOT_SCHEMA_VERSION,
         snapshot_id=snapshot_id,
-        source_identity_redacted="<repo>",
+        source_identity_redacted=target_identity(workspace.source_root),
         source_kind=source_kind,
         source_commit=source_commit,
         source_tree=source_tree,
@@ -1378,18 +1476,23 @@ def _inventory_from_snapshot(snapshot: VerifiedSnapshot) -> InventoryResult:
 
 
 def _git_executable() -> str:
-    executable = shutil.which("git")
-    if executable is None:
-        raise _SnapshotRefusal("git_executable_unavailable")
-    resolved = str(Path(executable).resolve())
-    if not Path(resolved).is_file():
-        raise _SnapshotRefusal("git_executable_unavailable")
-    return resolved
+    for candidate in TRUSTED_GIT_EXECUTABLE_CANDIDATES:
+        try:
+            candidate_stat = os.stat(candidate)
+        except OSError:
+            continue
+        if not stat.S_ISREG(candidate_stat.st_mode):
+            continue
+        if candidate_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            continue
+        return str(Path(candidate).resolve())
+    raise _SnapshotRefusal("git_executable_unavailable")
 
 
 def _git_environment(private_home: Path) -> dict[str, str]:
     return {
         "HOME": str(private_home),
+        "XDG_CONFIG_HOME": str(private_home),
         "LANG": "C",
         "LC_ALL": "C",
         "PATH": "/usr/bin:/bin",
@@ -1406,6 +1509,7 @@ def _git_environment(private_home: Path) -> dict[str, str]:
         "GIT_OPTIONAL_LOCKS": "0",
         "GIT_NO_REPLACE_OBJECTS": "1",
         "GIT_NO_LAZY_FETCH": "1",
+        "GIT_ATTR_NOSYSTEM": "1",
         "GIT_LITERAL_PATHSPECS": "1",
         "GIT_PROTOCOL_FROM_USER": "0",
         "GIT_ALLOW_PROTOCOL": "",
@@ -1486,6 +1590,7 @@ def _run_standalone_git_capture(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env=environment,
+        cwd=environment["HOME"],
         shell=False,
         bufsize=0,
     )
@@ -1602,9 +1707,18 @@ def _preflight_file_budget(
         workspace,
         relative,
         file_size,
-        next_file_count=workspace.files_copied + 1,
+        next_file_count=workspace.files_examined,
         next_total_bytes=workspace.total_bytes_copied + file_size,
     )
+
+
+def _register_file_examined(
+    workspace: DisposableWorkspace,
+    relative: str,
+) -> None:
+    workspace.files_examined += 1
+    if workspace.files_examined > workspace.copy_budget.max_file_count:
+        _budget_refusal(workspace, "max_file_count", relative)
 
 
 def _preflight_file_budget_values(
@@ -1657,6 +1771,10 @@ def _path_exclusion_category(relative: str, name: str) -> str | None:
 
 
 def _file_exclusion_category(name: str) -> str | None:
+    if name == AUTHORIZATION_CONTROL_FILENAME or name.startswith(
+        AUTHORIZATION_CONTROL_FILENAME + "."
+    ):
+        return "control_plane_artifact"
     if name.startswith(".env."):
         return "credential_like"
     if name in FILE_EXCLUSIONS:
@@ -1690,6 +1808,15 @@ def _same_directory(before: os.stat_result, after: os.stat_result) -> bool:
         and stat.S_ISDIR(after.st_mode)
         and before.st_mtime_ns == after.st_mtime_ns
         and before.st_ctime_ns == after.st_ctime_ns
+    )
+
+
+def _no_follow_platform_supported() -> bool:
+    return bool(
+        getattr(os, "O_NOFOLLOW", 0)
+        and getattr(os, "O_DIRECTORY", 0)
+        and os.open in os.supports_dir_fd
+        and os.stat in os.supports_follow_symlinks
     )
 
 

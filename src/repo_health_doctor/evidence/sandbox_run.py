@@ -79,6 +79,7 @@ def normalize_sandbox_run_evidence(report: object) -> dict[str, Any]:
     docker = _mapping(source.get("docker"))
     result = _mapping(source.get("result"))
     workspace = _mapping(source.get("disposable_workspace"))
+    verified_snapshot = _mapping(source.get("verified_snapshot"))
     diff = _mapping(source.get("workspace_diff"))
 
     run_id = _safe_label(run.get("run_id"))
@@ -130,7 +131,7 @@ def normalize_sandbox_run_evidence(report: object) -> dict[str, Any]:
     if _is_true(source.get("truncated")) or _is_true(diff.get("truncated")):
         decision_signals.append(DECISION_TRUNCATED)
 
-    subject = _subject(source, target, gate)
+    subject = _subject(source, target, gate, verified_snapshot)
     policy_version = _policy_version(source, gate)
     gate_fingerprint = _first_fingerprint(
         gate.get("decision_fingerprint"),
@@ -187,6 +188,11 @@ def normalize_sandbox_run_evidence(report: object) -> dict[str, Any]:
             "execution_result_is_not_safety_proof",
         ],
     }
+    if "snapshot_id" in subject and "manifest_fingerprint" in subject:
+        normalized["verified_snapshot"] = {
+            "snapshot_id": subject["snapshot_id"],
+            "manifest_fingerprint": subject["manifest_fingerprint"],
+        }
     return normalized
 
 
@@ -236,7 +242,12 @@ def _object_id(value: Any) -> str | None:
     return value if isinstance(value, str) and _OBJECT_ID.fullmatch(value) else None
 
 
-def _subject(source: Mapping[str, Any], target: Mapping[str, Any], gate: Mapping[str, Any]) -> dict[str, Any]:
+def _subject(
+    source: Mapping[str, Any],
+    target: Mapping[str, Any],
+    gate: Mapping[str, Any],
+    verified_snapshot: Mapping[str, Any],
+) -> dict[str, Any]:
     candidates = (
         _mapping(source.get("subject")),
         _mapping(gate.get("subject")),
@@ -246,12 +257,34 @@ def _subject(source: Mapping[str, Any], target: Mapping[str, Any], gate: Mapping
     repo = _safe_label(candidate.get("repo")) or _safe_label(candidate.get("repo_identity"))
     if repo is None:
         repo = _safe_label(target.get("identity")) or "<repo>"
-    return {
+    snapshot_id = _first_fingerprint(
+        candidate.get("snapshot_id"),
+        verified_snapshot.get("snapshot_id"),
+    )
+    manifest_fingerprint = _first_fingerprint(
+        candidate.get("manifest_fingerprint"),
+        verified_snapshot.get("manifest_fingerprint"),
+    )
+    normalized_subject = {
         "repo": repo,
-        "commit": _object_id(candidate.get("commit")),
-        "tree_hash": _object_id(candidate.get("tree_hash")) or _object_id(candidate.get("tree")),
-        "binding_kind": _safe_label(candidate.get("binding_kind")) or "unbound",
+        "commit": _object_id(candidate.get("commit"))
+        or _object_id(verified_snapshot.get("source_commit")),
+        "tree_hash": _object_id(candidate.get("tree_hash"))
+        or _object_id(candidate.get("tree"))
+        or _object_id(verified_snapshot.get("source_tree")),
+        "binding_kind": _safe_label(candidate.get("binding_kind"))
+        or (
+            "snapshot_bound"
+            if verified_snapshot.get("source_kind") == "git_commit"
+            else "path_bound"
+            if snapshot_id is not None and manifest_fingerprint is not None
+            else "unbound"
+        ),
     }
+    if snapshot_id is not None and manifest_fingerprint is not None:
+        normalized_subject["snapshot_id"] = snapshot_id
+        normalized_subject["manifest_fingerprint"] = manifest_fingerprint
+    return normalized_subject
 
 
 def _policy_version(source: Mapping[str, Any], gate: Mapping[str, Any]) -> str | None:
@@ -297,7 +330,9 @@ def _observer_status(source: Mapping[str, Any]) -> tuple[str, bool]:
 
 
 def _binding_status(authorization: Mapping[str, Any], source: Mapping[str, Any]) -> tuple[str, bool]:
-    binding = _mapping(authorization.get("worktree_binding"))
+    binding = _mapping(authorization.get("snapshot_binding"))
+    if not binding:
+        binding = _mapping(authorization.get("worktree_binding"))
     if not binding:
         binding = _mapping(source.get("binding"))
     if not binding:

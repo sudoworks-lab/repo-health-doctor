@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "repo-health-doctor://schemas/execution-authorization.schema.json",
   "title": "repo-health-doctor execution authorization",
-  "description": "Experimental human-controlled execution authorization artifact. 0.1-draft remains accepted; 0.2-draft optionally binds an exact digest-pinned image reference to a separate full local image ID. Gate decisions remain non-authorizing.",
+  "description": "Experimental human-controlled execution authorization artifact. 0.1-draft and 0.2-draft remain accepted for historical validation; 0.3-draft binds an immutable snapshot manifest in addition to image, gate, argv, policy, expiry, and Git subject fields. Gate decisions remain non-authorizing.",
   "type": "object",
   "required": [
     "authorization_kind",
@@ -21,7 +21,7 @@
   ],
   "properties": {
     "authorization_kind": {"type": "string", "enum": ["repo_health_execution_authorization"]},
-    "schema_version": {"type": "string", "enum": ["0.1-draft", "0.2-draft"]},
+    "schema_version": {"type": "string", "enum": ["0.1-draft", "0.2-draft", "0.3-draft"]},
     "approved": {"type": "boolean"},
     "approved_by": {"type": ["string", "null"]},
     "approved_at": {"type": ["string", "null"]},
@@ -44,6 +44,16 @@
     {
       "if": {"properties": {"schema_version": {"const": "0.2-draft"}}, "required": ["schema_version"]},
       "then": {"properties": {"approved_image": {"$ref": "#/$defs/approved_image"}}}
+    },
+    {
+      "if": {"properties": {"schema_version": {"const": "0.3-draft"}}, "required": ["schema_version"]},
+      "then": {
+        "properties": {
+          "approved_scope": {"$ref": "#/$defs/snapshot_approved_scope"},
+          "subject": {"$ref": "#/$defs/snapshot_subject"},
+          "approved_image": {"$ref": "#/$defs/approved_image"}
+        }
+      }
     }
   ],
   "$defs": {
@@ -69,12 +79,23 @@
         "repo": {"type": "string", "minLength": 1},
         "commit": {"type": ["string", "null"]},
         "tree_hash": {"type": ["string", "null"]},
+        "snapshot_id": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "manifest_fingerprint": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
         "binding_kind": {
           "type": "string",
-          "enum": ["unbound", "path_bound", "commit_bound", "tree_bound", "synthetic"]
+          "enum": ["unbound", "path_bound", "commit_bound", "tree_bound", "snapshot_bound", "synthetic"]
         }
       },
       "additionalProperties": false
+    },
+    "snapshot_approved_scope": {
+      "allOf": [
+        {"$ref": "#/$defs/approved_scope"},
+        {
+          "type": "object",
+          "required": ["snapshot_id", "manifest_fingerprint"]
+        }
+      ]
     },
     "based_on_gate_decision": {
       "type": "object",
@@ -96,9 +117,20 @@
       "properties": {
         "repo": {"type": "string", "minLength": 1},
         "commit": {"type": ["string", "null"]},
-        "tree_hash": {"type": ["string", "null"]}
+        "tree_hash": {"type": ["string", "null"]},
+        "snapshot_id": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "manifest_fingerprint": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"}
       },
       "additionalProperties": false
+    },
+    "snapshot_subject": {
+      "allOf": [
+        {"$ref": "#/$defs/subject"},
+        {
+          "type": "object",
+          "required": ["snapshot_id", "manifest_fingerprint"]
+        }
+      ]
     }
   }
 }

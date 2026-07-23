@@ -20,7 +20,11 @@ from repo_health_doctor.gate.authorization import (
 )
 from repo_health_doctor.sandbox.docker_runner import FakeDockerRunner
 from repo_health_doctor.sandbox.run import run_sandbox_run
-from repo_health_doctor.sandbox.run_workspace import inspect_git_worktree
+from repo_health_doctor.sandbox.run_workspace import (
+    DisposableWorkspace,
+    create_verified_snapshot,
+    inspect_git_worktree,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,9 +61,14 @@ class ExecutionAuthorizationSingleUseTests(unittest.TestCase):
     def _authorization(self, root: Path, repo: Path) -> tuple[Path, dict[str, object], dict[str, object]]:
         gate = deepcopy(_fixture("gate-allow-limited.json"))
         observed = inspect_git_worktree(repo)
-        subject = dict(gate["subject"])  # type: ignore[arg-type]
-        subject["commit"] = observed["commit"]
-        subject["tree_hash"] = observed["tree_hash"]
+        subject = {
+            "repo": "<repo>",
+            "commit": observed["commit"],
+            "tree_hash": observed["tree_hash"],
+            "snapshot_id": observed["snapshot_id"],
+            "manifest_fingerprint": observed["manifest_fingerprint"],
+            "binding_kind": "snapshot_bound",
+        }
         gate["subject"] = subject
         authorization = dict(build_execution_authorization_draft(gate, COMMAND, expires_at="2099-01-01T00:00:00Z"))
         authorization["approved"] = True
@@ -85,6 +94,7 @@ class ExecutionAuthorizationSingleUseTests(unittest.TestCase):
         runner: CountingFakeDockerRunner,
         *,
         dry_run: bool = False,
+        prepared_workspace: DisposableWorkspace | None = None,
     ) -> dict[str, object]:
         return run_sandbox_run(
             repo,
@@ -95,6 +105,7 @@ class ExecutionAuthorizationSingleUseTests(unittest.TestCase):
             command_argv=COMMAND,
             runner=runner,
             dry_run=dry_run,
+            prepared_workspace=prepared_workspace,
         )
 
     def test_first_reservation_is_atomic_and_reuse_is_rejected(self) -> None:
@@ -123,12 +134,20 @@ class ExecutionAuthorizationSingleUseTests(unittest.TestCase):
             authorization_path, gate, authorization = self._authorization(root, repo)
             validation = self._validation(gate, authorization)
             runner = CountingFakeDockerRunner()
+            workspace = create_verified_snapshot(repo)
 
             with patch(
                 "repo_health_doctor.gate.authorization.os.write",
                 side_effect=OSError("marker write failed"),
             ):
-                report = self._run(repo, authorization_path, validation, gate, runner)
+                report = self._run(
+                    repo,
+                    authorization_path,
+                    validation,
+                    gate,
+                    runner,
+                    prepared_workspace=workspace,
+                )
 
             self.assertTrue(report["policy_blocked"])
             self.assertEqual(runner.run_calls, 0)
@@ -194,7 +213,7 @@ class ExecutionAuthorizationSingleUseTests(unittest.TestCase):
                     "-m",
                     "repo_health_doctor",
                     "gate-check",
-                    str(ROOT),
+                    str(repo),
                     "--authorization",
                     str(authorization_path),
                     "--argv-json",

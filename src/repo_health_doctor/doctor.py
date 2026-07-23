@@ -1178,6 +1178,7 @@ def diagnose_repo(
     config_path: str | Path | None = None,
     local_config_path: str | Path | None = None,
     load_local_config: bool = True,
+    tracked_relative_paths: tuple[str, ...] | None = None,
 ) -> dict:
     root = Path(repo_path).resolve()
     threshold_bytes = large_file_threshold_mb * 1024 * 1024
@@ -1303,7 +1304,11 @@ def diagnose_repo(
     )
 
     if public_safety:
-        tracked_files = _list_tracked_files(root)
+        tracked_files = (
+            tuple(root / relative for relative in tracked_relative_paths)
+            if tracked_relative_paths is not None
+            else _list_tracked_files(root)
+        )
         public_text_findings, scanned_files, scope = _scan_public_text_safety(
             root,
             tracked_files,

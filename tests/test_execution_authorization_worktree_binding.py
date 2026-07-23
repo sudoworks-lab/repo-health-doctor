@@ -8,6 +8,8 @@ import tempfile
 import unittest
 
 from repo_health_doctor.gate.authorization import (
+    AUTHORIZATION_SNAPSHOT_BINDING_MISMATCH_REASON,
+    AUTHORIZATION_SNAPSHOT_BINDING_UNRESOLVED_REASON,
     AUTHORIZATION_WORKTREE_BINDING_MISMATCH_REASON,
     AUTHORIZATION_WORKTREE_BINDING_UNRESOLVED_REASON,
     AUTHORIZATION_WORKTREE_DIRTY_REASON,
@@ -18,7 +20,10 @@ from repo_health_doctor.gate.authorization import (
 )
 from repo_health_doctor.sandbox.docker_runner import FakeDockerRunner
 from repo_health_doctor.sandbox.run import run_sandbox_run
-from repo_health_doctor.sandbox.run_workspace import inspect_git_worktree
+from repo_health_doctor.sandbox.run_workspace import (
+    create_verified_snapshot,
+    inspect_git_worktree,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,11 +58,18 @@ class ExecutionAuthorizationWorktreeBindingTests(unittest.TestCase):
         return repo
 
     def _authorization(self, repo: Path, root: Path) -> tuple[Path, dict[str, object], dict[str, object]]:
-        observed = inspect_git_worktree(repo)
+        workspace = create_verified_snapshot(repo)
+        snapshot = workspace.verified_snapshot
+        self.assertIsNotNone(snapshot)
         gate = deepcopy(_fixture("gate-allow-limited.json"))
-        gate_subject = dict(gate["subject"])  # type: ignore[arg-type]
-        gate_subject["commit"] = observed["commit"]
-        gate_subject["tree_hash"] = observed["tree_hash"]
+        gate_subject = {
+            "repo": "<repo>",
+            "commit": snapshot.source_commit,  # type: ignore[union-attr]
+            "tree_hash": snapshot.source_tree,  # type: ignore[union-attr]
+            "snapshot_id": snapshot.snapshot_id,  # type: ignore[union-attr]
+            "manifest_fingerprint": snapshot.manifest_fingerprint,  # type: ignore[union-attr]
+            "binding_kind": "snapshot_bound",
+        }
         gate["subject"] = gate_subject
         authorization = dict(
             build_execution_authorization_draft(
@@ -71,6 +83,7 @@ class ExecutionAuthorizationWorktreeBindingTests(unittest.TestCase):
         authorization["approved_at"] = "2026-07-01T00:00:00Z"
         path = root / "authorization.json"
         path.write_text(json.dumps(authorization) + "\n", encoding="utf-8")
+        workspace.cleanup()
         return path, gate, authorization
 
     def test_direct_git_observation_matches_subject(self) -> None:
@@ -112,10 +125,10 @@ class ExecutionAuthorizationWorktreeBindingTests(unittest.TestCase):
 
             self.assertTrue(report["policy_blocked"])
             self.assertFalse(report["command_started"])
-            self.assertEqual(report["authorization"]["worktree_binding"]["status"], "mismatch")  # type: ignore[index]
+            self.assertEqual(report["authorization"]["snapshot_binding"]["status"], "mismatch")  # type: ignore[index]
             self.assertIn(
-                AUTHORIZATION_WORKTREE_BINDING_MISMATCH_REASON,
-                report["authorization"]["worktree_binding"]["refusal_reasons"],  # type: ignore[index]
+                AUTHORIZATION_SNAPSHOT_BINDING_MISMATCH_REASON,
+                report["authorization"]["snapshot_binding"]["refusal_reasons"],  # type: ignore[index]
             )
             self.assertNotIn("allow_dirty", json.dumps(report))
 
@@ -138,12 +151,14 @@ class ExecutionAuthorizationWorktreeBindingTests(unittest.TestCase):
             )
 
             self.assertTrue(report["policy_blocked"])
-            self.assertFalse(report["disposable_workspace"]["created"])  # type: ignore[index]
-            self.assertEqual(report["authorization"]["worktree_binding"]["status"], "dirty")  # type: ignore[index]
+            self.assertTrue(report["disposable_workspace"]["created"])  # type: ignore[index]
+            self.assertFalse(report["disposable_workspace"]["copy_safety_ok"])  # type: ignore[index]
+            self.assertEqual(report["authorization"]["snapshot_binding"]["status"], "unresolved")  # type: ignore[index]
             self.assertIn(
-                AUTHORIZATION_WORKTREE_DIRTY_REASON,
-                report["authorization"]["worktree_binding"]["refusal_reasons"],  # type: ignore[index]
+                AUTHORIZATION_SNAPSHOT_BINDING_UNRESOLVED_REASON,
+                report["authorization"]["snapshot_binding"]["refusal_reasons"],  # type: ignore[index]
             )
+            self.assertIn("source_worktree_not_exact_commit", report["approval"]["refusal_reasons"])
 
     def test_non_git_and_unresolved_worktree_are_not_implicitly_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -165,10 +180,9 @@ class ExecutionAuthorizationWorktreeBindingTests(unittest.TestCase):
             )
 
             self.assertTrue(report["policy_blocked"])
-            self.assertEqual(report["authorization"]["worktree_binding"]["status"], "unresolved")  # type: ignore[index]
-            reasons = report["authorization"]["worktree_binding"]["refusal_reasons"]  # type: ignore[index]
-            self.assertIn(AUTHORIZATION_WORKTREE_NOT_GIT_REASON, reasons)
-            self.assertIn(AUTHORIZATION_WORKTREE_BINDING_UNRESOLVED_REASON, reasons)
+            self.assertEqual(report["authorization"]["snapshot_binding"]["status"], "mismatch")  # type: ignore[index]
+            reasons = report["authorization"]["snapshot_binding"]["refusal_reasons"]  # type: ignore[index]
+            self.assertIn(AUTHORIZATION_SNAPSHOT_BINDING_MISMATCH_REASON, reasons)
 
 
 if __name__ == "__main__":

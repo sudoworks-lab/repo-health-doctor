@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,9 +10,10 @@ from uuid import uuid4
 
 from ..doctor import TOOL_VERSION
 from ..gate.authorization import (
+    gate_decision_fingerprint,
     reserve_execution_authorization,
     validate_execution_authorization,
-    validate_execution_authorization_worktree_binding,
+    validate_execution_authorization_snapshot_binding,
 )
 from .approval import load_sandbox_run_approval, validate_sandbox_run_approval
 from .docker import is_digest_pinned
@@ -37,16 +39,19 @@ from .run_workspace import (
     CopyBudget,
     DEFAULT_MAX_FILE_BYTES,
     DEFAULT_MAX_FILE_COUNT,
+    DEFAULT_MAX_DIRECTORY_COUNT,
+    DEFAULT_MAX_DEPTH,
+    DEFAULT_MAX_RELATIVE_PATH_BYTES,
     DEFAULT_MAX_TOTAL_BYTES,
     FINGERPRINT_METHOD,
     DisposableWorkspace,
     InventoryResult,
-    create_disposable_workspace,
+    create_verified_snapshot,
     fingerprint_target,
-    inspect_git_worktree,
     snapshot_workspace,
     summarize_workspace_diff,
     target_identity,
+    verify_verified_snapshot,
 )
 
 
@@ -110,8 +115,9 @@ def run_sandbox_run(
     fail_on_gate: str | None = None,
     authorization_path: Path | None = None,
     authorization_validation: Any | None = None,
+    prepared_workspace: DisposableWorkspace | None = None,
 ) -> dict[str, Any]:
-    target = target.resolve()
+    target = Path(os.path.abspath(target))
     command_argv = _normalize_command_argv(command_argv)
     image = image if image is not None else DEFAULT_SANDBOX_IMAGE
     profile = get_sandbox_profile(profile_name)
@@ -122,8 +128,32 @@ def run_sandbox_run(
     next_actions: list[str] = []
     policy_reasons: list[str] = []
     infrastructure_reasons: list[str] = []
-
-    target_inventory = _fingerprint_or_none(target, policy_reasons, limitations)
+    workspace = (
+        prepared_workspace
+        if prepared_workspace is not None
+        else create_verified_snapshot(target, copy_budget=copy_budget)
+    )
+    if Path(os.path.abspath(workspace.source_root)) != target:
+        workspace.refusal_reasons.append("prepared_snapshot_source_mismatch")
+    target_inventory = (
+        snapshot_workspace(workspace.workspace)
+        if workspace.copy_safety_ok
+        else None
+    )
+    snapshot = workspace.verified_snapshot
+    snapshot_id = snapshot.snapshot_id if snapshot is not None else None
+    manifest_fingerprint = (
+        snapshot.manifest_fingerprint if snapshot is not None else None
+    )
+    if not workspace.copy_safety_ok:
+        policy_reasons.extend(
+            [
+                "workspace_copy_safety_check_failed",
+                *workspace.refusal_reasons,
+            ]
+        )
+        if workspace.copy_budget_exceeded:
+            policy_reasons.append("copy_budget_exceeded")
     base_report = _base_report(
         target=target,
         target_inventory=target_inventory,
@@ -142,10 +172,15 @@ def run_sandbox_run(
         fail_on_gate=fail_on_gate,
         authorization_validation=authorization_validation,
         require_image_binding=require_real_authorization,
+        workspace=workspace,
+    )
+    authorization_document = (
+        _load_authorization_document(authorization_path)
+        if authorization_path is not None
+        else None
     )
 
     if require_real_authorization and authorization_path is not None:
-        authorization_document = _load_authorization_document(authorization_path)
         if authorization_document is None:
             authorization_validation = None
         else:
@@ -160,6 +195,8 @@ def run_sandbox_run(
                 command_argv,
                 runtime_image_reference=image,
                 runtime_image_id=runtime_image_id,
+                expected_snapshot_id=snapshot_id,
+                expected_manifest_fingerprint=manifest_fingerprint,
             )
         base_report["authorization"] = _authorization_report(
             authorization_path=authorization_path,
@@ -205,6 +242,22 @@ def run_sandbox_run(
     if authorization_path is not None and not authorization_authorized and not require_real_authorization:
         policy_reasons.extend(_authorization_blocking_reasons(authorization_validation))
 
+    subject_consistency = _subject_consistency_report(
+        snapshot_id=snapshot_id,
+        manifest_fingerprint=manifest_fingerprint,
+        gate_decision=gate_decision,
+        authorization=authorization_document,
+    )
+    base_report["subject_consistency"] = subject_consistency
+    if gate_decision is not None and not subject_consistency["gate_matches"]:
+        policy_reasons.append("snapshot_subject_mismatch")
+    if authorization_path is not None and not subject_consistency[
+        "authorization_matches"
+    ]:
+        policy_reasons.append("snapshot_subject_mismatch")
+    if require_real_authorization and not subject_consistency["consistent"]:
+        policy_reasons.append("snapshot_subject_mismatch")
+
     approval_validation = None
     if approval_path is not None and target_inventory is not None and image and command_argv:
         try:
@@ -225,31 +278,24 @@ def run_sandbox_run(
             limitations.extend(approval_validation.limitations)
             limitations.extend(approval_validation.warnings)
 
-    if authorization_path is not None and authorization_authorized and not dry_run:
-        authorization_document = _load_authorization_document(authorization_path)
-        observed_worktree = inspect_git_worktree(target)
-        if authorization_document is None:
-            observed_worktree = {
-                "git_available": False,
-                "repo_identity": None,
-                "repo_root_matches_target": False,
-                "commit": None,
-                "tree_hash": None,
-                "dirty_state": "unknown",
-            }
-        worktree_binding = validate_execution_authorization_worktree_binding(
+    if authorization_path is not None and authorization_authorized:
+        snapshot_binding = validate_execution_authorization_snapshot_binding(
             authorization_document or {},
-            observed_worktree,
+            gate_decision or {},
+            snapshot_id=snapshot_id,
+            manifest_fingerprint=manifest_fingerprint,
         )
-        base_report["authorization"]["worktree_binding"] = worktree_binding.to_dict()
-        if not worktree_binding.matched:
-            policy_reasons.extend(worktree_binding.refusal_reasons)
+        base_report["authorization"]["snapshot_binding"] = (
+            snapshot_binding.to_dict()
+        )
+        if not snapshot_binding.matched:
+            policy_reasons.extend(snapshot_binding.refusal_reasons)
             base_report["authorization"]["execution_authorized"] = False
             base_report["authorization"]["blocking_errors"] = list(
                 dict.fromkeys(
                     [
                         *base_report["authorization"].get("blocking_errors", []),
-                        *worktree_binding.refusal_reasons,
+                        *snapshot_binding.refusal_reasons,
                     ]
                 )
             )
@@ -264,6 +310,8 @@ def run_sandbox_run(
                 "Review gate, authorization, copy policy, and approval refusal reasons before retrying.",
                 "Do not run the repository-derived command on the host as a fallback.",
             ],
+            workspace=workspace,
+            preserve_workspace=preserve_workspace,
         )
 
     if infrastructure_reasons:
@@ -276,6 +324,8 @@ def run_sandbox_run(
                 "Do not fall back to running the repository-derived command directly on the host.",
                 "Fix the sandbox-run configuration and retry.",
             ],
+            workspace=workspace,
+            preserve_workspace=preserve_workspace,
         )
 
     if not dry_run and not runner.docker_available():
@@ -288,6 +338,8 @@ def run_sandbox_run(
                 "Start or install Docker only if that is appropriate for this host.",
                 "Do not fall back to running the repository-derived command directly on the host.",
             ],
+            workspace=workspace,
+            preserve_workspace=preserve_workspace,
         )
     if not dry_run and not runner.image_available_locally(image):
         return _infrastructure_error_report(
@@ -299,31 +351,28 @@ def run_sandbox_run(
                 "Preload the exact approved image through a reviewed process, then retry.",
                 "Do not pull images implicitly during sandbox-run.",
             ],
+            workspace=workspace,
+            preserve_workspace=preserve_workspace,
         )
 
-    workspace: DisposableWorkspace | None = None
     before_snapshot: InventoryResult | None = None
     after_snapshot: InventoryResult | None = None
     try:
-        workspace = create_disposable_workspace(target, copy_budget=copy_budget)
         base_report["disposable_workspace"] = workspace.to_report()
-        if not workspace.copy_safety_ok:
-            copy_refusals = ["workspace_copy_safety_check_failed"]
-            if workspace.copy_budget_exceeded:
-                copy_refusals.append("copy_budget_exceeded")
+        before_snapshot = snapshot_workspace(workspace.workspace)
+        if not verify_verified_snapshot(workspace):
             return _policy_blocked_report(
                 base_report,
                 approval_path=approval_path,
-                refusal_reasons=copy_refusals,
+                refusal_reasons=["snapshot_integrity_verification_failed"],
                 approval_validation=approval_validation,
                 next_actions=[
-                    "Remove or review unsupported entries before sandbox execution.",
-                    "Do not run the command on the host as a fallback.",
+                    "Discard the invalid snapshot and repeat bounded intake.",
+                    "Do not invoke Docker or run the command on the host.",
                 ],
                 workspace=workspace,
                 preserve_workspace=preserve_workspace,
             )
-        before_snapshot = snapshot_workspace(workspace.workspace)
         seccomp_profile_path = _materialize_seccomp_profile(seccomp, workspace)
         docker_argv = build_docker_run_argv(
             image=image,
@@ -388,7 +437,21 @@ def run_sandbox_run(
                     workspace=workspace,
                     preserve_workspace=preserve_workspace,
                 )
+        if not verify_verified_snapshot(workspace):
+            return _policy_blocked_report(
+                base_report,
+                approval_path=approval_path,
+                refusal_reasons=["snapshot_integrity_verification_failed"],
+                approval_validation=approval_validation,
+                next_actions=[
+                    "Discard the invalid snapshot and repeat bounded intake.",
+                    "Do not invoke Docker or run the command on the host.",
+                ],
+                workspace=workspace,
+                preserve_workspace=preserve_workspace,
+            )
         run_result = runner.run(docker_argv, timeout_seconds)
+        snapshot_integrity_after = verify_verified_snapshot(workspace)
         after_snapshot = snapshot_workspace(workspace.workspace)
         output_summary = _build_output_summary(
             run_result.stdout,
@@ -444,6 +507,16 @@ def run_sandbox_run(
         report["command_exit_code"] = command_exit_code
         report["sandbox_exit_code"] = sandbox_exit_code
         report["block_reason"] = None
+        report["verified_snapshot"]["integrity_after_execution"] = (
+            "verified" if snapshot_integrity_after else "mismatch"
+        )
+        if not snapshot_integrity_after:
+            report["result"]["status"] = STATUS_FAILED
+            report["sandbox_exit_code"] = SANDBOX_INFRASTRUCTURE_EXIT_CODE
+            report["block_reason"] = "snapshot_integrity_verification_failed"
+            report["limitations"].append(
+                "The Docker workspace no longer matched the approved snapshot."
+            )
         report["approval"] = _approval_report(
             approval_path=approval_path,
             approval_validation=approval_validation,
@@ -523,6 +596,7 @@ def _base_report(
     fail_on_gate: str | None,
     authorization_validation: Any | None,
     require_image_binding: bool,
+    workspace: DisposableWorkspace,
 ) -> dict[str, Any]:
     target_limitations = []
     if target_inventory is not None:
@@ -531,6 +605,19 @@ def _base_report(
         limitations.append("The approved image uses a latest tag; tag drift limits reproducibility.")
     if image and not is_digest_pinned(image):
         limitations.append("The approved image reference is not digest-pinned.")
+    verified_snapshot = (
+        workspace.verified_snapshot.to_report()
+        if workspace.verified_snapshot is not None
+        else {
+            "schema_version": "1.0",
+            "snapshot_id": None,
+            "manifest_fingerprint": None,
+            "integrity_status": "invalid",
+            "limitations": [],
+            "refusal_reasons": list(workspace.refusal_reasons),
+        }
+    )
+    verified_snapshot["integrity_after_execution"] = "not_checked"
     return {
         "schema_version": SANDBOX_RUN_SCHEMA_VERSION,
         "report_kind": SANDBOX_RUN_REPORT_KIND,
@@ -560,6 +647,21 @@ def _base_report(
             "fingerprint_method": FINGERPRINT_METHOD,
             "fingerprint_limitations": target_limitations,
         },
+        "verified_snapshot": verified_snapshot,
+        "subject_consistency": _subject_consistency_report(
+            snapshot_id=(
+                workspace.verified_snapshot.snapshot_id
+                if workspace.verified_snapshot is not None
+                else None
+            ),
+            manifest_fingerprint=(
+                workspace.verified_snapshot.manifest_fingerprint
+                if workspace.verified_snapshot is not None
+                else None
+            ),
+            gate_decision=gate_decision,
+            authorization=None,
+        ),
         "approval": _approval_report(
             approval_path=approval_path,
             approval_validation=None,
@@ -767,8 +869,89 @@ def _gate_report(gate_decision: Mapping[str, Any] | None, fail_on_gate: str | No
         "execution_authorized": False if gate_decision is not None else None,
         "decision_kind": gate_decision.get("decision_kind") if gate_decision is not None else None,
         "schema_version": gate_decision.get("schema_version") if gate_decision is not None else None,
+        "decision_fingerprint": (
+            gate_decision_fingerprint(gate_decision)
+            if gate_decision is not None
+            else None
+        ),
+        "subject": (
+            dict(gate_decision.get("subject"))
+            if gate_decision is not None
+            and isinstance(gate_decision.get("subject"), Mapping)
+            else {}
+        ),
+        "policy_version": (
+            gate_decision.get("policy", {}).get("policy_version")
+            if gate_decision is not None
+            and isinstance(gate_decision.get("policy"), Mapping)
+            else None
+        ),
         "policy_blocked": _gate_block_reason(gate_decision, fail_on_gate) is not None,
     }
+
+
+def _subject_consistency_report(
+    *,
+    snapshot_id: str | None,
+    manifest_fingerprint: str | None,
+    gate_decision: Mapping[str, Any] | None,
+    authorization: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    gate_subject = (
+        gate_decision.get("subject")
+        if isinstance(gate_decision, Mapping)
+        and isinstance(gate_decision.get("subject"), Mapping)
+        else {}
+    )
+    authorization_subject = (
+        authorization.get("subject")
+        if isinstance(authorization, Mapping)
+        and isinstance(authorization.get("subject"), Mapping)
+        else {}
+    )
+    gate_snapshot_id = gate_subject.get("snapshot_id")
+    gate_manifest = gate_subject.get("manifest_fingerprint")
+    authorization_snapshot_id = authorization_subject.get("snapshot_id")
+    authorization_manifest = authorization_subject.get("manifest_fingerprint")
+    snapshot_resolved = _is_sha256_fingerprint(snapshot_id) and _is_sha256_fingerprint(
+        manifest_fingerprint
+    )
+    gate_matches = gate_decision is None or (
+        gate_subject.get("binding_kind") in {"snapshot_bound", "path_bound"}
+        and gate_snapshot_id == snapshot_id
+        and gate_manifest == manifest_fingerprint
+    )
+    authorization_matches = authorization is None or (
+        authorization_snapshot_id == snapshot_id
+        and authorization_manifest == manifest_fingerprint
+    )
+    return {
+        "consistent": bool(
+            snapshot_resolved and gate_matches and authorization_matches
+        ),
+        "scan_snapshot_id": snapshot_id,
+        "gate_snapshot_id": gate_snapshot_id,
+        "authorization_snapshot_id": authorization_snapshot_id,
+        "workspace_snapshot_id": snapshot_id,
+        "evidence_snapshot_id": snapshot_id,
+        "scan_manifest_fingerprint": manifest_fingerprint,
+        "gate_manifest_fingerprint": gate_manifest,
+        "authorization_manifest_fingerprint": authorization_manifest,
+        "workspace_manifest_fingerprint": manifest_fingerprint,
+        "evidence_manifest_fingerprint": manifest_fingerprint,
+        "gate_matches": gate_matches,
+        "authorization_matches": authorization_matches,
+        "missing_or_unresolved": not snapshot_resolved,
+    }
+
+
+def _is_sha256_fingerprint(value: object) -> bool:
+    return bool(
+        isinstance(value, str)
+        and value.startswith("sha256:")
+        and len(value) == 71
+        and all(character in "0123456789abcdef" for character in value[7:])
+    )
 
 
 def _authorization_report(
@@ -790,9 +973,19 @@ def _authorization_report(
             require_image_binding=require_image_binding,
         ),
         "warnings": _string_items(payload.get("warnings") if isinstance(payload, Mapping) else None),
-        "worktree_binding": {
+        "snapshot_binding": {
             "checked": False,
             "status": "not_attempted",
+            "matched": False,
+            "snapshot_id_matches": False,
+            "manifest_fingerprint_matches": False,
+            "gate_matches": False,
+            "refusal_reasons": [],
+            "observed_values_recorded": False,
+        },
+        "worktree_binding": {
+            "checked": False,
+            "status": "superseded_by_snapshot_binding",
             "matched": False,
             "repo_matches": False,
             "commit_matches": False,
@@ -1146,9 +1339,13 @@ def _workspace_not_created() -> dict[str, Any]:
         "copy_error_count": 0,
         "copy_budget": {
             "max_file_count": DEFAULT_MAX_FILE_COUNT,
+            "max_directory_count": DEFAULT_MAX_DIRECTORY_COUNT,
+            "max_depth": DEFAULT_MAX_DEPTH,
             "max_total_bytes": DEFAULT_MAX_TOTAL_BYTES,
             "max_file_bytes": DEFAULT_MAX_FILE_BYTES,
+            "max_relative_path_bytes": DEFAULT_MAX_RELATIVE_PATH_BYTES,
             "files_copied": 0,
+            "directories_examined": 0,
             "total_bytes_copied": 0,
             "copy_budget_exceeded": False,
             "copy_budget_exceeded_reason": None,

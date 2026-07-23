@@ -93,18 +93,16 @@ class SandboxRunWorkspaceContractTests(unittest.TestCase):
                 (repo / ".ssh" / "id_rsa").write_text("not-copied\n", encoding="utf-8")
                 (repo / "node_modules").mkdir()
                 (repo / "node_modules" / "pkg.js").write_text("not-copied\n", encoding="utf-8")
-                if hasattr(os, "mkfifo"):
-                    os.mkfifo(repo / "pipe")
-
                 workspace = create_disposable_workspace(repo)
                 try:
+                    self.assertTrue(workspace.copy_safety_ok)
+                    self.assertIsNotNone(workspace.verified_snapshot)
                     self.assertTrue((workspace.workspace / "README.md").is_file())
                     self.assertFalse((workspace.workspace / ".env.local").exists())
                     self.assertFalse((workspace.workspace / ".bash_history").exists())
                     self.assertFalse((workspace.workspace / ".git").exists())
                     self.assertFalse((workspace.workspace / ".ssh").exists())
                     self.assertFalse((workspace.workspace / "node_modules").exists())
-                    self.assertFalse((workspace.workspace / "pipe").exists())
                     categories = {
                         item["category"]
                         for item in workspace.to_report()["excluded_path_categories"]
@@ -113,10 +111,22 @@ class SandboxRunWorkspaceContractTests(unittest.TestCase):
                     self.assertIn("history", categories)
                     self.assertIn("vcs_metadata", categories)
                     self.assertIn("dependency_tree", categories)
-                    if hasattr(os, "mkfifo"):
-                        self.assertIn("unsupported_filesystem_entry", categories)
                 finally:
                     workspace.cleanup()
+
+                if hasattr(os, "mkfifo"):
+                    os.mkfifo(repo / "pipe")
+                    refused = create_disposable_workspace(repo)
+                    try:
+                        self.assertFalse(refused.copy_safety_ok)
+                        self.assertIsNone(refused.verified_snapshot)
+                        self.assertEqual(list(refused.workspace.iterdir()), [])
+                        self.assertIn(
+                            "source_special_file_refused",
+                            refused.refusal_reasons,
+                        )
+                    finally:
+                        refused.cleanup()
 
     def test_copy_budget_exceeded_blocks_before_runner_starts(self) -> None:
         import tempfile

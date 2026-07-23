@@ -13,6 +13,7 @@ from unittest import mock
 from repo_health_doctor import cli
 from repo_health_doctor.gate import build_execution_authorization_draft
 from repo_health_doctor.gate.authorization_discovery import AUTHORIZATION_DISCOVERY_FILENAME
+from repo_health_doctor.sandbox.run_workspace import create_verified_snapshot
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,9 +24,48 @@ ARGV = ["python3", "-m", "pytest", "tests"]
 class AuthorizationDiscoveryCliTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
-        self.repo = Path(self.temporary_directory.name)
+        self.test_root = Path(self.temporary_directory.name)
+        self.repo = self.test_root / "repo"
+        self.repo.mkdir()
         subprocess.run(["git", "init", "-q"], cwd=self.repo, check=True, capture_output=True)
+        (self.repo / "README.md").write_text("discovery\n", encoding="utf-8")
+        nested = self.repo / "nested"
+        nested.mkdir()
+        (nested / "README.md").write_text("nested fixture\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "README.md", "nested/README.md"],
+            cwd=self.repo,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.email=test@example.invalid",
+                "-c",
+                "user.name=test",
+                "commit",
+                "-qm",
+                "initial",
+            ],
+            cwd=self.repo,
+            check=True,
+            capture_output=True,
+        )
         self.gate_decision = json.loads(GATE_FIXTURE.read_text(encoding="utf-8"))
+        workspace = create_verified_snapshot(self.repo)
+        snapshot = workspace.verified_snapshot
+        assert snapshot is not None
+        self.gate_decision["subject"] = {
+            "repo": snapshot.source_identity_redacted,
+            "commit": snapshot.source_commit,
+            "tree_hash": snapshot.source_tree,
+            "snapshot_id": snapshot.snapshot_id,
+            "manifest_fingerprint": snapshot.manifest_fingerprint,
+            "binding_kind": "snapshot_bound",
+        }
+        workspace.cleanup()
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
@@ -81,7 +121,7 @@ class AuthorizationDiscoveryCliTests(unittest.TestCase):
     def test_explicit_authorization_has_priority_over_discovery(self) -> None:
         candidate = self.repo / AUTHORIZATION_DISCOVERY_FILENAME
         candidate.write_text("{invalid json\n", encoding="utf-8")
-        explicit = self.repo / "explicit-authorization.json"
+        explicit = self.test_root / "explicit-authorization.json"
         self._write_authorization(explicit)
 
         with mock.patch.object(cli, "discover_execution_authorization") as discover:
@@ -115,7 +155,6 @@ class AuthorizationDiscoveryCliTests(unittest.TestCase):
 
     def test_discovery_does_not_fallback_to_nested_candidates(self) -> None:
         nested = self.repo / "nested"
-        nested.mkdir()
         self._write_authorization(nested / AUTHORIZATION_DISCOVERY_FILENAME)
 
         return_code, report, _ = self._run_gate_check("--format", "json", "--", *ARGV)
