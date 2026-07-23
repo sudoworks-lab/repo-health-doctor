@@ -20,9 +20,10 @@ examples that are not public contract.
 - Gate decisions keep `execution_authorized=false`.
 - Limitations must be surfaced and treated as gate inputs.
 - `sandbox-run` is the v1 core execution runtime for bounded unknown-repository
-  command evidence. It uses a disposable workspace, default-deny network,
-  locked-down Docker profile, redacted evidence, and gate / authorization
-  binding. It is not a safety proof and not complete malware containment.
+  command evidence. It uses a bounded Verified Snapshot instead of a live
+  repository mount, default-deny network, locked-down Docker profile, redacted
+  evidence, and gate / authorization binding. It is not a safety proof and not
+  complete malware containment.
 - Non-dry-run Docker execution requires a valid approval artifact controlled by
   a Human;
   gate decisions and legacy approval artifacts alone do not authorize it.
@@ -58,6 +59,8 @@ examples that are not public contract.
 - `schemas/execution-authorization.schema.json`
 - Execution authorization artifact and validator
 - `schemas/sandbox-run.schema.json`
+- `schemas/verified-snapshot.schema.json`
+- Verified Snapshot Boundary v1のmanifest、copy policy、budget、subject binding
 - Sandbox-run approval and report wording
 - Real-output-compatible fixture coverage for Gitleaks, OSV-Scanner, and Trivy
 - Docker integration CI path
@@ -89,7 +92,9 @@ behavior, default v3 JSON output, or gate decision `execution_authorized=false`
 semantics.
 Its non-dry-run Docker path requires Human authorization, strict local digest
 image binding, bounded streaming output, tracked container cleanup, and
-bounded non-host-backed output storage. CI and release workflow action
+bounded non-host-backed output storage.さらに、scan前に作成した同一の
+`snapshot_id`と`manifest_fingerprint`をgate、authorization、Docker workspace、
+sandbox evidenceでexact一致させる。CI and release workflow action
 references are immutable full commit SHAs and their build/test tooling uses the
 hash-locked `requirements-ci.lock` file. These controls do not claim complete
 malware containment, VM isolation, or production safety.
@@ -102,6 +107,52 @@ execution, but bounded local and Hosted 8/8 results do not establish general
 runtime compatibility or safety. Unsupported workloads may fail.
 Contextual explanation wording may change without changing the stable default
 v3 report or default CLI behavior.
+
+### Experimental Verified Snapshot Boundary v1
+
+gateを要求するscan、`gate-check`、`sandbox-run`は、live targetをscanとexecutionの
+間で再利用しない。最初にbounded、no-follow、non-executingなsnapshotを作り、
+以後のstatic scanとDockerはそのsnapshotだけを読む。default scanのstable v3
+contractは変更しない。
+
+`VerifiedSnapshot` `1.0`は次を保持する。
+
+- canonical manifest由来の`snapshot_id`と`manifest_fingerprint`
+- raw pathを出さないlocal repository identity hash
+- source kind、Git commit/tree
+- file count、total bytes、copy時刻、copy policy version
+- file、directory、depth、total、single-file、relative-path budget
+- integrity status、limitations、refusal reasons
+
+default budgetは20,000 files、10,000 directories、depth 64、250 MiB total、
+25 MiB single file、4,096 relative-path bytesである。64 KiB fixed-size stream、
+iterative directory-FD traversal、`O_NOFOLLOW`、lstat/fstat、copyと同一streamの
+hash、source再hash、root再照合を使用する。symlink、special file、mutation、
+rename swap、budget超過、partial cleanup失敗はfail-closedである。
+
+Git execution snapshotはGit 2.42.0以上だけを受け入れる。host subprocessは
+trusted absolute Git executableの`--version`と、sanitized environmentで動く
+`rev-parse`、`ls-tree`、`cat-file`のread-only plumbing allowlistだけである。
+`git status`、hook、fsmonitor、filter/textconv、submodule command、credential
+helper、pager、editor、prompt、network、lazy fetchをintakeに使わない。caller
+`PATH`上のGit executable、linked worktree、object alternates、unsupported Gitは
+real executionへfallbackしない。
+
+Git snapshotはHEAD commit objectからexportしたbytesをmanifest化し、bounded
+live treeとexact比較する。dirtyまたはuntracked repositoryはreal executionを
+暗黙許可しない。non-Git repositoryはfilesystem snapshotでstatic scanできるが、
+commit/tree bindingがないためreal execution authorizationは常にblockする。
+
+execution authorizationのcurrent draftは`0.3-draft`で、
+`approved_scope`と`subject`の両方へ`snapshot_id`と
+`manifest_fingerprint`を追加する。`0.1-draft`と`0.2-draft`はhistorical
+validation互換として残るが、snapshot bindingがないartifactはreal Docker
+executionを認可しない。gate、authorization、runtime snapshot、sandbox evidence
+のいずれかがmissing、unresolved、mismatchならDockerは起動しない。
+
+snapshotのread-only modeとprivate run rootは、repository codeをhostで起動しない
+前提のpre-sandbox境界である。既に侵害されたhost、trusted Git binary、または
+同一userの別processに対するOS-level isolationは提供しない。
 
 ### Experimental Authorization Discovery Contract
 
@@ -203,7 +254,8 @@ truncationを検証し、invalid、stale、subject mismatch、policy mismatch、
 duplicate、truncatedを黙って無視しない。
 
 sandbox evidenceのreferenceは`report_kind`、report fingerprint、run ID、元gate
-decision fingerprint、validation status、machine-readable reasonだけを保持する。
+decision fingerprint、`snapshot_id`、manifest fingerprint、validation status、
+machine-readable reasonだけを保持する。
 raw sandbox report、command、stdout/stderr preview、host pathはgate decisionへ埋め込まない。
 `successful_execution_is_not_safety`はinformational noteであり、successful executionに
 よってverdictを改善せず、問題signalだけを同値または悪化方向へ反映する。

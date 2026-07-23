@@ -71,8 +71,9 @@ and growth races but does not eliminate local-writer races. This is a
 TOCTOU residual risk: another process may alter the filesystem around the
 discovery boundary in ways that the checks cannot completely exclude.
 Discovery is therefore only a bounded input lookup. Exact command, repository
-subject, worktree state, expiry, and execution authorization must be checked
-again by the downstream authorization and runtime boundaries.
+subject, commit/tree, `snapshot_id`, manifest fingerprint, expiry, and execution
+authorization must be checked again by the downstream authorization and
+runtime boundaries.
 
 The contract is intentionally single-file and no-fallback. A refusal or a
 missing candidate must remain a fail-closed result rather than a reason to

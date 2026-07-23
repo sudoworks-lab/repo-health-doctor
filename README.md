@@ -258,9 +258,13 @@ More detail is in [docs/quickstart.md](docs/quickstart.md) and
 
 `sandbox-run` is repo-health-doctor's core execution backend for
 AI-agent-oriented unknown-repository work. It runs one explicit argv in a
-locked-down Docker profile, using a disposable workspace copy, and emits
-bounded redacted execution evidence. It is not a complete malware sandbox, not
-a safety proof, and not unrestricted execution authorization.
+locked-down Docker profile using a bounded Verified Snapshot, never the live
+target. Static scan, gate, Human authorization, read-only Docker workspace, and
+sandbox evidence share the same snapshot identity. Dirty/untracked Git trees,
+non-Git execution subjects, mutation, or identity mismatch block before
+Docker. The runtime emits bounded redacted execution evidence; it is not a
+complete malware sandbox, not a safety proof, and not unrestricted execution
+authorization.
 
 ```bash
 env PYTHONPATH=src python3 -m repo_health_doctor sandbox-run examples/demo-synthetic-supply-chain \

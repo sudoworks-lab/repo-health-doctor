@@ -20,6 +20,14 @@ change. See [docs/versioning.md](docs/versioning.md).
 
 ### Added
 
+- Verified Snapshot Boundary v1を追加した。bounded no-follow intake、
+  canonical manifest、Git 2.42.0以上のsanitized plumbing allowlist、
+  source mutation検出、standalone snapshot schema、adversarial regressionを
+  実装し、live repositoryをscan後のDocker workspaceとして再利用しない。
+- Experimental execution authorization `0.3-draft`へ`snapshot_id`と
+  `manifest_fingerprint`を追加し、scan、gate、authorization、Docker workspace、
+  sandbox evidenceを同じsnapshotへbindした。missing、unresolved、mismatchは
+  Docker前にfail-closedとなる。
 - Human-approved `rhd-locked-down-v1` seccomp profileを非defaultの明示選択肢として追加した。
   candidate、package resource、installed wheelはSHA-256
   `92e6b1e40f330e36af92a3e0ac06a8406f0dba367d15032fbf5c7c7fcc9a5543`で一致し、Moby
@@ -77,6 +85,10 @@ change. See [docs/versioning.md](docs/versioning.md).
 
 ### Changed
 
+- Real Docker executionはdirty/untracked Git worktree、non-Git subject、
+  linked worktree、object alternatesを暗黙許可せず、exact commit/treeからexportした
+  Verified Snapshotだけをread-only mountする。従来のhigh-level `git status`
+  worktree probeはexecution boundaryから削除した。
 - Synthetic supply-chain demo wording now states the fixture boundary and the
   current generalized static-shape scope.
 - Agent workflow docs now distinguish repo development instructions from

@@ -41,7 +41,9 @@ The stable and experimental boundary is defined in
 - `schemas/execution-authorization.schema.json`
 - Execution authorization artifacts and validator behavior
 - `schemas/sandbox-run.schema.json`
+- `schemas/verified-snapshot.schema.json`
 - Sandbox-run approval, profile, Docker argv, and report wording
+- Verified Snapshot Boundary v1、copy policy、budget、subject binding
 - Imported Gitleaks and OSV-Scanner evidence adapters
 - Real Gitleaks, OSV-Scanner, and Trivy scanner adapters
 - Real-output-compatible fixture coverage
@@ -53,7 +55,10 @@ does not break the stable default v3 JSON report or default CLI behavior.
 The sandbox-run runtime is core product behavior; its schema and report wording
 remain draft surfaces in the v0.x series. It does not change gate decision
 `execution_authorized=false` semantics or execution authorization artifact
-semantics.
+semantics. Verified Snapshot `1.0`は新しいinternal experimental schemaであり、
+stable default v3 reportの`schema_version: 1.1`を変更しない。execution
+authorization `0.3-draft`はsnapshot fieldsを追加し、0.1/0.2 artifactはhistorical
+validation互換として残すがreal execution authorizationには昇格させない。
 
 ## Public Contract Promotion
 

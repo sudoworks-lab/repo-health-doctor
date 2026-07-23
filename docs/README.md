@@ -29,6 +29,7 @@ This directory contains the public documentation set for `repo-health-doctor`.
 - `versioning.md`: compatibility and experimental-surface versioning
 - `roadmap.md`: future work that still fits the public product boundary
 - `sandbox-run.md`: Docker sandbox-run v1 core runtime
+- `authorization-contract.md`: execution authorization 0.1/0.2 compatibility and snapshot-bound 0.3 contract
 - `sandbox-roadmap.md`: sandbox-run hardening roadmap
 
 ## Additional Reference
@@ -71,6 +72,7 @@ This directory contains the public documentation set for `repo-health-doctor`.
 - `../schemas/execution-authorization.schema.json`
 - `../schemas/sandbox-report.schema.json`
 - `../schemas/sandbox-run.schema.json`
+- `../schemas/verified-snapshot.schema.json`
 - `../schemas/sandbox-unknown-repo-profile.schema.json`
 - `../schemas/external-scanner-result.schema.json`
 - `../schemas/external-scanner-plan.schema.json`

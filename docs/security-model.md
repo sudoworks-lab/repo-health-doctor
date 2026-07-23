@@ -13,8 +13,9 @@
   failure, missing binding, missing limitations, or degraded observation must
   not become authorization to run repository-derived commands.
 - `sandbox-run` is the core v1 runtime for one bounded argv in a locked-down
-  disposable Docker workspace. It produces bounded evidence, not complete
-  containment or unrestricted permission to continue.
+  Verified Snapshot Docker workspace. It scans and mounts the same immutable
+  snapshot instead of the live target. It produces bounded evidence, not
+  complete containment or unrestricted permission to continue.
 
 ## What This Tool Protects
 
@@ -58,6 +59,16 @@
 
 ## Sandbox Boundary
 
+- gateを伴うscanと`sandbox-run`はlive targetから先にbounded Verified Snapshotを
+  作り、scan、gate、authorization、Docker、evidenceを同じ`snapshot_id`と
+  manifest fingerprintへbindする。missingまたはmismatchはDocker前に拒否する。
+- snapshot intakeはiterative no-follow traversal、fixed-size streaming hash/copy、
+  file/directory/depth/byte/path budget、lstat/fstat、source/root再検証を使う。
+  symlink、special file、mutation、dirty/untracked Git tree、partial copyは
+  fail-closedである。
+- Git intakeはtrusted absolute Git 2.42.0以上の`rev-parse`、`ls-tree`、
+  `cat-file`だけをsanitized environmentで実行し、repository fsmonitor、hook、
+  credential helper、network、pager、editor、promptを起動しない。
 - `sandbox` remains plan-first by default, and repo-derived Docker runtime commands require explicit opt-in plus exact-match approval before any gated execution path is considered
 - approval files are validated against normalized `argv` candidates before any execution gate is considered
 - disposable workspace materialization and cleanup now happen locally before report generation

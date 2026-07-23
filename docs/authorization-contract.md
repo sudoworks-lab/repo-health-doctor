@@ -1,24 +1,39 @@
 # Execution Authorization Contract
 
-この文書はexperimentalなexecution authorization `0.1-draft`互換と`0.2-draft`の現行実装を記録する。gate decisionは単独では実行を認可せず、authorizationもexact scope、argv、policy、gate decision、expiryの検証をすべて通過した場合だけ`execution_authorized=true`になる。
+この文書はexperimentalなexecution authorization `0.1-draft`、
+`0.2-draft`互換と、Verified Snapshot Boundary v1用のcurrent
+`0.3-draft`を記録する。gate decisionは単独では実行を認可しない。
+authorizationもexact repository、commit、tree、snapshot、argv、image、
+policy、gate decision、expiryを検証し、Human approvalとsingle-use reservationが
+成立した場合だけreal Docker executionへ進める。
 
-## T0 subject binding根拠
+## Verified Snapshot subject binding
 
-F018開始時点の算出経路は次のとおりである。ここに記録する値は、将来の直接Git bindingが既に存在するという主張ではない。
+`gate-check`と`sandbox-run`はauthorizationを読む前にbounded
+`VerifiedSnapshot`を作る。static scanはlive targetではなくsnapshot workspaceを
+読み、gate subjectは次の値へbindされる。
 
-| 項目 | 現行の算出元と値 | 現行契約への影響 |
+| field | 算出元 | 契約 |
 | --- | --- | --- |
-| `repo` | `src/repo_health_doctor/evidence/v3_adapter.py`の`_repo()`が常に`<repo>`を返し、`build_gate_decision_candidate_from_v3_report()`がgate subjectへ入れる。v3 reportの表示用`repo_path`はauthorization identityとして使わない。 | private pathを保持しない一方、repository identityの直接照合ではない。 |
-| `commit` | v3 adapterが`null`を設定する。`git rev-parse HEAD`はこのsubject生成経路では実行しない。 | clean commitへのbindingを主張できない。 |
-| `tree_hash` | v3 adapterが`null`を設定する。HEAD treeもworktree content digestもこの経路では算出しない。 | treeへのbindingを主張できない。 |
-| `dirty` | gate decision subjectとauthorization `approved_scope`にはfield自体がなく、この経路ではdirty worktreeを取得しない。 | clean/dirtyをauthorization validatorだけで区別できない。 |
-| `binding_kind` | v3 adapterが`path_bound`を設定する。`src/repo_health_doctor/gate/evaluator.py`の`_decision_subject()`は明示subjectを優先して、この値を正規化する。 | `commit_bound`または`tree_bound`ではない。 |
+| `repo` | absolute local repository pathをdomain-separated SHA-256へ変換したredacted identity | raw host pathをartifactへ保存せず、別local repository pathとの置換を検出する。upstream ownershipの証明ではない。 |
+| `commit` | sanitized Git plumbingで解決した`HEAD^{commit}` | direct `.git` repositoryかつexact commit snapshotでなければreal executionを認可しない。 |
+| `tree_hash` | sanitized Git plumbingで解決した`HEAD^{tree}` | snapshot作成前後で同一であり、authorizationとexact一致しなければならない。 |
+| `snapshot_id` | copy policy、schema、canonical manifestをdomain separationしてSHA-256化 | scan、gate、authorization、Docker workspace、evidenceの共通subject identityである。 |
+| `manifest_fingerprint` | canonical manifestのSHA-256 | snapshotに実際に書かれたpath、type、mode、size、content hashをbindする。 |
+| `binding_kind` | Git exact snapshotなら`snapshot_bound`、non-Git static snapshotなら`path_bound` | real executionは`snapshot_bound`だけを受け入れる。 |
 
-`src/repo_health_doctor/gate/authorization.py`の`_gate_subject()`はgate decisionの`repo`、`commit`、`tree_hash`、`binding_kind`を`approved_scope`へ写す。artifact内の`subject`は0.1-draft互換の`repo`、`commit`、`tree_hash`だけを持つ。validatorは`approved_scope`を4 fieldすべてで、`subject`を3 fieldすべてでgate decisionとexact比較するが、上流に存在しないGit情報を補完しない。
+Git snapshotはcommit blobを64 KiB chunkでexportし、object IDと実際に書いたbytesを
+同じstreamで検証する。そのmanifestをbounded live worktree manifestと比較し、
+HEAD commit/treeを再確認する。`git status`は使用しない。dirty、untracked、
+symlink/submodule、unsupported layout、mutation、budget超過はfail-closedである。
+non-Git repositoryはstatic scanできるが、real execution authorizationは
+unresolvedとして拒否する。
 
-`gate-check`と`sandbox-run --authorization`は、対象repoのv3 scanから上記gate decisionを作り、command argvとともに同じvalidatorへ渡す。`sandbox-run`は、認可artifactの実行認可が成立した場合に限り、workspace copy前に対象pathからGitのrepo root、`HEAD` commit、`HEAD^{tree}`、`status --porcelain`を直接取得してsubjectと比較する。対象pathがGit top-levelでない場合、Git値を取得できない場合、subjectが一致しない場合、またはdirtyの場合はcommandを開始しない。直接取得値はfile-inventory fingerprint、gate subject、workspace copy結果で代用しない。
-
-`src/repo_health_doctor/cli.py`の`_external_evidence_subject()`はexternal scanner evidenceの入力検証用に`git rev-parse HEAD`と`git status --short`からcommitとdirty stateを取得するが、その結果はauthorization gate subjectの算出元ではなく、tree hashも取得しない。scanner evidenceのbindingとexecution authorizationのbindingを同一視してはならない。
+`0.3-draft` validatorはgate subject、authorization `approved_scope`、
+authorization `subject`、runtime snapshotの`snapshot_id`と
+`manifest_fingerprint`をexact比較する。gate decision fingerprintはsnapshot
+subjectを含むdecision全体から計算されるため、subject fieldの置換はgate
+fingerprint mismatchにもなる。
 
 ## Expiry CLI
 
@@ -37,7 +52,10 @@ repo-health-doctor authorization draft --gate-decision gate.json --argv-json arg
 
 ## Image bindingと0.2-draft
 
-authorization artifactは`0.1-draft`と`0.2-draft`を受理する。0.1-draftのallowed field集合は変更せず、0.1 artifactへ`approved_image`を追加した場合はunknown fieldとして拒否する。0.2-draftでは`approved_image`がoptionalで、存在する場合のfield集合は次の2つだけである。
+authorization artifactは`0.1-draft`、`0.2-draft`、`0.3-draft`を受理する。
+0.1-draftのallowed field集合は変更せず、0.1 artifactへ`approved_image`を追加した
+場合はunknown fieldとして拒否する。0.2-draftと0.3-draftでは
+`approved_image`がoptionalで、存在する場合のfield集合は次の2つだけである。
 
 ```json
 "approved_image": {
@@ -51,9 +69,37 @@ authorization artifactは`0.1-draft`と`0.2-draft`を受理する。0.1-draftの
 - `RepoDigests`の値をlocal image IDの代わりには使わない。runtime image IDが未解決、referenceが不一致、またはIDが不一致ならfail-closedである。
 - `approved_image`のない旧artifactは後方互換として受理するが、validation resultに`authorization_not_image_bound` limitationを付ける。これはimage identityを検証済みという意味ではない。
 
+## Snapshot bindingと0.3-draft
+
+`0.3-draft`は`approved_scope`へ次を追加し、`subject`にも同じ2 fieldを要求する。
+
+```json
+{
+  "snapshot_id": "sha256:<64-lowercase-hex>",
+  "manifest_fingerprint": "sha256:<64-lowercase-hex>"
+}
+```
+
+両fieldはgate subject、authorizationの2箇所、runtime snapshotでexact一致する。
+`binding_kind`は`snapshot_bound`、commitとtreeはnon-nullでなければならない。
+missing、不正shape、non-Git/path-bound subjectは
+`authorization_snapshot_binding_unresolved`、validな別値は
+`authorization_snapshot_binding_mismatch`で拒否する。
+
+0.1-draftと0.2-draftはhistorical artifactのvalidation互換を保つが、
+snapshot fieldを持たないためreal Docker executionには使用できない。validatorを
+通ることとruntime execution authorizationを同一視しない。
+
 ## Single-use reservation
 
-`sandbox-run --authorization`で実行認可が有効な場合、workspace copy、Docker argv生成、dry-run判定を終えた後、runnerの`run`呼び出し直前にだけsingle-use reservationを作る。reservation markerは認可artifactの隣に`<authorization filename>.reserved`として作成し、`O_CREAT|O_EXCL`（利用可能な場合は`O_NOFOLLOW`も併用）、mode `0600`でatomicに確保する。markerの内容は固定のkindとschema versionだけで、認可artifactの値、command、pathは保存しない。
+`sandbox-run --authorization`で実行認可が有効な場合、snapshot binding、
+Docker argv生成、dry-run判定を終えた後、runnerの`run`呼び出し直前にだけ
+single-use reservationを作る。reservation後にsnapshot integrityをもう一度検証し、
+mismatchならreservationを消費済みのままDockerを起動しない。reservation markerは
+認可artifactの隣に`<authorization filename>.reserved`として作成し、
+`O_CREAT|O_EXCL`（利用可能な場合は`O_NOFOLLOW`も併用）、mode `0600`でatomicに
+確保する。markerの内容は固定のkindとschema versionだけで、認可artifactの値、
+command、pathは保存しない。
 
 - markerが既に存在する場合は`authorization_single_use_reservation_exists`で拒否する。markerを削除して再利用可能にする処理はない。
 - markerの作成または固定内容の書込み・同期に失敗した場合は`authorization_single_use_reservation_write_failed`で拒否する。部分的に作成されたmarkerも安全側の消費済み状態として残す。
@@ -80,20 +126,20 @@ reasonはraw入力値やpathを含まないmachine-readable tokenである。art
 | refusal reason | 拒否条件 |
 | --- | --- |
 | `authorization_must_be_object` | 入力がJSON objectではない。 |
-| `authorization_top_level_required_or_unknown_field` | top-levelのrequired/allowed field集合が0.1-draftと一致しない。 |
+| `authorization_top_level_required_or_unknown_field` | top-levelのrequired/allowed field集合がartifact versionと一致しない。 |
 | `authorization_kind_unsupported` | `authorization_kind`が未対応である。 |
 | `authorization_schema_version_unsupported` | schema versionが未対応である。 |
 | `approval_missing` | `approved`が`true`ではない。 |
 | `approved_must_be_boolean` | `approved`がbooleanではない。 |
 | `limitations_empty` | limitationが空または不正である。 |
 | `residual_risks_empty` | residual riskが空または不正である。 |
-| `approved_scope_mismatch` | repo、commit、tree、`binding_kind`を含むapproved scopeがgate subjectと一致しない。 |
+| `approved_scope_mismatch` | repo、commit、tree、snapshot fields、`binding_kind`を含むversion別approved scopeがgate subjectと一致しない。 |
 | `approved_argv_mismatch` | approved argvが実行対象argvとexact一致しない。 |
 | `approved_policy_version_mismatch` | approved policy versionがgate decisionと一致しない。 |
 | `based_on_gate_decision_required_or_unknown_field` | gate referenceのfield集合が一致しない。 |
 | `based_on_gate_decision_mismatch` | decision kind、schema、verdict、fingerprintが一致しない。 |
-| `authorization_subject_required_or_unknown_field` | 0.1-draft subjectのrepo、commit、tree field集合が一致しない。 |
-| `authorization_subject_mismatch` | 0.1-draft subjectがgate subjectのrepo、commit、treeと一致しない。 |
+| `authorization_subject_required_or_unknown_field` | version別subject field集合が一致しない。 |
+| `authorization_subject_mismatch` | subjectがgate subjectのversion別fieldと一致しない。 |
 | `expires_at_required` | expiryがnullまたは空である。 |
 | `expires_at_invalid` | expiryをISO 8601としてparseできない。 |
 | `authorization_expired` | expiryが検証時刻以前である。 |
@@ -106,21 +152,27 @@ reasonはraw入力値やpathを含まないmachine-readable tokenである。art
 | `gate_verdict_invalid_for_authorization` | verdictが認可対象の既知値ではない。 |
 | `authorization_contains_forbidden_raw_pattern` | artifact内に保持禁止patternがある。 |
 | `authorization_contains_raw_host_path` | artifact内にraw host pathがある。 |
+| `authorization_snapshot_binding_mismatch` | shape-validなsnapshot IDまたはmanifest fingerprintがgate/runtime snapshotと一致しない。 |
+| `authorization_snapshot_binding_unresolved` | snapshot field、snapshot-bound gate、Git commit/tree、またはruntime snapshotを解決できない。 |
 
 warn verdictの`warn_verdict_authorization_requires_explicit_human_acceptance`はwarningであり、単独のrefusal reasonではない。
 
-### Worktree direct binding
+### Legacy worktree reason compatibility
 
-`authorization subject`の`repo`、`commit`、`tree_hash`は、sandbox-run開始直前の直接Git観測と照合する。既存のredactedな`<repo>` subjectは、対象pathがGit top-levelであることを照合対象とする。`binding_kind`が`commit_bound`または`tree_bound`でないartifact、Git値が解決できないartifact、対象pathとrepo rootが一致しないartifactは実行不可である。Gitのstatusが空でない場合は`authorization_worktree_dirty`で拒否し、dirtyを許可する緩和flagは存在しない。
+Verified Snapshot Boundary v1のreal execution pathはhigh-level Git statusに依存せず、
+上記snapshot reasonを使用する。次の旧reasonはhistorical validation/reportとの
+互換のためregistryに残すが、dirty worktreeをclean扱いにするfallbackではない。
 
 | refusal reason | 拒否条件 |
 | --- | --- |
-| `authorization_worktree_binding_mismatch` | 直接取得したrepo、HEAD commit、またはHEAD treeがauthorization subjectと一致しない。 |
-| `authorization_worktree_binding_unresolved` | Git値、subject、またはbinding kindを解決できない。 |
-| `authorization_worktree_not_git` | 対象pathからGit top-levelを取得できない。 |
-| `authorization_worktree_dirty` | 直接取得したGit statusがcleanではない。 |
+| `authorization_worktree_binding_mismatch` | legacy direct worktree bindingのrepo、HEAD commit、またはHEAD treeがsubjectと一致しない。 |
+| `authorization_worktree_binding_unresolved` | legacy worktree bindingのGit値、subject、またはbinding kindを解決できない。 |
+| `authorization_worktree_not_git` | legacy worktree binding対象がGit repositoryではない。 |
+| `authorization_worktree_dirty` | legacy worktree bindingがdirty stateを観測した。 |
 
-reportには`matched`、`mismatch`、`unresolved`、`dirty`の判定状態と固定reasonだけを記録し、raw repo path、commit、tree、status outputは記録しない。dry-run、gate-check、authorization不成立時はこのcommand-start binding checkを実行認可へ昇格させず、sandbox-runのcommandは開始しない。
+current reportの`worktree_binding`は`superseded_by_snapshot_binding`であり、
+`snapshot_binding`がrepo、commit、tree、snapshot、manifest、gate一致を記録する。
+raw repo path、raw Git output、file contentsは記録しない。
 
 ### Authorization discovery
 

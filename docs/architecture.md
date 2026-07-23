@@ -11,7 +11,8 @@ gate and evidence normalizer for unfamiliar repositories.
 - Policy validation and allow inventory commands that keep raw policy values out
   of reports
 - `sandbox-run` core runtime for one bounded command in a disposable,
-  locked-down Docker workspace after gate / authorization policy is evaluated
+  locked-down Docker workspace after a Verified Snapshot-bound gate /
+  authorization policy is evaluated
 
 ## Output Model
 
@@ -30,12 +31,15 @@ values, stable severities, and redacted findings.
 ## Sandbox Boundary
 
 `sandbox-run` is the live execution boundary for unknown-repository command
-evidence. It does not run in the real repository. It copies allowed files to a
-disposable workspace, excludes secrets and local state, blocks on copy-budget
-overflow, uses Docker `--network none` by default, avoids host HOME and Docker
-socket mounts, and records redacted evidence.
+evidence. It does not run in the real repository. Before scan or authorization,
+it creates a bounded, no-follow Verified Snapshot, then binds scan, gate,
+authorization, Docker workspace, and sandbox evidence to the same canonical
+manifest identity. It excludes secrets and local state, blocks on budget or
+integrity failure, uses Docker `--network none` by default, avoids host HOME
+and Docker socket mounts, and records redacted evidence.
 
 The runtime remains fail-closed: gate, authorization, legacy approval, copy
 policy, image availability, and Docker infrastructure checks can stop execution
-before the command starts. This is practical strong isolation for review
-evidence, not a safety proof or complete malware sandbox.
+before the command starts. Dirty/untracked Git repositories and non-Git
+subjects cannot receive real execution authorization. This is practical strong
+isolation for review evidence, not a safety proof or complete malware sandbox.

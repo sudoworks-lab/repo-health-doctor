@@ -14,12 +14,13 @@ execution authorization.
 
 The v1 flow is:
 
-1. Run the pre-execution gate.
-2. Review the gate decision, limitations, and required actions.
-3. If bounded execution evidence is still needed, run exactly one command with
-   `sandbox-run`.
-4. Keep the original repository unchanged.
-5. Use the JSON evidence to decide the next review step.
+1. live targetからboundedかつnon-executingな`VerifiedSnapshot`を作る。
+2. immutable snapshotだけをstatic scanし、その`snapshot_id`へgate decisionをbindする。
+3. gate decision、limitations、required actionsをHumanがreviewする。
+4. 必要な場合だけ、同じsnapshotとexact argvへbindされたauthorizationで
+   `sandbox-run`を実行する。
+5. Dockerにはlive targetではなく同じsnapshotをread-only mountする。
+6. 同じsnapshot identityを持つJSON evidenceで次のreview stepを判断する。
 
 The command is passed as argv. sandbox-run does not silently convert it to a
 shell string. If a shell is required, the caller must explicitly pass it as the
@@ -54,7 +55,9 @@ python3 -m json.tool /tmp/rhd-sandbox-run.json
 Non-dry-run Docker execution requires a valid Human-controlled authorization.
 The authorization binds the gate decision, threshold, exact argv, digest image
 reference and local image ID, policy, expiry, repository commit and tree hash,
-dirty state, worktree, and single-use reservation. Missing or invalid
+local repository identity、`snapshot_id`、manifest fingerprint、および
+single-use reservationをbindする。Missing、mismatch、unresolvedなbinding、
+dirty/untracked worktree、またはinvalid
 authorization, including a legacy `--approval` artifact by itself, blocks
 before Docker is invoked. `--dry-run` does not invoke Docker and may be used
 without authorization.
@@ -82,7 +85,7 @@ It generates Docker argv with:
 - `--network none`
 - a local digest-pinned image in the form `name@sha256:<64 lowercase hex>`
 - `/workspace` as the working directory
-- a disposable repository copy mounted read-only at `/workspace`
+- the Verified Snapshot mounted read-only at `/workspace`
 - `/out` as a kernel-bounded 64 MiB, 4096-inode tmpfs; it is not a host bind
 - read-only container root filesystem
 - `/tmp` tmpfs
@@ -107,29 +110,56 @@ digest-pinned reference and binds it to the local image ID; mutable tags,
 missing or malformed digests, option-like values, whitespace, and control
 characters are rejected.
 
-## Workspace Copy Policy
+## Verified Snapshot Intake
 
-sandbox-run never runs inside the real repository. It creates a disposable run
-root, copies allowed repository files into `/workspace`, runs the command
-there, captures a diff summary, and then removes the run root unless
-`--preserve-workspace` is explicitly set.
+sandbox-runはreal repository内で実行せず、live targetをDockerへ直接mountしない。
+privateなdisposable run rootへ`VerifiedSnapshot`を作り、static scan、gate、
+authorization validation、Docker、evidenceが同じsnapshotを参照する。snapshotは
+`schemas/verified-snapshot.schema.json`の`1.0`契約を持ち、raw host pathやfile
+contentsをreportへ含めない。
 
-The copy policy excludes `.git`, `.env`, `.env.*`, credential directories,
-shell history, common caches, dependency trees, virtual environments, build
-outputs, coverage artifacts, OS metadata, and local IDE metadata. Symlinks are
-not followed. Unsafe symlinks, path traversal attempts, and unsupported
-filesystem entries such as FIFOs, sockets, and device files are not copied and
-are recorded in evidence.
+canonical manifestはrepo-relative UTF-8 path、entry type、canonical mode、size、
+SHA-256をpath順に並べ、`schema_version`と`copy_policy_version`を含むcanonical
+JSONから生成する。`snapshot_id`と`manifest_fingerprint`はdomain-separated
+SHA-256である。同じmanifestは走査順に依存せず同じidentityになり、file content、
+path、executable modeの変更はidentityを変える。
 
-The copy has a budget:
+intakeは次のdefault budgetを適用する。
 
-- maximum file count
-- maximum total copied bytes
-- maximum single-file bytes
+| budget | default |
+| --- | ---: |
+| file count | 20,000 |
+| directory count（rootを含む） | 10,000 |
+| directory depth | 64 |
+| total copied bytes | 250 MiB |
+| single-file bytes | 25 MiB |
+| relative-path bytes | 4,096 |
+| streaming chunk | 64 KiB |
 
-If the budget is exceeded, sandbox-run does not start the command. It records
-`copy_budget_exceeded`, sets `policy_blocked=true`, keeps
-`command_started=false`, and exits `2`.
+filesystem traversalはrecursive callや`Path.read_bytes()`を使わず、directory FDを
+用いたiterative traversalである。fileは`lstat`後に`O_NOFOLLOW`でopenし、
+`fstat`でidentity、regular-file type、mode、size、mtime、ctimeを照合する。
+hashとcopyは同じ64 KiB streamで行い、sourceを再hashしてcopy中のmutationも
+検出する。directoryとsource rootもintake終了時に再照合する。symlink、FIFO、
+socket、device、path swap、budget超過、partial copy cleanup失敗はvalid snapshotに
+ならない。
+
+copy policyは`.git`、`.env`、`.env.*`、credential directory、shell history、
+common cache、dependency tree、virtual environment、build output、coverage
+artifact、OS metadata、local IDE metadataを除外する。除外対象もfile-count
+processing budgetの対象であり、大量の除外fileで上限を迂回できない。
+
+Git repositoryのreal execution snapshotはlive worktreeをsource of bytesにしない。
+Git 2.42.0以上のread-only plumbingでHEAD commit/treeを解決し、commit blobを
+stream exportする。blob object IDと実際に書いたbytesを同時に検証した後、
+bounded live tree manifestとのexact一致とHEAD commit/treeの再照合を行う。
+dirty、untracked、symlink/submodule、linked worktree、object alternatesは
+fail-closedである。non-Git repositoryはfilesystem snapshot上でstatic scanできるが、
+commit/treeへbindできないためreal execution authorizationは成立しない。
+
+budgetまたはintegrity checkが失敗した場合、sandbox-runはcommandを開始せず、
+partial snapshotを破棄し、`policy_blocked=true`、`command_started=false`、exit `2`
+を返す。
 
 The real runtime does not provide a host-backed writable path to the command:
 `/workspace` is read-only and `/out` is a 64 MiB, 4096-inode tmpfs. This is the
@@ -162,10 +192,43 @@ with exit `2` when the verdict meets the selected threshold:
 
 For non-dry-run Docker execution, `--authorization PATH` is mandatory.
 sandbox-run validates the human-controlled execution authorization artifact
-against the generated gate decision and exact argv, then performs the
-worktree binding and single-use reservation immediately before Docker. A gate
+against the generated gate decision and exact argv, then performs
+snapshot binding and single-use reservation immediately before Docker. The
+snapshot manifest is verified before Docker planning and again after
+reservation immediately before `runner.run()`. A gate
 decision is still not execution authorization, and product code does not
 generate or approve the artifact automatically.
+
+real executionでは次の5つが同じ値でなければならない。
+
+- static scan対象snapshot
+- gate decision subject
+- authorization `approved_scope`と`subject`
+- Docker `/workspace`
+- sandbox-run reportとnormalized sandbox evidence
+
+比較対象は`repository identity`、commit、tree、`snapshot_id`、
+`manifest_fingerprint`である。どれかがmissing、unresolved、mismatchなら
+single-use reservationまたはDocker開始より前に拒否する。
+
+## Host Subprocess Boundary
+
+snapshot intakeがhost上で起動できるprocessは次だけである。
+
+- trusted absolute pathの`git --version`
+- `git ... rev-parse --verify HEAD^{commit}`
+- `git ... rev-parse --verify HEAD^{tree}`
+- `git ... ls-tree -rz -l --full-tree <tree>`
+- `git ... cat-file --batch`
+
+Git subcommandは`rev-parse`、`ls-tree`、`cat-file`のallowlistで二重に検査する。
+`shell=False`、private cwd、sanitized environment、15秒timeout、64 KiB bounded
+stderrを使用し、`ls-tree` stdoutはbounded NUL record単位、blobはbounded size
+単位でstreamする。callerの`PATH`からGit executableを選ばず、hooks、
+fsmonitor、filter/textconvを必要とするcommand、submodule command、credential
+helper、pager、editor、prompt、network protocol、lazy fetchを使用しない。
+unsupported Git versionまたはlayoutはfilesystem scanへexecution権限を
+fall backせず、real executionをblockする。
 
 The legacy `--approval` artifact is still supported for exact sandbox-run
 approval compatibility for non-real paths and dry-run planning. It never
@@ -197,7 +260,10 @@ The JSON report is `schemas/sandbox-run.schema.json` with
 `report_kind: sandbox_run`. It includes:
 
 - run id, timestamps, dry-run and preserve flags
-- target identity and fingerprint
+- redacted local repository identity and snapshot manifest fingerprint
+- `VerifiedSnapshot` schema/version、source kind、commit/tree、file/byte count、
+  copy policy、budget、integrity status
+- scan、gate、authorization、workspace、evidenceのsubject consistency
 - redacted argv and command cwd
 - profile, backend, Docker argv, image, and network policy
 - copy policy, exclusions, symlink policy, special-file policy, and copy budget
@@ -228,7 +294,8 @@ env PYTHONPATH=src python3 -m repo_health_doctor gate-check . \
 
 `--sandbox-evidence`は最大16件、各256 KiB、合計1 MiB、生成から24時間以内に
 boundedされる。gate decisionはraw reportを保持せず、sandbox report fingerprint、
-run ID、元gate decision fingerprint、validation status、machine-readable reasonだけを
+run ID、元gate decision fingerprint、`snapshot_id`、manifest fingerprint、
+validation status、machine-readable reasonだけを
 `evidence_refs`へ残す。duplicate fingerprintはinvalid evidenceとして扱う。
 successful executionは`successful_execution_is_not_safety`というinformational noteであり、
 安全証明でも次のcommandのauthorizationでもなく、gate verdictを改善しない。
@@ -254,4 +321,7 @@ sandbox-run v1 is not:
 - authorization for arbitrary unknown-repository commands
 
 Docker daemon, kernel, image, platform, and local configuration risks remain
-review boundaries.
+review boundaries. Verified Snapshotは、既に侵害されたhost、trusted Git binaryの
+改変、同一userの別processによるprivate temporary directoryへの攻撃をOS-levelに
+隔離するものではない。そのようなhost compromiseを疑う場合は実行せず、別の
+trusted hostまたはVMでintakeからやり直す。

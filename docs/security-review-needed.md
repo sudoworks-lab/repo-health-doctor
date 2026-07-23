@@ -13,8 +13,8 @@ security review.
 - Review gate decision and execution authorization separation.
 - Review imported scanner compatibility assumptions.
 - Review Docker scanner boundary assumptions.
-- Review sandbox-run v1 authorization binding, Docker argv, workspace copy,
-  redaction, and report boundary assumptions.
+- Review sandbox-run v1 snapshot-bound authorization, Docker argv, Verified
+  Snapshot intake, redaction, and report boundary assumptions.
 - Review documentation for overclaims.
 
 Use the public security model review issue template for non-sensitive review
