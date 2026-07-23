@@ -124,8 +124,12 @@ class RealDockerBoundaryCasesOneToSeven(unittest.TestCase):
         observed = inspect_git_worktree(repo)
         gate["subject"] = {
             **gate["subject"],
+            "repo": observed["repo_identity"],
             "commit": observed["commit"],
             "tree_hash": observed["tree_hash"],
+            "snapshot_id": observed["snapshot_id"],
+            "manifest_fingerprint": observed["manifest_fingerprint"],
+            "binding_kind": "snapshot_bound",
         }
         authorization = dict(
             build_execution_authorization_draft(
@@ -368,8 +372,12 @@ class RealDockerBoundaryCasesEightToTen(unittest.TestCase):
         observed = inspect_git_worktree(repo)
         gate["subject"] = {
             **gate["subject"],
+            "repo": observed["repo_identity"],
             "commit": observed["commit"],
             "tree_hash": observed["tree_hash"],
+            "snapshot_id": observed["snapshot_id"],
+            "manifest_fingerprint": observed["manifest_fingerprint"],
+            "binding_kind": "snapshot_bound",
         }
         authorization = dict(
             build_execution_authorization_draft(
