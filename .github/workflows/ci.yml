@@ -29,9 +29,14 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --require-hashes -r requirements-ci.lock
-          python3 -m pip install --no-deps -e .
+          INSTALL_SOURCE="$RUNNER_TEMP/repo-health-doctor-install-source"
+          mkdir -p "$INSTALL_SOURCE"
+          git archive HEAD | tar -x -C "$INSTALL_SOURCE"
+          cd "$INSTALL_SOURCE"
+          python3 -m pip install --no-deps -e "$INSTALL_SOURCE"
 
       - name: Run tests
+        working-directory: ${{ runner.temp }}/repo-health-doctor-install-source
         run: PYTHONPATH=src python -m unittest discover -s tests -v
 
       - name: Parse schemas and policies

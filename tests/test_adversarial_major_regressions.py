@@ -174,6 +174,53 @@ class AdversarialMajorRegressionTests(unittest.TestCase):
         self.assertIn("build==", lock_text)
         self.assertIn("jsonschema==", lock_text)
 
+    def test_f06_ci_project_install_preserves_exact_self_scan_target(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+        requirements_install = (
+            "python3 -m pip install --require-hashes -r requirements-ci.lock"
+        )
+        install_source = (
+            'INSTALL_SOURCE="$RUNNER_TEMP/repo-health-doctor-install-source"'
+        )
+        archive_install = 'git archive HEAD | tar -x -C "$INSTALL_SOURCE"'
+        change_to_install_source = 'cd "$INSTALL_SOURCE"'
+        editable_install = (
+            'python3 -m pip install --no-deps -e "$INSTALL_SOURCE"'
+        )
+        temporary_working_directory = (
+            "working-directory: "
+            "${{ runner.temp }}/repo-health-doctor-install-source"
+        )
+        self_scan = "- name: Run self-scan gate"
+
+        self.assertNotIn("python3 -m pip install --no-deps -e .", workflow)
+        self.assertIn(requirements_install, workflow)
+        self.assertIn(install_source, workflow)
+        self.assertIn(archive_install, workflow)
+        self.assertIn(change_to_install_source, workflow)
+        self.assertIn(editable_install, workflow)
+        self.assertIn(temporary_working_directory, workflow)
+        self.assertIn(self_scan, workflow)
+        self.assertLess(
+            workflow.index(requirements_install),
+            workflow.index(archive_install),
+        )
+        self.assertLess(
+            workflow.index(archive_install),
+            workflow.index(change_to_install_source),
+        )
+        self.assertLess(
+            workflow.index(change_to_install_source),
+            workflow.index(editable_install),
+        )
+        self.assertLess(
+            workflow.index(editable_install),
+            workflow.index(temporary_working_directory),
+        )
+        self.assertLess(workflow.index(editable_install), workflow.index(self_scan))
+
 
 if __name__ == "__main__":
     unittest.main()
