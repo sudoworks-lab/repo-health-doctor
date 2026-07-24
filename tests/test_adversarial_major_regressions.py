@@ -174,52 +174,65 @@ class AdversarialMajorRegressionTests(unittest.TestCase):
         self.assertIn("build==", lock_text)
         self.assertIn("jsonschema==", lock_text)
 
-    def test_f06_ci_project_install_preserves_exact_self_scan_target(self) -> None:
+    def test_f06_ci_tests_use_exact_local_clone_and_preserve_self_scan_target(
+        self,
+    ) -> None:
         workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
             encoding="utf-8"
         )
-        requirements_install = (
-            "python3 -m pip install --require-hashes -r requirements-ci.lock"
+        clone_command = (
+            "git clone \\\n"
+            "            --local \\\n"
+            "            --no-hardlinks \\\n"
+            "            --no-tags \\\n"
+            '            "$GITHUB_WORKSPACE" \\\n'
+            '            "$TEST_SOURCE"'
         )
-        install_source = (
-            'INSTALL_SOURCE="$RUNNER_TEMP/repo-health-doctor-install-source"'
+        test_step = (
+            "      - name: Run tests\n"
+            "        working-directory: "
+            "${{ runner.temp }}/repo-health-doctor-test-source\n"
+            "        run: PYTHONPATH=src python -m unittest discover -s tests -v"
         )
-        archive_install = 'git archive HEAD | tar -x -C "$INSTALL_SOURCE"'
-        change_to_install_source = 'cd "$INSTALL_SOURCE"'
-        editable_install = (
-            'python3 -m pip install --no-deps -e "$INSTALL_SOURCE"'
+        original_checkout_guard = (
+            "      - name: Verify original checkout is exact and clean\n"
+            "        run: |\n"
+            '          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"\n'
+            '          test -z "$(git status --porcelain=v1 '
+            '--untracked-files=all)"\n'
+            "\n"
+            "      - name: Run self-scan gate\n"
+            "        run: |\n"
+            "          repo-health-doctor . --public-safety "
+            "--fail-on-gate quarantine "
+            "--gate-decision-output /tmp/repo-health-doctor-self.gate.json"
         )
-        temporary_working_directory = (
-            "working-directory: "
-            "${{ runner.temp }}/repo-health-doctor-install-source"
+        ordered_markers = (
+            "python3 -m pip install --require-hashes -r requirements-ci.lock",
+            'TEST_SOURCE="$RUNNER_TEMP/repo-health-doctor-test-source"',
+            clone_command,
+            'git -C "$TEST_SOURCE" checkout --detach "$GITHUB_SHA"',
+            'test "$(git -C "$TEST_SOURCE" rev-parse HEAD)" = "$GITHUB_SHA"',
+            (
+                'test -z "$(git -C "$TEST_SOURCE" '
+                'status --porcelain=v1 --untracked-files=all)"'
+            ),
+            'cd "$TEST_SOURCE"',
+            'python3 -m pip install --no-deps -e "$TEST_SOURCE"',
+            test_step,
+            original_checkout_guard,
         )
-        self_scan = "- name: Run self-scan gate"
 
+        self.assertNotIn("git archive", workflow)
         self.assertNotIn("python3 -m pip install --no-deps -e .", workflow)
-        self.assertIn(requirements_install, workflow)
-        self.assertIn(install_source, workflow)
-        self.assertIn(archive_install, workflow)
-        self.assertIn(change_to_install_source, workflow)
-        self.assertIn(editable_install, workflow)
-        self.assertIn(temporary_working_directory, workflow)
-        self.assertIn(self_scan, workflow)
-        self.assertLess(
-            workflow.index(requirements_install),
-            workflow.index(archive_install),
+        for marker in ordered_markers:
+            self.assertIn(marker, workflow)
+        positions = [workflow.index(marker) for marker in ordered_markers]
+        self.assertEqual(
+            sorted(positions),
+            positions,
+            "CI clone/install/test/self-scan stages must remain ordered",
         )
-        self.assertLess(
-            workflow.index(archive_install),
-            workflow.index(change_to_install_source),
-        )
-        self.assertLess(
-            workflow.index(change_to_install_source),
-            workflow.index(editable_install),
-        )
-        self.assertLess(
-            workflow.index(editable_install),
-            workflow.index(temporary_working_directory),
-        )
-        self.assertLess(workflow.index(editable_install), workflow.index(self_scan))
 
 
 if __name__ == "__main__":

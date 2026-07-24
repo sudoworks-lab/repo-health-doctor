@@ -29,14 +29,21 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --require-hashes -r requirements-ci.lock
-          INSTALL_SOURCE="$RUNNER_TEMP/repo-health-doctor-install-source"
-          mkdir -p "$INSTALL_SOURCE"
-          git archive HEAD | tar -x -C "$INSTALL_SOURCE"
-          cd "$INSTALL_SOURCE"
-          python3 -m pip install --no-deps -e "$INSTALL_SOURCE"
+          TEST_SOURCE="$RUNNER_TEMP/repo-health-doctor-test-source"
+          git clone \
+            --local \
+            --no-hardlinks \
+            --no-tags \
+            "$GITHUB_WORKSPACE" \
+            "$TEST_SOURCE"
+          git -C "$TEST_SOURCE" checkout --detach "$GITHUB_SHA"
+          test "$(git -C "$TEST_SOURCE" rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git -C "$TEST_SOURCE" status --porcelain=v1 --untracked-files=all)"
+          cd "$TEST_SOURCE"
+          python3 -m pip install --no-deps -e "$TEST_SOURCE"
 
       - name: Run tests
-        working-directory: ${{ runner.temp }}/repo-health-doctor-install-source
+        working-directory: ${{ runner.temp }}/repo-health-doctor-test-source
         run: PYTHONPATH=src python -m unittest discover -s tests -v
 
       - name: Parse schemas and policies
@@ -78,6 +85,11 @@ jobs:
           test -s /tmp/repo-health-doctor-real-scan.json
           python -m json.tool /tmp/repo-health-doctor-real-scan.json >/dev/null
           grep -En 'execution_authorized|scanner_skipped_offline|truncated|omitted' /tmp/repo-health-doctor-real-scan.json
+
+      - name: Verify original checkout is exact and clean
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
 
       - name: Run self-scan gate
         run: |
