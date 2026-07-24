@@ -9,7 +9,6 @@ import sys
 import tempfile
 import unittest
 
-from repo_health_doctor.cli import _bind_gate_decision_subject
 from repo_health_doctor.gate import build_execution_authorization_draft, validate_gate_decision
 from repo_health_doctor.sandbox.run_workspace import inspect_git_worktree
 
@@ -249,33 +248,6 @@ class GateDecisionCliReportIntegrationTests(unittest.TestCase):
         self.assertTrue(payload["execution_authorized"])
         self.assertEqual(payload["gate_decision"]["verdict"], "warn")
         self.assertEqual(payload["gate_decision"]["subject"], gate["subject"])
-
-    def test_gate_subject_binding_requires_clean_worktree(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            target = Path(tmp) / "repo"
-            target.mkdir()
-            readme = target / "README.md"
-            readme.write_text("clean\n", encoding="utf-8")
-            self._initialize_clean_git_repo(target)
-            gate = {
-                "subject": {
-                    "repo": "<repo>",
-                    "commit": None,
-                    "tree_hash": None,
-                    "binding_kind": "path_bound",
-                },
-                "verdict": "warn",
-            }
-
-            clean = _bind_gate_decision_subject(gate, target)
-            readme.write_text("dirty\n", encoding="utf-8")
-            dirty = _bind_gate_decision_subject(gate, target)
-
-        self.assertEqual(clean["subject"]["binding_kind"], "snapshot_bound")
-        self.assertIsNotNone(clean["subject"]["commit"])
-        self.assertIsNotNone(clean["subject"]["tree_hash"])
-        self.assertEqual(dirty, gate)
-
 
 if __name__ == "__main__":
     unittest.main()

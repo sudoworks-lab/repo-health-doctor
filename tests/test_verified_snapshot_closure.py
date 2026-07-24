@@ -23,10 +23,11 @@ from repo_health_doctor.gate.authorization import (
     validate_execution_authorization_snapshot_binding,
 )
 from repo_health_doctor.gate.v3_evaluator import (
-    build_verified_snapshot_scan_envelope,
     evaluate_gate_decision_from_scan_envelope,
     evaluate_gate_decision_from_v3_report,
+    scan_verified_snapshot,
 )
+import repo_health_doctor.gate.v3_evaluator as v3_evaluator
 from repo_health_doctor.sandbox import run_workspace
 from repo_health_doctor.sandbox.docker_runner import DockerRunner, FakeDockerRunner
 from repo_health_doctor.sandbox.run import (
@@ -469,7 +470,7 @@ class VerifiedSnapshotClosureRegressionTests(unittest.TestCase):
 
             self.assertEqual(prepared.cleanup_status, "ok")
 
-    def test_vsbr_static_007_direct_snapshot_subject_relabel_is_rejected(self) -> None:
+    def test_vsbr_static_007_raw_report_and_subject_cannot_construct_gate(self) -> None:
         report = {
             "tool": "repo-health-doctor",
             "version": "0.1.0",
@@ -480,7 +481,7 @@ class VerifiedSnapshotClosureRegressionTests(unittest.TestCase):
             "checks": [],
         }
 
-        with self.assertRaisesRegex(ValueError, "scan envelope"):
+        with self.assertRaises(TypeError):
             evaluate_gate_decision_from_v3_report(
                 report,
                 subject={
@@ -504,32 +505,33 @@ class VerifiedSnapshotClosureRegressionTests(unittest.TestCase):
                 snapshot_b = workspace_b.verified_snapshot
                 self.assertIsNotNone(snapshot_a)
                 self.assertIsNotNone(snapshot_b)
-                report = {
-                    "tool": "repo-health-doctor",
-                    "version": "0.1.0",
-                    "schema_version": "1.1",
-                    "repo_path": "<repo>",
-                    "overall_status": "warn",
-                    "summary": {"pass": 1, "warn": 0, "block": 0},
-                    "checks": [],
-                }
-                envelope = build_verified_snapshot_scan_envelope(report, snapshot_a)
+                envelope = scan_verified_snapshot(workspace_a, public_safety=True)
 
-                with self.assertRaisesRegex(ValueError, "snapshot"):
+                self.assertFalse(
+                    hasattr(v3_evaluator, "build_verified_snapshot_scan_envelope")
+                )
+                self.assertFalse(hasattr(cli, "_bind_gate_decision_subject"))
+
+                with self.assertRaises(TypeError):
                     evaluate_gate_decision_from_scan_envelope(envelope, snapshot_b)
 
-                foreign_report = deepcopy(report)
+                foreign_report = deepcopy(envelope.report)
                 foreign_report["overall_status"] = "block"
-                with self.assertRaisesRegex(ValueError, "fingerprint"):
+                with self.assertRaises(TypeError):
                     evaluate_gate_decision_from_v3_report(
                         foreign_report,
-                        scan_envelope=envelope,
-                        snapshot=snapshot_a,
+                        subject={
+                            "repo": snapshot_b.source_identity_redacted,
+                            "commit": snapshot_b.source_commit,
+                            "tree_hash": snapshot_b.source_tree,
+                            "snapshot_id": snapshot_b.snapshot_id,
+                            "manifest_fingerprint": snapshot_b.manifest_fingerprint,
+                        },
                     )
 
                 envelope.report["overall_status"] = "block"  # type: ignore[index]
                 with self.assertRaisesRegex(ValueError, "fingerprint"):
-                    evaluate_gate_decision_from_scan_envelope(envelope, snapshot_a)
+                    evaluate_gate_decision_from_scan_envelope(envelope)
             finally:
                 workspace_a.cleanup()
                 workspace_b.cleanup()
@@ -579,6 +581,68 @@ class VerifiedSnapshotClosureRegressionTests(unittest.TestCase):
         self.assertRegex(snapshot_id, r"^sha256:[0-9a-f]{64}$")
         self.assertRegex(manifest_fingerprint, r"^sha256:[0-9a-f]{64}$")
         self.assertLess(peak, 2 * 1024 * 1024)
+
+        _, list_snapshot_id, list_manifest_fingerprint = run_workspace._manifest_identity(
+            list(entries),
+            max_manifest_path_bytes=2 * 1024 * 1024,
+        )
+        consumed = 0
+
+        def generator_bomb():
+            nonlocal consumed
+            for index in range(10_000):
+                consumed += 1
+                yield SnapshotManifestEntry(
+                    path=f"p{index}",
+                    entry_type="file",
+                    mode="100644",
+                    size=0,
+                    sha256="0" * 64,
+                )
+
+        with self.assertRaisesRegex(
+            run_workspace._SnapshotRefusal,
+            "max_manifest_path_bytes",
+        ):
+            run_workspace._manifest_identity(
+                generator_bomb(),
+                max_manifest_path_bytes=1,
+            )
+        self.assertEqual(consumed, 1)
+
+        count_consumed = 0
+
+        def entry_count_bomb():
+            nonlocal count_consumed
+            for index in range(10_000):
+                count_consumed += 1
+                yield SnapshotManifestEntry(
+                    path=f"entry-{index}",
+                    entry_type="file",
+                    mode="100644",
+                    size=0,
+                    sha256="0" * 64,
+                )
+
+        with self.assertRaisesRegex(
+            run_workspace._SnapshotRefusal,
+            "max_manifest_entry_count",
+        ):
+            run_workspace._manifest_identity(
+                entry_count_bomb(),
+                max_manifest_path_bytes=2 * 1024 * 1024,
+                max_manifest_entry_count=2,
+            )
+        self.assertEqual(count_consumed, 3)
+
+        _, generator_snapshot_id, generator_manifest_fingerprint = (
+            run_workspace._manifest_identity(
+                (entry for entry in entries),
+                max_manifest_path_bytes=2 * 1024 * 1024,
+            )
+        )
+        self.assertEqual(list_snapshot_id, generator_snapshot_id)
+        self.assertEqual(list_manifest_fingerprint, generator_manifest_fingerprint)
 
     def test_vsbr_static_009_snapshot_schema_rejects_missing_null_malformed_and_extra(self) -> None:
         from jsonschema import Draft202012Validator

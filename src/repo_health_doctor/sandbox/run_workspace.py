@@ -35,6 +35,9 @@ DEFAULT_MAX_TOTAL_BYTES = 250 * 1024 * 1024
 DEFAULT_MAX_FILE_BYTES = 25 * 1024 * 1024
 DEFAULT_MAX_RELATIVE_PATH_BYTES = 4096
 DEFAULT_MAX_MANIFEST_PATH_BYTES = 128 * 1024 * 1024
+DEFAULT_MAX_MANIFEST_ENTRY_COUNT = (
+    DEFAULT_MAX_FILE_COUNT + DEFAULT_MAX_DIRECTORY_COUNT
+)
 STREAM_CHUNK_BYTES = 64 * 1024
 GIT_MINIMUM_VERSION = (2, 42, 0)
 GIT_COMMAND_TIMEOUT_SECONDS = 15
@@ -743,7 +746,12 @@ def verify_verified_snapshot(workspace: DisposableWorkspace) -> bool:
         )
         _, snapshot_id, manifest_fingerprint = _manifest_identity(
             entries,
+            max_relative_path_bytes=workspace.copy_budget.max_relative_path_bytes,
             max_manifest_path_bytes=workspace.copy_budget.max_manifest_path_bytes,
+            max_manifest_entry_count=(
+                workspace.copy_budget.max_file_count
+                + workspace.copy_budget.max_directory_count
+            ),
         )
     except _SnapshotRefusal:
         return False
@@ -755,10 +763,11 @@ def verify_verified_snapshot(workspace: DisposableWorkspace) -> bool:
 
 
 def snapshot_workspace(workspace: Path) -> InventoryResult:
+    budget = CopyBudget()
     try:
         entries, excluded_counts, unsafe_symlinks, errors = _inventory_existing_tree(
             workspace,
-            CopyBudget(),
+            budget,
         )
     except _SnapshotRefusal as exc:
         return InventoryResult(
@@ -770,7 +779,11 @@ def snapshot_workspace(workspace: Path) -> InventoryResult:
         )
     _, _, manifest_fingerprint = _manifest_identity(
         entries,
-        max_manifest_path_bytes=DEFAULT_MAX_MANIFEST_PATH_BYTES,
+        max_relative_path_bytes=budget.max_relative_path_bytes,
+        max_manifest_path_bytes=budget.max_manifest_path_bytes,
+        max_manifest_entry_count=(
+            budget.max_file_count + budget.max_directory_count
+        ),
     )
     files = {
         entry.path: f"sha256:{entry.sha256}"
@@ -1126,7 +1139,12 @@ def _copy_filesystem_tree(
                     pass
     return _sort_manifest(
         entries,
+        max_relative_path_bytes=workspace.copy_budget.max_relative_path_bytes,
         max_manifest_path_bytes=workspace.copy_budget.max_manifest_path_bytes,
+        max_manifest_entry_count=(
+            workspace.copy_budget.max_file_count
+            + workspace.copy_budget.max_directory_count
+        ),
     )
 
 
@@ -1351,7 +1369,11 @@ def _inventory_existing_tree(
     return (
         _sort_manifest(
             entries,
+            max_relative_path_bytes=budget.max_relative_path_bytes,
             max_manifest_path_bytes=budget.max_manifest_path_bytes,
+            max_manifest_entry_count=(
+                budget.max_file_count + budget.max_directory_count
+            ),
         ),
         excluded_counts,
         unsafe_symlinks,
@@ -1600,7 +1622,12 @@ def _export_git_blobs(
                     pass
     return _sort_manifest(
         manifest,
+        max_relative_path_bytes=workspace.copy_budget.max_relative_path_bytes,
         max_manifest_path_bytes=workspace.copy_budget.max_manifest_path_bytes,
+        max_manifest_entry_count=(
+            workspace.copy_budget.max_file_count
+            + workspace.copy_budget.max_directory_count
+        ),
     )
 
 
@@ -1644,7 +1671,12 @@ def _finish_snapshot(
 ) -> None:
     sorted_entries, snapshot_id, manifest_fingerprint = _manifest_identity(
         entries,
+        max_relative_path_bytes=workspace.copy_budget.max_relative_path_bytes,
         max_manifest_path_bytes=workspace.copy_budget.max_manifest_path_bytes,
+        max_manifest_entry_count=(
+            workspace.copy_budget.max_file_count
+            + workspace.copy_budget.max_directory_count
+        ),
     )
     _make_snapshot_read_only(workspace.workspace)
     budget = workspace.copy_budget
@@ -1698,11 +1730,15 @@ def _finish_snapshot(
 def _manifest_identity(
     entries: Iterable[SnapshotManifestEntry],
     *,
+    max_relative_path_bytes: int = DEFAULT_MAX_RELATIVE_PATH_BYTES,
     max_manifest_path_bytes: int = DEFAULT_MAX_MANIFEST_PATH_BYTES,
+    max_manifest_entry_count: int = DEFAULT_MAX_MANIFEST_ENTRY_COUNT,
 ) -> tuple[list[SnapshotManifestEntry], str, str]:
     sorted_entries = _sort_manifest(
         entries,
+        max_relative_path_bytes=max_relative_path_bytes,
         max_manifest_path_bytes=max_manifest_path_bytes,
+        max_manifest_entry_count=max_manifest_entry_count,
     )
     manifest_digest = hashlib.sha256(
         b"repo-health-doctor-verified-snapshot-manifest-v2\0"
@@ -2283,12 +2319,26 @@ def _record_refusal(
 def _sort_manifest(
     entries: Iterable[SnapshotManifestEntry],
     *,
+    max_relative_path_bytes: int = DEFAULT_MAX_RELATIVE_PATH_BYTES,
     max_manifest_path_bytes: int = DEFAULT_MAX_MANIFEST_PATH_BYTES,
+    max_manifest_entry_count: int = DEFAULT_MAX_MANIFEST_ENTRY_COUNT,
 ) -> list[SnapshotManifestEntry]:
-    values = list(entries)
-    path_bytes = sum(len(entry.path.encode("utf-8")) for entry in values)
-    if path_bytes > max_manifest_path_bytes:
-        raise _SnapshotRefusal("max_manifest_path_bytes")
+    values: list[SnapshotManifestEntry] = []
+    manifest_path_bytes = 0
+    for entry_count, entry in enumerate(entries, start=1):
+        if entry_count > max_manifest_entry_count:
+            raise _SnapshotRefusal("max_manifest_entry_count")
+        try:
+            encoded_path = entry.path.encode("utf-8", "strict")
+        except UnicodeEncodeError as exc:
+            raise _SnapshotRefusal("relative_path_not_utf8") from exc
+        if len(encoded_path) > max_relative_path_bytes:
+            raise _SnapshotRefusal("max_relative_path_bytes", entry.path)
+        next_manifest_path_bytes = manifest_path_bytes + len(encoded_path)
+        if next_manifest_path_bytes > max_manifest_path_bytes:
+            raise _SnapshotRefusal("max_manifest_path_bytes", entry.path)
+        manifest_path_bytes = next_manifest_path_bytes
+        values.append(entry)
     values.sort(key=lambda entry: (entry.path.encode("utf-8"), entry.entry_type))
     previous: SnapshotManifestEntry | None = None
     for entry in values:

@@ -91,11 +91,11 @@ class AuthorizationDiscoveryCliTests(unittest.TestCase):
         stderr = io.StringIO()
         with mock.patch.object(
             cli,
-            "diagnose_repo",
-            return_value={},
+            "scan_verified_snapshot_report",
+            return_value=object(),
         ), mock.patch.object(
             cli,
-            "evaluate_gate_decision_from_v3_report",
+            "evaluate_gate_decision_from_scan_envelope",
             return_value=deepcopy(self.gate_decision),
         ), redirect_stdout(stdout), redirect_stderr(stderr):
             return_code = cli.main(["gate-check", str(self.repo), *arguments])

@@ -17,7 +17,10 @@ from repo_health_doctor.evidence.validation import EVIDENCE_KIND, EVIDENCE_SCHEM
 
 from .evaluator import ExternalSuiteGateEvidence, evaluate_gate_decision
 from .sandbox_evidence import SandboxRunEvidenceValidationResult
-from repo_health_doctor.sandbox.run_workspace import VerifiedSnapshot
+from repo_health_doctor.sandbox.run_workspace import (
+    DisposableWorkspace,
+    VerifiedSnapshot,
+)
 
 
 SHAPE_SCAN_SUFFIXES = {
@@ -97,7 +100,10 @@ KNOWN_PYPROJECT_BACKENDS = (
 )
 
 
-@dataclass(frozen=True)
+_SCAN_ENVELOPE_TOKEN = object()
+
+
+@dataclass(frozen=True, init=False)
 class VerifiedSnapshotScanEnvelope:
     """Internal scan provenance used before snapshot-bound gate construction."""
 
@@ -105,43 +111,80 @@ class VerifiedSnapshotScanEnvelope:
     scan_report_fingerprint: str
     snapshot_subject: Mapping[str, Any]
     _snapshot: VerifiedSnapshot = field(repr=False, compare=False)
+    _token: object = field(repr=False, compare=False)
 
 
-def build_verified_snapshot_scan_envelope(
-    report: Mapping[str, Any],
-    snapshot: VerifiedSnapshot,
+def scan_verified_snapshot(
+    snapshot_workspace: DisposableWorkspace,
+    *,
+    large_file_threshold_mb: int | None = None,
+    secrets_ignores: Sequence[str] = (),
+    public_safety: bool = False,
+    config_path: str | Path | None = None,
+    local_config_path: str | Path | None = None,
+    load_local_config: bool = True,
+    report_root: str | Path | None = None,
 ) -> VerifiedSnapshotScanEnvelope:
-    if snapshot.integrity_status != "verified":
-        raise ValueError("verified snapshot scan envelope requires a verified snapshot")
+    """Scan the verified workspace and mint its snapshot-bound envelope."""
+    snapshot = snapshot_workspace.verified_snapshot
+    if snapshot is None or not snapshot_workspace.copy_safety_ok:
+        raise ValueError("verified snapshot scan requires a verified workspace")
+
+    from repo_health_doctor.doctor import (
+        DEFAULT_LARGE_FILE_THRESHOLD_MB,
+        diagnose_repo,
+    )
+
+    report = diagnose_repo(
+        snapshot_workspace.workspace,
+        large_file_threshold_mb=(
+            DEFAULT_LARGE_FILE_THRESHOLD_MB
+            if large_file_threshold_mb is None
+            else large_file_threshold_mb
+        ),
+        secrets_ignores=tuple(secrets_ignores),
+        public_safety=public_safety,
+        config_path=config_path,
+        local_config_path=local_config_path,
+        load_local_config=load_local_config,
+        tracked_relative_paths=snapshot.source_tracked_paths,
+        scan_relative_paths=tuple(
+            entry.path
+            for entry in snapshot.manifest
+            if entry.entry_type == "file"
+        ),
+        report_root=report_root,
+        git_repository=snapshot.source_kind == "git_commit",
+    )
     try:
         report_fingerprint = _scan_report_fingerprint(report)
     except (TypeError, ValueError) as exc:
         raise ValueError("scan report fingerprint could not be computed") from exc
-    return VerifiedSnapshotScanEnvelope(
-        report=report,
-        scan_report_fingerprint=report_fingerprint,
-        snapshot_subject=_snapshot_subject(snapshot),
-        _snapshot=snapshot,
-    )
+    envelope = object.__new__(VerifiedSnapshotScanEnvelope)
+    object.__setattr__(envelope, "report", report)
+    object.__setattr__(envelope, "scan_report_fingerprint", report_fingerprint)
+    object.__setattr__(envelope, "snapshot_subject", _snapshot_subject(snapshot))
+    object.__setattr__(envelope, "_snapshot", snapshot)
+    object.__setattr__(envelope, "_token", _SCAN_ENVELOPE_TOKEN)
+    _validate_scan_envelope(envelope)
+    return envelope
 
 
 def evaluate_gate_decision_from_scan_envelope(
     envelope: VerifiedSnapshotScanEnvelope,
-    snapshot: VerifiedSnapshot,
     *,
     policy: Mapping[str, Any] | None = None,
     repo_root: str | Path | None = None,
     external_suite_evidence: Sequence[ExternalSuiteGateEvidence] = (),
     sandbox_evidence: Sequence[Mapping[str, Any] | SandboxRunEvidenceValidationResult] = (),
 ) -> Mapping[str, Any]:
-    _validate_scan_envelope(envelope, snapshot)
-    return _evaluate_gate_decision_from_v3_report(
-        envelope.report,
+    _validate_scan_envelope(envelope)
+    return _evaluate_gate_decision_from_scan_envelope(
+        envelope,
         policy=policy,
         repo_root=repo_root,
         external_suite_evidence=external_suite_evidence,
         sandbox_evidence=sandbox_evidence,
-        subject=_snapshot_gate_subject(snapshot),
     )
 
 
@@ -152,27 +195,7 @@ def evaluate_gate_decision_from_v3_report(
     repo_root: str | Path | None = None,
     external_suite_evidence: Sequence[ExternalSuiteGateEvidence] = (),
     sandbox_evidence: Sequence[Mapping[str, Any] | SandboxRunEvidenceValidationResult] = (),
-    subject: Mapping[str, Any] | None = None,
-    scan_envelope: VerifiedSnapshotScanEnvelope | None = None,
-    snapshot: VerifiedSnapshot | None = None,
 ) -> Mapping[str, Any]:
-    if scan_envelope is not None:
-        if snapshot is None:
-            raise ValueError("scan envelope snapshot is required")
-        if _scan_report_fingerprint(report) != scan_envelope.scan_report_fingerprint:
-            raise ValueError("scan report fingerprint mismatch")
-        return evaluate_gate_decision_from_scan_envelope(
-            scan_envelope,
-            snapshot,
-            policy=policy,
-            repo_root=repo_root,
-            external_suite_evidence=external_suite_evidence,
-            sandbox_evidence=sandbox_evidence,
-        )
-    if subject is not None:
-        raise ValueError(
-            "snapshot-bound gate construction requires a verified snapshot scan envelope"
-        )
     return _evaluate_gate_decision_from_v3_report(
         report,
         policy=policy,
@@ -189,10 +212,65 @@ def _evaluate_gate_decision_from_v3_report(
     repo_root: str | Path | None = None,
     external_suite_evidence: Sequence[ExternalSuiteGateEvidence] = (),
     sandbox_evidence: Sequence[Mapping[str, Any] | SandboxRunEvidenceValidationResult] = (),
-    subject: Mapping[str, Any] | None = None,
 ) -> Mapping[str, Any]:
     candidate = build_gate_decision_candidate_from_v3_report(report)
     demo_evidence, demo_missing_evidence = _demo_context_from_v3_report(report, repo_root=repo_root)
+    evidence_candidates = list(extract_evidence_candidates_from_v3_report(report))
+    evidence_candidates.extend(demo_evidence)
+    return _evaluate_gate_decision_from_candidates(
+        candidate=candidate,
+        evidence_candidates=evidence_candidates,
+        subject=candidate["subject"],
+        policy=policy,
+        demo_missing_evidence=demo_missing_evidence,
+        external_suite_evidence=external_suite_evidence,
+        sandbox_evidence=sandbox_evidence,
+    )
+
+
+def _evaluate_gate_decision_from_scan_envelope(
+    envelope: VerifiedSnapshotScanEnvelope,
+    *,
+    policy: Mapping[str, Any] | None = None,
+    repo_root: str | Path | None = None,
+    external_suite_evidence: Sequence[ExternalSuiteGateEvidence] = (),
+    sandbox_evidence: Sequence[Mapping[str, Any] | SandboxRunEvidenceValidationResult] = (),
+) -> Mapping[str, Any]:
+    snapshot = envelope._snapshot
+    candidate = build_gate_decision_candidate_from_v3_report(envelope.report)
+    demo_evidence, demo_missing_evidence = _demo_context_from_v3_report(
+        envelope.report,
+        repo_root=repo_root,
+    )
+    evidence_candidates = list(
+        extract_evidence_candidates_from_v3_report(envelope.report)
+    )
+    evidence_candidates.extend(demo_evidence)
+    bound_evidence_candidates = [
+        _bind_evidence_candidate_to_subject(item, _snapshot_gate_subject(snapshot))
+        for item in evidence_candidates
+    ]
+    return _evaluate_gate_decision_from_candidates(
+        candidate=candidate,
+        evidence_candidates=bound_evidence_candidates,
+        subject=_snapshot_gate_subject(snapshot),
+        policy=policy,
+        demo_missing_evidence=demo_missing_evidence,
+        external_suite_evidence=external_suite_evidence,
+        sandbox_evidence=sandbox_evidence,
+    )
+
+
+def _evaluate_gate_decision_from_candidates(
+    *,
+    candidate: Mapping[str, Any],
+    evidence_candidates: Sequence[Mapping[str, Any]],
+    subject: Mapping[str, Any],
+    policy: Mapping[str, Any] | None,
+    demo_missing_evidence: Sequence[str],
+    external_suite_evidence: Sequence[ExternalSuiteGateEvidence],
+    sandbox_evidence: Sequence[Mapping[str, Any] | SandboxRunEvidenceValidationResult],
+) -> Mapping[str, Any]:
     effective_policy = dict(policy or {})
     effective_policy.setdefault("policy_version", "0.1")
     effective_policy.setdefault("fail_closed", True)
@@ -213,16 +291,9 @@ def _evaluate_gate_decision_from_v3_report(
     effective_policy.setdefault("mandatory_evidence", [])
     effective_policy.setdefault("requested_dynamic_judgment", False)
 
-    evidence_candidates = list(extract_evidence_candidates_from_v3_report(report))
-    evidence_candidates.extend(demo_evidence)
-    if subject is not None:
-        evidence_candidates = [
-            _bind_evidence_candidate_to_subject(item, subject)
-            for item in evidence_candidates
-        ]
     evaluation = evaluate_gate_decision(
         evidence_candidates,
-        subject=subject or candidate["subject"],
+        subject=subject,
         policy=effective_policy,
         external_suite_evidence=external_suite_evidence,
         sandbox_evidence=sandbox_evidence,
@@ -253,15 +324,23 @@ def _snapshot_gate_subject(snapshot: VerifiedSnapshot) -> Mapping[str, Any]:
 
 def _validate_scan_envelope(
     envelope: VerifiedSnapshotScanEnvelope,
-    snapshot: VerifiedSnapshot,
 ) -> None:
     if not isinstance(envelope, VerifiedSnapshotScanEnvelope):
         raise ValueError("scan envelope type is invalid")
-    if envelope._snapshot is not snapshot:
-        raise ValueError("scan envelope snapshot instance mismatch")
+    if envelope._token is not _SCAN_ENVELOPE_TOKEN:
+        raise ValueError("scan envelope provenance is invalid")
+    snapshot = envelope._snapshot
+    if not isinstance(snapshot, VerifiedSnapshot):
+        raise ValueError("scan envelope snapshot type is invalid")
+    if snapshot.integrity_status != "verified":
+        raise ValueError("scan envelope snapshot is not verified")
     if envelope.snapshot_subject != _snapshot_subject(snapshot):
         raise ValueError("scan envelope snapshot subject mismatch")
-    if envelope.scan_report_fingerprint != _scan_report_fingerprint(envelope.report):
+    try:
+        report_fingerprint = _scan_report_fingerprint(envelope.report)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("scan report fingerprint could not be computed") from exc
+    if envelope.scan_report_fingerprint != report_fingerprint:
         raise ValueError("scan report fingerprint mismatch")
 
 
