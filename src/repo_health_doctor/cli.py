@@ -78,6 +78,9 @@ from .gate.sandbox_evidence import (
     SandboxRunEvidenceValidationResult,
     validate_sandbox_run_evidence,
 )
+from .gate.v3_evaluator import (
+    build_verified_snapshot_scan_envelope,
+)
 from .external_scanner import (
     REAL_SCANNER_ADAPTER_NAMES,
     REAL_SCANNER_DEFAULT_TIMEOUT_SECONDS,
@@ -533,6 +536,7 @@ def main(argv: list[str] | None = None) -> int:
     gate_check_argv: list[str] = []
     scan_gate_workspace: DisposableWorkspace | None = None
     scan_verified_snapshot: VerifiedSnapshot | None = None
+    scan_envelope = None
     if raw_args and raw_args[0] == "validate-policy":
         command = "validate-policy"
         raw_args = raw_args[1:]
@@ -715,13 +719,15 @@ def main(argv: list[str] | None = None) -> int:
                         git_repository=prepared_snapshot.source_kind
                         == "git_commit",
                     )
-                    sandbox_gate_decision = _bind_gate_decision_subject(
-                        evaluate_gate_decision_from_v3_report(
-                            scan_report,
-                            repo_root=prepared_workspace.workspace,
-                            subject=_snapshot_gate_subject(prepared_snapshot),
-                        ),
+                    scan_envelope = build_verified_snapshot_scan_envelope(
+                        scan_report,
                         prepared_snapshot,
+                    )
+                    sandbox_gate_decision = evaluate_gate_decision_from_v3_report(
+                        scan_report,
+                        repo_root=prepared_workspace.workspace,
+                        scan_envelope=scan_envelope,
+                        snapshot=prepared_snapshot,
                     )
                 if args.authorization:
                     try:
@@ -863,6 +869,10 @@ def main(argv: list[str] | None = None) -> int:
                 scan_relative_paths=_snapshot_scan_paths(gate_snapshot),
                 git_repository=gate_snapshot.source_kind == "git_commit",
             )
+            scan_envelope = build_verified_snapshot_scan_envelope(
+                scan_report,
+                gate_snapshot,
+            )
             try:
                 external_suite_evidence = _load_external_suite_evidence(
                     args.external_evidence,
@@ -871,14 +881,12 @@ def main(argv: list[str] | None = None) -> int:
             except ValueError as exc:
                 gate_workspace.cleanup()
                 parser.error(str(exc))
-            baseline_gate_decision = _bind_gate_decision_subject(
-                evaluate_gate_decision_from_v3_report(
-                    scan_report,
-                    repo_root=gate_workspace.workspace,
-                    external_suite_evidence=external_suite_evidence,
-                    subject=_snapshot_gate_subject(gate_snapshot),
-                ),
-                gate_snapshot,
+            baseline_gate_decision = evaluate_gate_decision_from_v3_report(
+                scan_report,
+                repo_root=gate_workspace.workspace,
+                external_suite_evidence=external_suite_evidence,
+                scan_envelope=scan_envelope,
+                snapshot=gate_snapshot,
             )
             try:
                 sandbox_evidence = _load_sandbox_run_evidence(
@@ -891,15 +899,13 @@ def main(argv: list[str] | None = None) -> int:
             except ValueError as exc:
                 gate_workspace.cleanup()
                 parser.error(str(exc))
-            gate_decision = _bind_gate_decision_subject(
-                evaluate_gate_decision_from_v3_report(
-                    scan_report,
-                    repo_root=gate_workspace.workspace,
-                    external_suite_evidence=external_suite_evidence,
-                    sandbox_evidence=sandbox_evidence,
-                    subject=_snapshot_gate_subject(gate_snapshot),
-                ),
-                gate_snapshot,
+            gate_decision = evaluate_gate_decision_from_v3_report(
+                scan_report,
+                repo_root=gate_workspace.workspace,
+                external_suite_evidence=external_suite_evidence,
+                sandbox_evidence=sandbox_evidence,
+                scan_envelope=scan_envelope,
+                snapshot=gate_snapshot,
             )
             authorization_validation = None
             if args.authorization:
@@ -1018,6 +1024,10 @@ def main(argv: list[str] | None = None) -> int:
                     git_repository=scan_verified_snapshot.source_kind
                     == "git_commit",
                 )
+                scan_envelope = build_verified_snapshot_scan_envelope(
+                    report,
+                    scan_verified_snapshot,
+                )
             except BaseException:
                 scan_gate_workspace.cleanup()
                 raise
@@ -1076,21 +1086,13 @@ def main(argv: list[str] | None = None) -> int:
         or getattr(args, "gate_summary", False)
         or getattr(args, "fail_on_gate", None)
     ):
-        gate_decision = _bind_gate_decision_subject(
-            evaluate_gate_decision_from_v3_report(
-                report,
-                repo_root=(
-                    scan_gate_workspace.workspace
-                    if scan_gate_workspace is not None
-                    else target
-                ),
-                subject=(
-                    _snapshot_gate_subject(scan_verified_snapshot)
-                    if scan_verified_snapshot is not None
-                    else None
-                ),
-            ),
-            scan_verified_snapshot,
+        if scan_envelope is None or scan_verified_snapshot is None:
+            raise RuntimeError("verified snapshot scan envelope is unavailable")
+        gate_decision = evaluate_gate_decision_from_v3_report(
+            report,
+            repo_root=scan_gate_workspace.workspace,
+            scan_envelope=scan_envelope,
+            snapshot=scan_verified_snapshot,
         )
         if scan_gate_workspace is not None:
             scan_gate_workspace.cleanup()

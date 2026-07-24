@@ -85,7 +85,8 @@
         "max_depth",
         "max_total_bytes",
         "max_file_bytes",
-        "max_relative_path_bytes"
+        "max_relative_path_bytes",
+        "max_manifest_path_bytes"
       ],
       "properties": {
         "max_file_count": {
@@ -109,6 +110,10 @@
           "minimum": 1
         },
         "max_relative_path_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_manifest_path_bytes": {
           "type": "integer",
           "minimum": 1
         }

@@ -119,10 +119,11 @@ authorization validation、Docker、evidenceが同じsnapshotを参照する。s
 contentsをreportへ含めない。
 
 canonical manifestはrepo-relative UTF-8 path、entry type、canonical mode、size、
-SHA-256をpath順に並べ、`schema_version`と`copy_policy_version`を含むcanonical
-JSONから生成する。`snapshot_id`と`manifest_fingerprint`はdomain-separated
-SHA-256である。同じmanifestは走査順に依存せず同じidentityになり、file content、
-path、executable modeの変更はidentityを変える。
+SHA-256をpath順に処理し、`schema_version`と`copy_policy_version`を含む
+domain-separatedなper-entry streaming hashから生成する。canonical JSON文字列を
+materializeしない。`snapshot_id`と`manifest_fingerprint`はdomain-separated SHA-256
+である。同じmanifestは走査順に依存せず同じidentityになり、file content、path、
+executable modeの変更はidentityを変える。
 
 intakeは次のdefault budgetを適用する。
 
@@ -134,6 +135,7 @@ intakeは次のdefault budgetを適用する。
 | total copied bytes | 250 MiB |
 | single-file bytes | 25 MiB |
 | relative-path bytes | 4,096 |
+| manifest/path bytes | 128 MiB |
 | streaming chunk | 64 KiB |
 
 filesystem traversalはrecursive callや`Path.read_bytes()`を使わず、directory FDを

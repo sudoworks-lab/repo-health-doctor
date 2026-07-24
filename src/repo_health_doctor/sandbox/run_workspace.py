@@ -23,7 +23,7 @@ from .workspace import DIRECTORY_EXCLUSIONS, FILE_EXCLUSIONS, FILE_SUFFIX_EXCLUS
 
 SNAPSHOT_SCHEMA_VERSION = "1.0"
 COPY_POLICY_VERSION = "verified-snapshot-copy-policy-v1"
-FINGERPRINT_METHOD = "verified-snapshot-canonical-manifest-v1"
+FINGERPRINT_METHOD = "verified-snapshot-canonical-manifest-v2"
 WORKSPACE_COPY_POLICY = (
     "create a bounded no-follow immutable snapshot; exclude .git, .env, "
     "common caches, and credential-like files; refuse symlinks and special files"
@@ -34,6 +34,7 @@ DEFAULT_MAX_DEPTH = 64
 DEFAULT_MAX_TOTAL_BYTES = 250 * 1024 * 1024
 DEFAULT_MAX_FILE_BYTES = 25 * 1024 * 1024
 DEFAULT_MAX_RELATIVE_PATH_BYTES = 4096
+DEFAULT_MAX_MANIFEST_PATH_BYTES = 128 * 1024 * 1024
 STREAM_CHUNK_BYTES = 64 * 1024
 GIT_MINIMUM_VERSION = (2, 42, 0)
 GIT_COMMAND_TIMEOUT_SECONDS = 15
@@ -59,6 +60,7 @@ class CopyBudget:
     max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES
     max_file_bytes: int = DEFAULT_MAX_FILE_BYTES
     max_relative_path_bytes: int = DEFAULT_MAX_RELATIVE_PATH_BYTES
+    max_manifest_path_bytes: int = DEFAULT_MAX_MANIFEST_PATH_BYTES
 
     def __post_init__(self) -> None:
         values = (
@@ -68,6 +70,7 @@ class CopyBudget:
             self.max_total_bytes,
             self.max_file_bytes,
             self.max_relative_path_bytes,
+            self.max_manifest_path_bytes,
         )
         if any(isinstance(value, bool) or value <= 0 for value in values):
             raise ValueError("copy budget values must be positive integers")
@@ -78,6 +81,7 @@ class CopyBudget:
         files_copied: int,
         total_bytes_copied: int,
         directories_examined: int,
+        manifest_path_bytes_examined: int,
         exceeded: bool,
         reason: str | None,
     ) -> dict[str, Any]:
@@ -88,6 +92,8 @@ class CopyBudget:
             "max_total_bytes": self.max_total_bytes,
             "max_file_bytes": self.max_file_bytes,
             "max_relative_path_bytes": self.max_relative_path_bytes,
+            "max_manifest_path_bytes": self.max_manifest_path_bytes,
+            "manifest_path_bytes_examined": manifest_path_bytes_examined,
             "files_copied": files_copied,
             "directories_examined": directories_examined,
             "total_bytes_copied": total_bytes_copied,
@@ -195,6 +201,7 @@ class DisposableWorkspace:
     total_bytes_copied: int = 0
     directories_examined: int = 0
     entries_examined: int = 0
+    manifest_path_bytes_examined: int = 0
     copy_budget_exceeded: bool = False
     copy_budget_exceeded_reason: str | None = None
     verified_snapshot: VerifiedSnapshot | None = None
@@ -236,6 +243,7 @@ class DisposableWorkspace:
             "files_examined": self.files_examined,
             "directories_examined": self.directories_examined,
             "entries_examined": self.entries_examined,
+            "manifest_path_bytes_examined": self.manifest_path_bytes_examined,
             "total_bytes_copied": self.total_bytes_copied,
             "copy_safety_ok": self.copy_safety_ok,
             "unsafe_symlink_count": len(self.unsafe_symlinks),
@@ -250,6 +258,7 @@ class DisposableWorkspace:
                 files_copied=self.files_copied,
                 total_bytes_copied=self.total_bytes_copied,
                 directories_examined=self.directories_examined,
+                manifest_path_bytes_examined=self.manifest_path_bytes_examined,
                 exceeded=self.copy_budget_exceeded,
                 reason=self.copy_budget_exceeded_reason,
             ),
@@ -732,9 +741,12 @@ def verify_verified_snapshot(workspace: DisposableWorkspace) -> bool:
             workspace.workspace,
             workspace.copy_budget,
         )
+        _, snapshot_id, manifest_fingerprint = _manifest_identity(
+            entries,
+            max_manifest_path_bytes=workspace.copy_budget.max_manifest_path_bytes,
+        )
     except _SnapshotRefusal:
         return False
-    _, snapshot_id, manifest_fingerprint = _manifest_identity(entries)
     return (
         snapshot_id == snapshot.snapshot_id
         and manifest_fingerprint == snapshot.manifest_fingerprint
@@ -756,7 +768,10 @@ def snapshot_workspace(workspace: Path) -> InventoryResult:
             files={},
             errors=[exc.reason],
         )
-    _, _, manifest_fingerprint = _manifest_identity(entries)
+    _, _, manifest_fingerprint = _manifest_identity(
+        entries,
+        max_manifest_path_bytes=DEFAULT_MAX_MANIFEST_PATH_BYTES,
+    )
     files = {
         entry.path: f"sha256:{entry.sha256}"
         for entry in entries
@@ -911,6 +926,10 @@ def _create_git_snapshot(
             workspace.directories_examined,
             comparison_workspace.directories_examined,
         )
+        workspace.manifest_path_bytes_examined = max(
+            workspace.manifest_path_bytes_examined,
+            comparison_workspace.manifest_path_bytes_examined,
+        )
         for category, count in comparison_workspace.excluded_counts.items():
             workspace.excluded_counts[category] = (
                 workspace.excluded_counts.get(category, 0) + count
@@ -1007,6 +1026,7 @@ def _copy_filesystem_tree(
             relative_parts = (*frame.relative_parts, entry.name)
             relative = "/".join(relative_parts)
             _validate_relative_path(relative, workspace.copy_budget)
+            _register_manifest_path(workspace, relative)
             try:
                 before = entry.stat(follow_symlinks=False)
             except OSError as exc:
@@ -1104,7 +1124,10 @@ def _copy_filesystem_tree(
                     os.close(descriptor)
                 except OSError:
                     pass
-    return _sort_manifest(entries)
+    return _sort_manifest(
+        entries,
+        max_manifest_path_bytes=workspace.copy_budget.max_manifest_path_bytes,
+    )
 
 
 def _copy_regular_file(
@@ -1216,6 +1239,7 @@ def _inventory_existing_tree(
     file_count = 0
     directory_count = 1
     total_bytes = 0
+    manifest_path_bytes = 0
     try:
         while frames:
             fd, iterator, parts, directory_before = frames[-1]
@@ -1231,6 +1255,11 @@ def _inventory_existing_tree(
             relative_parts = (*parts, entry.name)
             relative = "/".join(relative_parts)
             _validate_relative_path(relative, budget)
+            manifest_path_bytes = _validate_manifest_path_budget(
+                manifest_path_bytes,
+                budget,
+                relative,
+            )
             before = entry.stat(follow_symlinks=False)
             if stat.S_ISLNK(before.st_mode):
                 unsafe_symlinks.append(relative)
@@ -1319,7 +1348,15 @@ def _inventory_existing_tree(
                 os.close(fd)
             except OSError:
                 pass
-    return _sort_manifest(entries), excluded_counts, unsafe_symlinks, errors
+    return (
+        _sort_manifest(
+            entries,
+            max_manifest_path_bytes=budget.max_manifest_path_bytes,
+        ),
+        excluded_counts,
+        unsafe_symlinks,
+        errors,
+    )
 
 
 def _git_tree_entries(
@@ -1373,6 +1410,7 @@ def _git_tree_entries(
             except (ValueError, UnicodeDecodeError) as exc:
                 raise _SnapshotRefusal("git_tree_output_invalid") from exc
             _validate_relative_path(relative, workspace.copy_budget)
+            _register_manifest_path(workspace, relative)
             _register_file_examined(workspace, relative)
             relative_parts = relative.split("/")
             directory_parts = relative_parts[:-1]
@@ -1383,6 +1421,7 @@ def _git_tree_entries(
                 if directory in directory_paths:
                     continue
                 directory_paths.add(directory)
+                _register_manifest_path(workspace, directory)
                 if (
                     len(directory_paths) + 1
                     > workspace.copy_budget.max_directory_count
@@ -1559,7 +1598,10 @@ def _export_git_blobs(
                     stream.close()
                 except OSError:
                     pass
-    return _sort_manifest(manifest)
+    return _sort_manifest(
+        manifest,
+        max_manifest_path_bytes=workspace.copy_budget.max_manifest_path_bytes,
+    )
 
 
 def _create_git_destination_directories(
@@ -1600,7 +1642,10 @@ def _finish_snapshot(
     source_tree: str | None,
     limitations: tuple[str, ...],
 ) -> None:
-    sorted_entries, snapshot_id, manifest_fingerprint = _manifest_identity(entries)
+    sorted_entries, snapshot_id, manifest_fingerprint = _manifest_identity(
+        entries,
+        max_manifest_path_bytes=workspace.copy_budget.max_manifest_path_bytes,
+    )
     _make_snapshot_read_only(workspace.workspace)
     budget = workspace.copy_budget
     snapshot = VerifiedSnapshot(
@@ -1626,6 +1671,7 @@ def _finish_snapshot(
             "max_total_bytes": budget.max_total_bytes,
             "max_file_bytes": budget.max_file_bytes,
             "max_relative_path_bytes": budget.max_relative_path_bytes,
+            "max_manifest_path_bytes": budget.max_manifest_path_bytes,
         },
         integrity_status="verified",
         limitations=limitations,
@@ -1651,27 +1697,65 @@ def _finish_snapshot(
 
 def _manifest_identity(
     entries: Iterable[SnapshotManifestEntry],
+    *,
+    max_manifest_path_bytes: int = DEFAULT_MAX_MANIFEST_PATH_BYTES,
 ) -> tuple[list[SnapshotManifestEntry], str, str]:
-    sorted_entries = _sort_manifest(entries)
-    canonical = json.dumps(
-        {
-            "copy_policy_version": COPY_POLICY_VERSION,
-            "entries": [entry.to_canonical_dict() for entry in sorted_entries],
-            "schema_version": SNAPSHOT_SCHEMA_VERSION,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-    ).encode("ascii")
-    manifest_digest = hashlib.sha256(canonical).hexdigest()
+    sorted_entries = _sort_manifest(
+        entries,
+        max_manifest_path_bytes=max_manifest_path_bytes,
+    )
+    manifest_digest = hashlib.sha256(
+        b"repo-health-doctor-verified-snapshot-manifest-v2\0"
+    )
     snapshot_digest = hashlib.sha256(
-        b"repo-health-doctor-verified-snapshot-v1\0" + canonical
-    ).hexdigest()
+        b"repo-health-doctor-verified-snapshot-id-v2\0"
+    )
+    for digest in (manifest_digest, snapshot_digest):
+        _hash_canonical_field(digest, b"schema_version", SNAPSHOT_SCHEMA_VERSION)
+        _hash_canonical_field(digest, b"copy_policy_version", COPY_POLICY_VERSION)
+        for entry in sorted_entries:
+            digest.update(b"entry\0")
+            _hash_canonical_field(digest, b"entry_type", entry.entry_type)
+            _hash_canonical_field(digest, b"mode", entry.mode)
+            _hash_canonical_field(digest, b"path", entry.path)
+            _hash_canonical_field(digest, b"sha256", entry.sha256)
+            _hash_canonical_field(digest, b"size", entry.size)
     return (
         sorted_entries,
-        f"sha256:{snapshot_digest}",
-        f"sha256:{manifest_digest}",
+        f"sha256:{snapshot_digest.hexdigest()}",
+        f"sha256:{manifest_digest.hexdigest()}",
     )
+
+
+def _hash_canonical_field(
+    digest: Any,
+    field_name: bytes,
+    value: object,
+) -> None:
+    digest.update(b"field\0")
+    _hash_length_prefixed(digest, field_name)
+    if value is None:
+        digest.update(b"null\0")
+        return
+    if isinstance(value, bool):
+        encoded = b"true" if value else b"false"
+        type_tag = b"bool"
+    elif isinstance(value, int):
+        encoded = str(value).encode("ascii")
+        type_tag = b"int"
+    elif isinstance(value, str):
+        encoded = value.encode("utf-8")
+        type_tag = b"str"
+    else:
+        raise TypeError("unsupported canonical manifest field")
+    digest.update(type_tag)
+    digest.update(b"\0")
+    _hash_length_prefixed(digest, encoded)
+
+
+def _hash_length_prefixed(digest: Any, value: bytes) -> None:
+    digest.update(len(value).to_bytes(8, "big"))
+    digest.update(value)
 
 
 def _inventory_from_snapshot(snapshot: VerifiedSnapshot) -> InventoryResult:
@@ -1980,6 +2064,31 @@ def _register_file_examined(
         _budget_refusal(workspace, "max_file_count", relative)
 
 
+def _register_manifest_path(
+    workspace: DisposableWorkspace,
+    relative: str,
+) -> None:
+    try:
+        workspace.manifest_path_bytes_examined = _validate_manifest_path_budget(
+            workspace.manifest_path_bytes_examined,
+            workspace.copy_budget,
+            relative,
+        )
+    except _SnapshotRefusal as exc:
+        _budget_refusal(workspace, exc.reason, relative)
+
+
+def _validate_manifest_path_budget(
+    current: int,
+    budget: CopyBudget,
+    relative: str,
+) -> int:
+    next_total = current + len(relative.encode("utf-8"))
+    if next_total > budget.max_manifest_path_bytes:
+        raise _SnapshotRefusal("max_manifest_path_bytes", relative)
+    return next_total
+
+
 def _preflight_file_budget_values(
     workspace: DisposableWorkspace,
     relative: str,
@@ -2173,9 +2282,24 @@ def _record_refusal(
 
 def _sort_manifest(
     entries: Iterable[SnapshotManifestEntry],
+    *,
+    max_manifest_path_bytes: int = DEFAULT_MAX_MANIFEST_PATH_BYTES,
 ) -> list[SnapshotManifestEntry]:
     values = list(entries)
+    path_bytes = sum(len(entry.path.encode("utf-8")) for entry in values)
+    if path_bytes > max_manifest_path_bytes:
+        raise _SnapshotRefusal("max_manifest_path_bytes")
     values.sort(key=lambda entry: (entry.path.encode("utf-8"), entry.entry_type))
+    previous: SnapshotManifestEntry | None = None
+    for entry in values:
+        if previous is not None and entry.path == previous.path:
+            if entry.entry_type != previous.entry_type:
+                raise _SnapshotRefusal(
+                    "manifest_path_type_collision",
+                    entry.path,
+                )
+            raise _SnapshotRefusal("manifest_duplicate_path", entry.path)
+        previous = entry
     return values
 
 

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from contextlib import redirect_stderr, redirect_stdout
+from copy import deepcopy
 import io
 import json
 from pathlib import Path
 import subprocess
 import tempfile
+import tracemalloc
 import unittest
 from unittest import mock
 
@@ -20,13 +22,23 @@ from repo_health_doctor.gate.authorization import (
     validate_execution_authorization,
     validate_execution_authorization_snapshot_binding,
 )
+from repo_health_doctor.gate.v3_evaluator import (
+    build_verified_snapshot_scan_envelope,
+    evaluate_gate_decision_from_scan_envelope,
+    evaluate_gate_decision_from_v3_report,
+)
 from repo_health_doctor.sandbox import run_workspace
 from repo_health_doctor.sandbox.docker_runner import DockerRunner, FakeDockerRunner
 from repo_health_doctor.sandbox.run import (
     _load_authorization_document,
     run_sandbox_run,
 )
-from repo_health_doctor.sandbox.run_workspace import create_verified_snapshot
+from repo_health_doctor.sandbox.run_workspace import (
+    CopyBudget,
+    SnapshotManifestEntry,
+    create_verified_snapshot,
+    verify_verified_snapshot,
+)
 
 
 COMMAND = ["python3", "-c", "print('verified snapshot closure')"]
@@ -456,6 +468,207 @@ class VerifiedSnapshotClosureRegressionTests(unittest.TestCase):
                     )
 
             self.assertEqual(prepared.cleanup_status, "ok")
+
+    def test_vsbr_static_007_direct_snapshot_subject_relabel_is_rejected(self) -> None:
+        report = {
+            "tool": "repo-health-doctor",
+            "version": "0.1.0",
+            "schema_version": "1.1",
+            "repo_path": "<repo>",
+            "overall_status": "warn",
+            "summary": {"pass": 1, "warn": 0, "block": 0},
+            "checks": [],
+        }
+
+        with self.assertRaisesRegex(ValueError, "scan envelope"):
+            evaluate_gate_decision_from_v3_report(
+                report,
+                subject={
+                    "repo": "sha256:" + "a" * 64,
+                    "commit": "a" * 40,
+                    "tree_hash": "b" * 40,
+                    "snapshot_id": "sha256:" + "c" * 64,
+                    "manifest_fingerprint": "sha256:" + "d" * 64,
+                },
+            )
+
+    def test_vsbr_static_007_foreign_and_stale_scan_envelopes_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_a = _git_repo(root, "repo-a", message="scan-a")
+            repo_b = _git_repo(root, "repo-b", message="scan-b")
+            workspace_a = create_verified_snapshot(repo_a)
+            workspace_b = create_verified_snapshot(repo_b)
+            try:
+                snapshot_a = workspace_a.verified_snapshot
+                snapshot_b = workspace_b.verified_snapshot
+                self.assertIsNotNone(snapshot_a)
+                self.assertIsNotNone(snapshot_b)
+                report = {
+                    "tool": "repo-health-doctor",
+                    "version": "0.1.0",
+                    "schema_version": "1.1",
+                    "repo_path": "<repo>",
+                    "overall_status": "warn",
+                    "summary": {"pass": 1, "warn": 0, "block": 0},
+                    "checks": [],
+                }
+                envelope = build_verified_snapshot_scan_envelope(report, snapshot_a)
+
+                with self.assertRaisesRegex(ValueError, "snapshot"):
+                    evaluate_gate_decision_from_scan_envelope(envelope, snapshot_b)
+
+                foreign_report = deepcopy(report)
+                foreign_report["overall_status"] = "block"
+                with self.assertRaisesRegex(ValueError, "fingerprint"):
+                    evaluate_gate_decision_from_v3_report(
+                        foreign_report,
+                        scan_envelope=envelope,
+                        snapshot=snapshot_a,
+                    )
+
+                envelope.report["overall_status"] = "block"  # type: ignore[index]
+                with self.assertRaisesRegex(ValueError, "fingerprint"):
+                    evaluate_gate_decision_from_scan_envelope(envelope, snapshot_a)
+            finally:
+                workspace_a.cleanup()
+                workspace_b.cleanup()
+
+    def test_vsbr_static_008_manifest_path_budget_is_independent_and_streaming(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            (repo / "payload.txt").write_text("bounded\n", encoding="utf-8")
+            refused = create_verified_snapshot(
+                repo,
+                copy_budget=CopyBudget(max_manifest_path_bytes=1),
+            )
+            try:
+                self.assertFalse(refused.copy_safety_ok)
+                self.assertEqual(
+                    refused.copy_budget_exceeded_reason,
+                    "max_manifest_path_bytes",
+                )
+            finally:
+                refused.cleanup()
+
+        entries = tuple(
+            SnapshotManifestEntry(
+                path=f"{index:04d}/" + ("x" * 1024),
+                entry_type="file",
+                mode="100644",
+                size=0,
+                sha256="0" * 64,
+            )
+            for index in range(256)
+        )
+        tracemalloc.start()
+        try:
+            with mock.patch.object(
+                run_workspace.json,
+                "dumps",
+                side_effect=AssertionError("canonical manifest must stream"),
+            ):
+                _, snapshot_id, manifest_fingerprint = run_workspace._manifest_identity(
+                    entries,
+                    max_manifest_path_bytes=2 * 1024 * 1024,
+                )
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        self.assertRegex(snapshot_id, r"^sha256:[0-9a-f]{64}$")
+        self.assertRegex(manifest_fingerprint, r"^sha256:[0-9a-f]{64}$")
+        self.assertLess(peak, 2 * 1024 * 1024)
+
+    def test_vsbr_static_009_snapshot_schema_rejects_missing_null_malformed_and_extra(self) -> None:
+        from jsonschema import Draft202012Validator
+
+        gate = deepcopy(
+            json.loads(
+                (
+                    ROOT
+                    / "tests"
+                    / "fixtures"
+                    / "execution-authorization"
+                    / "gate-allow-limited.json"
+                ).read_text(encoding="utf-8")
+            )
+        )
+        gate["subject"] = {
+            "repo": "sha256:" + "a" * 64,
+            "commit": "b" * 40,
+            "tree_hash": "c" * 40,
+            "snapshot_id": "sha256:" + "d" * 64,
+            "manifest_fingerprint": "sha256:" + "e" * 64,
+            "binding_kind": "snapshot_bound",
+        }
+        authorization = dict(
+            build_execution_authorization_draft(
+                gate,
+                COMMAND,
+                expires_at="2099-01-01T00:00:00Z",
+            )
+        )
+        schema = json.loads(
+            (ROOT / "schemas" / "execution-authorization.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        validator = Draft202012Validator(schema)
+        cases = {
+            "missing": lambda item: item["approved_scope"].pop("snapshot_id"),
+            "null": lambda item: item["subject"].update({"snapshot_id": None}),
+            "malformed": lambda item: item["approved_scope"].update(
+                {"manifest_fingerprint": "sha256:NOT-A-FINGERPRINT"}
+            ),
+            "extra": lambda item: item["subject"].update({"unexpected": "field"}),
+        }
+        for name, mutate in cases.items():
+            with self.subTest(case=name):
+                candidate = deepcopy(authorization)
+                mutate(candidate)
+                self.assertTrue(list(validator.iter_errors(candidate)))
+
+    def test_vsbr_static_010_duplicate_paths_and_type_collisions_fail_in_both_paths(self) -> None:
+        duplicate = SnapshotManifestEntry(
+            path="same.txt",
+            entry_type="file",
+            mode="100644",
+            size=0,
+            sha256="0" * 64,
+        )
+        directory = SnapshotManifestEntry(
+            path="same.txt",
+            entry_type="directory",
+            mode="040755",
+            size=0,
+            sha256=None,
+        )
+        with self.assertRaisesRegex(RuntimeError, "manifest_duplicate_path"):
+            run_workspace._manifest_identity([duplicate, duplicate])
+        with self.assertRaisesRegex(RuntimeError, "manifest_path_type_collision"):
+            run_workspace._manifest_identity([duplicate, directory])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            (repo / "payload.txt").write_text("verified\n", encoding="utf-8")
+            workspace = create_verified_snapshot(repo)
+            try:
+                self.assertIsNotNone(workspace.verified_snapshot)
+                with mock.patch.object(
+                    run_workspace,
+                    "_inventory_existing_tree",
+                    return_value=(
+                        [duplicate, duplicate],
+                        {},
+                        [],
+                        [],
+                    ),
+                ):
+                    self.assertFalse(verify_verified_snapshot(workspace))
+            finally:
+                workspace.cleanup()
 
 
 if __name__ == "__main__":

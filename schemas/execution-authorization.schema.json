@@ -93,7 +93,11 @@
         {"$ref": "#/$defs/approved_scope"},
         {
           "type": "object",
-          "required": ["snapshot_id", "manifest_fingerprint"]
+          "required": ["snapshot_id", "manifest_fingerprint"],
+          "properties": {
+            "snapshot_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+            "manifest_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+          }
         }
       ]
     },
@@ -128,7 +132,11 @@
         {"$ref": "#/$defs/subject"},
         {
           "type": "object",
-          "required": ["snapshot_id", "manifest_fingerprint"]
+          "required": ["snapshot_id", "manifest_fingerprint"],
+          "properties": {
+            "snapshot_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+            "manifest_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+          }
         }
       ]
     }
